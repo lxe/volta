@@ -2,10 +2,10 @@
 //!   check: a prompt through the batched engine (several copies at once) next to the CPU reference
 //!   bench: S sessions per GPU decoding together, aggregate tok/s
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use dsx::model::{Model, RefState};
-use dsx::volta::{Engine, Opts, TMAX};
+use dsx::volta::{Engine, Opts, SparkPlan, TMAX};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -53,6 +53,25 @@ enum Cmd {
         /// tokens per sequence per step (a chunk of the sequence at once, as prefill does); 1 = token by token
         #[arg(long, default_value_t = 1)]
         chunk: usize,
+    },
+    /// greedy decoding with the DSpark draft (VOLTA_SPARK=<checkpoint dir>): `sessions` per GPU prefill `prompt`
+    /// tokens of `text` each, then generate `steps` passes of draft + verify
+    Spec {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long, default_value_t = 8)]
+        gpus: usize,
+        #[arg(long, default_value_t = 8)]
+        sessions: usize,
+        #[arg(long, default_value_t = 32)]
+        steps: usize,
+        #[arg(long, default_value_t = 256)]
+        prompt: usize,
+        #[arg(long)]
+        text: PathBuf,
+        /// draft tokens verified per pass (at most the draft's block)
+        #[arg(long, default_value_t = 5)]
+        k: usize,
     },
     /// expert path self-test: convert + pack + GPU kernels vs the CPU reference, for (layer:expert) pairs
     Experts {
@@ -208,6 +227,80 @@ fn main() -> Result<()> {
                 }
             }
             println!("{{\"tokens\": {cnt}, \"ppl\": {:.4}, \"kl_top{topk}\": {:.6}, \"top1_agree\": {:.6}, \"wall_s\": {:.1}}}", (nll / cnt as f64).exp(), kl / cnt as f64, agree as f64 / cnt as f64, t0.elapsed().as_secs_f64());
+        }
+        Cmd::Spec { model, gpus, sessions, steps, prompt, text, k } => {
+            let m = load(&model, None)?;
+            let corpus: Vec<u32> = std::fs::read(&text)?.chunks(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32).collect();
+            let e = Engine::new(m, Opts { ngpu: gpus, slots: sessions, max_ctx: prompt + steps * (k + 1) + 64 })?;
+            let block = e.spark_block().context("VOLTA_SPARK is not set")?;
+            anyhow::ensure!(k <= block && sessions * (k + 1) <= TMAX, "k {k}: at most the block ({block}), and sessions * (k + 1) <= {TMAX}");
+            let ns = gpus * sessions;
+            let am = |l: &[f32]| argmax(l) as u32;
+            // prefill: chunks of TMAX / sessions tokens per session; the draft observes every prompt token
+            let chunk = (TMAX / sessions).max(1);
+            let mut last: Vec<Vec<f32>> = vec![vec![]; ns];
+            for p0 in (0..prompt).step_by(chunk) {
+                let p1 = (p0 + chunk).min(prompt);
+                let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..sessions).flat_map(|s| (p0..p1).map(move |p| (s, (g * sessions + s, p)))).map(|(s, (i, p))| (s, corpus[(i * 997 + p) % corpus.len()])).collect()).collect();
+                let out = e.step(plan)?;
+                let w = p1 - p0;
+                let obs = (0..gpus).map(|_| (0..sessions).flat_map(|s| (0..w).map(move |j| (s, s * w + j, p0 + j))).collect()).collect();
+                e.spark(SparkPlan { obs, drafts: vec![vec![]; gpus] })?;
+                for g in 0..gpus {
+                    for s in 0..sessions {
+                        let r = s * w + w - 1;
+                        last[g * sessions + s] = out[g][r * e.vocab..(r + 1) * e.vocab].to_vec();
+                    }
+                }
+            }
+            // generation: draft k tokens after `next`, verify [next, drafts] in one main step, keep the agreed prefix
+            let mut next: Vec<u32> = last.iter().map(|l| am(l)).collect();
+            let mut pos = vec![prompt - 1; ns]; // position of each session's newest main token
+            let mut obs: Vec<Vec<(usize, usize, usize)>> = vec![vec![]; gpus];
+            let (mut made, mut hist) = (0usize, vec![0usize; k + 1]);
+            let (mut t_draft, mut t_main) = (0f64, 0f64);
+            let t0 = Instant::now();
+            for it in 0..steps {
+                let td = Instant::now();
+                let drafts: Vec<Vec<(usize, usize, u32)>> = (0..gpus).map(|g| (0..sessions).map(|s| (s, pos[g * sessions + s], next[g * sessions + s])).collect()).collect();
+                // k = 0: plain greedy decoding (the baseline), no draft step
+                let dr = if k == 0 { vec![vec![0u32; sessions * block]; gpus] } else { e.spark(SparkPlan { obs: std::mem::take(&mut obs), drafts })? };
+                t_draft += td.elapsed().as_secs_f64();
+                let tm = Instant::now();
+                let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..sessions).flat_map(|s| std::iter::once(next[g * sessions + s]).chain(dr[g][s * block..s * block + k].iter().copied()).map(move |t| (s, t))).collect()).collect();
+                let out = e.step_greedy(plan)?;
+                t_main += tm.elapsed().as_secs_f64();
+                obs = vec![vec![]; gpus];
+                let mut rw = vec![vec![]; gpus];
+                for g in 0..gpus {
+                    for s in 0..sessions {
+                        let i = g * sessions + s;
+                        let row = |j: usize| out[g][s * (k + 1) + j];
+                        let mut a = 0;
+                        while a < k && row(a) == dr[g][s * block + a] {
+                            a += 1;
+                        }
+                        hist[a] += 1;
+                        made += a + 1;
+                        for j in 0..=a {
+                            obs[g].push((s, s * (k + 1) + j, pos[i] + 1 + j));
+                        }
+                        if a < k {
+                            rw[g].push((s, k - a));
+                        }
+                        next[i] = row(a);
+                        pos[i] += a + 1;
+                    }
+                }
+                e.rewind(rw)?;
+                if it == 0 {
+                    eprintln!("first pass {:.0} ms", t0.elapsed().as_secs_f64() * 1e3);
+                }
+            }
+            let wall = t0.elapsed().as_secs_f64();
+            let per = made as f64 / ns as f64;
+            println!("{ns} sessions, k {k}: {:.2} tokens per pass ({:?}), draft {:.1} ms + verify {:.1} ms per pass, {:.1} tok/s per session, {:.0} tok/s aggregate",
+                per / steps as f64, hist, t_draft / steps as f64 * 1e3, t_main / steps as f64 * 1e3, per / wall, made as f64 / wall);
         }
         Cmd::Experts { model, pairs } => {
             let m = load(&model, None)?;

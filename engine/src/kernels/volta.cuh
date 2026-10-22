@@ -52,7 +52,7 @@ __device__ __forceinline__ void vmoe_mm(const uint4 *__restrict__ W, const half 
   const int nent = nwork ? *nwork : (int)gridDim.y;
   for (int ei = blockIdx.y; ei < nent; ei += gridDim.y) {
   const VWork wk0 = work[ei];
-  int bx = blockIdx.x, n_all = (int)wk0.nt, t_base = (int)wk0.t0, tt0 = 0, tstep = 1 << 30;
+  int bx = blockIdx.x, n_all = (int)wk0.nt, t_base = (int)wk0.t0, tt0 = 0, tstep = 1;  // fixed launches: each block walks every token tile
   if (cnt) {
     // device-built lists: this block takes token tiles tt0, tt0 + tstep, ... of its list (bounded grid, any count)
     n_all = cnt[wk0.nt];
@@ -663,7 +663,7 @@ __device__ __forceinline__ void vlut_mm(const uint32_t *__restrict__ W, const ui
   const int nent = nwork ? *nwork : (int)gridDim.y;
   for (int ei = blockIdx.y; ei < nent; ei += gridDim.y) {
   const VWork2 wk0 = work[ei];
-  int bx = blockIdx.x, n_all = (int)wk0.nt, t_base = (int)wk0.t0, tt0 = 0, tstep = 1 << 30;
+  int bx = blockIdx.x, n_all = (int)wk0.nt, t_base = (int)wk0.t0, tt0 = 0, tstep = 1;  // fixed launches: each block walks every token tile
   if (cnt) {
     // device-built lists: this block takes token tiles tt0, tt0 + tstep, ... of its list (bounded grid, any count)
     n_all = cnt[wk0.nt];
@@ -1006,14 +1006,10 @@ extern "C" __global__ void vprep(const float *x, int ldx, half *xh, int kx, int 
 }
 
 // router logits y[t][e] += W[e] . x[t] in fp32 over K chunks of 256 (y zeroed first): block = 32 experts (4 per warp)
-// x one chunk, x chunk of every token in shared memory; grid (E / 32, K / 256), block 256, T <= 32
+// x one chunk, held in registers; the chunk of 32 tokens at a time in shared memory. grid (E / 32, K / 256), block 256
 extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const float *x, float *y, int E, int K, int T) {
   __shared__ __align__(16) float xs[32 * 256];
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, k0 = blockIdx.y * 256;
-  for (int i = threadIdx.x; i < T * 64; i += 256) {
-    const int t = i / 64, c = (i % 64) * 4;
-    *reinterpret_cast<float4 *>(&xs[t * 256 + c]) = *reinterpret_cast<const float4 *>(x + (size_t)t * K + k0 + c);
-  }
   // this lane's 8 weights of each of its warp's 4 rows: k0 + lane * 4 + {0..3} and + 128
   float w[4][8];
 #pragma unroll
@@ -1022,14 +1018,22 @@ extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const 
     float4 a = __ldg(reinterpret_cast<const float4 *>(row)), b = __ldg(reinterpret_cast<const float4 *>(row + 128));
     w[r][0] = a.x; w[r][1] = a.y; w[r][2] = a.z; w[r][3] = a.w; w[r][4] = b.x; w[r][5] = b.y; w[r][6] = b.z; w[r][7] = b.w;
   }
-  __syncthreads();
-  for (int t = 0; t < T; t++) {
-    const float4 a = *reinterpret_cast<const float4 *>(&xs[t * 256 + lane * 4]), b = *reinterpret_cast<const float4 *>(&xs[t * 256 + 128 + lane * 4]);
+  for (int t0 = 0; t0 < T; t0 += 32) {
+    const int tn = min(32, T - t0);
+    __syncthreads();  // the previous group's reads are done
+    for (int i = threadIdx.x; i < tn * 64; i += 256) {
+      const int t = i / 64, c = (i % 64) * 4;
+      *reinterpret_cast<float4 *>(&xs[t * 256 + c]) = *reinterpret_cast<const float4 *>(x + (size_t)(t0 + t) * K + k0 + c);
+    }
+    __syncthreads();
+    for (int t = 0; t < tn; t++) {
+      const float4 a = *reinterpret_cast<const float4 *>(&xs[t * 256 + lane * 4]), b = *reinterpret_cast<const float4 *>(&xs[t * 256 + 128 + lane * 4]);
 #pragma unroll
-    for (int r = 0; r < 4; r++) {
-      float s = w[r][0] * a.x + w[r][1] * a.y + w[r][2] * a.z + w[r][3] * a.w + w[r][4] * b.x + w[r][5] * b.y + w[r][6] * b.z + w[r][7] * b.w;
-      s = warp_sum(s);
-      if (lane == r) atomicAdd(&y[(size_t)t * E + blockIdx.x * 32 + warp * 4 + r], s);
+      for (int r = 0; r < 4; r++) {
+        float s = w[r][0] * a.x + w[r][1] * a.y + w[r][2] * a.z + w[r][3] * a.w + w[r][4] * b.x + w[r][5] * b.y + w[r][6] * b.z + w[r][7] * b.w;
+        s = warp_sum(s);
+        if (lane == r) atomicAdd(&y[(size_t)(t0 + t) * E + blockIdx.x * 32 + warp * 4 + r], s);
+      }
     }
   }
 }
@@ -1044,4 +1048,84 @@ extern "C" __global__ void vsrc_rows(const int *ntok, int ngpu, int tmax, int *l
     base += n;
   }
   if (threadIdx.x == 0) { l[0] = base; l[1] = 0; }
+}
+
+// ---------------------------------------------------------------- DSpark draft (volta/spark.rs)
+// the draft's input from the main model: mh[t][j * d + i] = bf16(mean over the hc copies of h[t][..][i]) at target
+// layer j. grid (d / 256, T), block 256
+extern "C" __global__ void vmean_hc(const float *h, float *mh, int d, int hc, int j, int nj) {
+  const int t = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= d) return;
+  float s = 0.f;
+  for (int k = 0; k < hc; k++) s += h[((size_t)t * hc + k) * d + i];
+  mh[(size_t)t * nj * d + (size_t)j * d + i] = bf16r(s / hc);
+}
+// dst[r] = src[idx[r]] (n floats per row); grid (ceil(n / 256), R), block 256
+extern "C" __global__ void vgather_rows(const float *src, const int *idx, float *dst, int n) {
+  const int r = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) dst[(size_t)r * n + i] = src[(size_t)idx[r] * n + i];
+}
+// Markov embedding rows of the previous tokens: out[s][j] = emb[prev[s]][j] (fp16 table); grid S, block 256
+extern "C" __global__ void vmarkov_embed(const half *emb, const int *prev, float *out, int r) {
+  const int s = blockIdx.x;
+  for (int j = threadIdx.x; j < r; j += blockDim.x) out[(size_t)s * r + j] = __half2float(emb[(size_t)prev[s] * r + j]);
+}
+// draft position i of session s: argmax over v of logits[(s * B + i)][v] + bias[s][v]; the winner becomes the draft
+// token and the next position's previous token. grid S, block 1024
+extern "C" __global__ void vmarkov_argmax(const float *logits, const float *bias, int vocab, int B, int i, int *prev, int *out) {
+  __shared__ float bv[32];
+  __shared__ int bi[32];
+  const int s = blockIdx.x, lane = threadIdx.x & 31, w = threadIdx.x >> 5;
+  const float *lg = logits + (size_t)(s * B + i) * vocab, *bs = bias + (size_t)s * vocab;
+  float best = -INFINITY;
+  int arg = 0x7fffffff;
+  for (int v = threadIdx.x; v < vocab; v += blockDim.x) {
+    const float x = lg[v] + bs[v];
+    if (x > best) { best = x; arg = v; }
+  }
+  for (int o = 16; o; o >>= 1) {
+    const float ob = __shfl_xor_sync(0xffffffffu, best, o);
+    const int oa = __shfl_xor_sync(0xffffffffu, arg, o);
+    if (ob > best || (ob == best && oa < arg)) { best = ob; arg = oa; }
+  }
+  if (lane == 0) { bv[w] = best; bi[w] = arg; }
+  __syncthreads();
+  if (w == 0) {
+    best = lane < (int)(blockDim.x >> 5) ? bv[lane] : -INFINITY;
+    arg = lane < (int)(blockDim.x >> 5) ? bi[lane] : 0x7fffffff;
+    for (int o = 16; o; o >>= 1) {
+      const float ob = __shfl_xor_sync(0xffffffffu, best, o);
+      const int oa = __shfl_xor_sync(0xffffffffu, arg, o);
+      if (ob > best || (ob == best && oa < arg)) { best = ob; arg = oa; }
+    }
+    if (lane == 0) { out[s * B + i] = arg; prev[s] = arg; }
+  }
+}
+// greedy ids: out[r] = argmax of logits row r (lowest index on ties); grid R, block 1024
+extern "C" __global__ void vargmax_rows(const float *logits, int vocab, int *out) {
+  __shared__ float bv[32];
+  __shared__ int bi[32];
+  const int r = blockIdx.x, lane = threadIdx.x & 31, w = threadIdx.x >> 5;
+  const float *lg = logits + (size_t)r * vocab;
+  float best = -INFINITY;
+  int arg = 0x7fffffff;
+  for (int v = threadIdx.x; v < vocab; v += blockDim.x)
+    if (lg[v] > best) { best = lg[v]; arg = v; }
+  for (int o = 16; o; o >>= 1) {
+    const float ob = __shfl_xor_sync(0xffffffffu, best, o);
+    const int oa = __shfl_xor_sync(0xffffffffu, arg, o);
+    if (ob > best || (ob == best && oa < arg)) { best = ob; arg = oa; }
+  }
+  if (lane == 0) { bv[w] = best; bi[w] = arg; }
+  __syncthreads();
+  if (w == 0) {
+    best = lane < (int)(blockDim.x >> 5) ? bv[lane] : -INFINITY;
+    arg = lane < (int)(blockDim.x >> 5) ? bi[lane] : 0x7fffffff;
+    for (int o = 16; o; o >>= 1) {
+      const float ob = __shfl_xor_sync(0xffffffffu, best, o);
+      const int oa = __shfl_xor_sync(0xffffffffu, arg, o);
+      if (ob > best || (ob == best && oa < arg)) { best = ob; arg = oa; }
+    }
+    if (lane == 0) out[r] = arg;
+  }
 }

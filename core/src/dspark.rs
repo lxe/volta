@@ -9,36 +9,36 @@ use crate::safetensors::SafeTensors;
 use anyhow::Result;
 
 pub struct DLayer {
-    attn_norm: Vec<f32>,
-    ffn_norm: Vec<f32>,
-    q_a: Mat,
-    q_a_norm: Vec<f32>,
-    q_b: Mat,
-    kv: Mat,
-    kv_norm: Vec<f32>,
-    o_a: Mat,
-    o_b: Mat,
-    sinks: Vec<f32>,
-    hc_attn: (Vec<f32>, Vec<f32>, Vec<f32>), // fn, scale, base
-    hc_ffn: (Vec<f32>, Vec<f32>, Vec<f32>),
-    gate_w: Vec<f32>,
-    gate_bias: Vec<f32>,
-    experts: Vec<Expert>,
-    sh: (Mat, Mat, Mat),
+    pub attn_norm: Vec<f32>,
+    pub ffn_norm: Vec<f32>,
+    pub q_a: Mat,
+    pub q_a_norm: Vec<f32>,
+    pub q_b: Mat,
+    pub kv: Mat,
+    pub kv_norm: Vec<f32>,
+    pub o_a: Mat,
+    pub o_b: Mat,
+    pub sinks: Vec<f32>,
+    pub hc_attn: (Vec<f32>, Vec<f32>, Vec<f32>), // fn, scale, base
+    pub hc_ffn: (Vec<f32>, Vec<f32>, Vec<f32>),
+    pub gate_w: Vec<f32>,
+    pub gate_bias: Vec<f32>,
+    pub experts: Vec<Expert>,
+    pub sh: (Mat, Mat, Mat),
 }
 
 pub struct Dspark {
     pub layers: Vec<DLayer>,
-    main_proj: Mat,
-    main_norm: Vec<f32>,
-    norm: Vec<f32>,
-    markov_embed: Mat,
-    markov_head: Mat,
-    conf: Vec<f32>,
+    pub main_proj: Mat,
+    pub main_norm: Vec<f32>,
+    pub norm: Vec<f32>,
+    pub markov_embed: Mat,
+    pub markov_head: Mat,
+    pub conf: Vec<f32>,
     pub block: usize,
     pub noise: u32,
     pub targets: Vec<usize>,
-    top_k: usize,
+    pub top_k: usize,
 }
 
 pub struct DsparkState {

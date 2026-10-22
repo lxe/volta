@@ -19,8 +19,10 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::{Arc, Barrier, Mutex};
 
+mod spark;
+
 /// most tokens one GPU decodes per step (dense projections run as vmoe tiles of up to 32 tokens)
-pub const TMAX: usize = 32;
+pub const TMAX: usize = 64;
 /// chunks of the hyper-connection mix dots (vhc_dots)
 const HC_S: usize = 32;
 /// most tokens one session may have in a step (prefill chunks, draft verification)
@@ -45,7 +47,7 @@ fn xrow_bytes(c: &crate::model::Config) -> usize {
 const VX_BLOCKS: usize = 8;
 
 /// most 32-row tiles of the small-T attention (window 128 + top-512 = 20)
-const ATTN_SPLITS: usize = 32;
+const ATTN_SPLITS: usize = 8;
 
 #[derive(Clone, Debug)]
 pub struct Opts {
@@ -58,7 +60,7 @@ pub struct Opts {
 const KERNELS: &[&str] = &[
     "gemv_q8_0", "gemv_q8r", "gemv_q8r_sk", "gemv_f16", "gemv_f16_sk", "gemv_bf16", "gemv_bf16_sk", "gemv_f32", "gemv_f32_sk",
     "gemv_fp8b32", "gemv_q2_0", "gemv_ptq1_0", "gemv_q3_k", "gemv_q8g", "gemv_q6p", "gemv_q6g4", "gemv_q6s8", "gemv_q5p", "gemv_q5p4",
-    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_dots", "vhc_finish", "vprep", "vrouter", "vsrc_rows",
+    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_dots", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows",
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
@@ -545,62 +547,8 @@ impl Experts {
             }
             return Ok(Experts { w: wbuf, s: sbuf, tab });
         }
-        // staging: raw nibbles, E8M0 scales, codebook codes and scale bytes of the largest matrix (gate+up)
-        let mx = 2 * inter * d;
-        let (raw, rsc, codes, sbs) = (g.alloc(mx / 2)?, g.alloc(mx / 32)?, g.alloc(mx)?, g.alloc(mx / 32)?);
-        let (kpack, kquant) = (g.kernel("vlut_pack")?, g.kernel("vcb_quant")?);
-        let (mut wo, mut so) = (0usize, 0usize);
-        for &(l, e) in &mine {
-            let ex = &m.layers[l].experts[e];
-            ensure!(ex.gate.ty == GType::Fp4 && ex.up.ty == GType::Fp4 && ex.down.ty == GType::Fp4, "layer {l} expert {e}: not MXFP4");
-            let (kind, bits) = tier_kind(tiers[l][e]);
-            let mut slot = ExpSlot { bits: kind | (kind << 8), ..Default::default() };
-            for (mats, rows, cols) in [(vec![&ex.gate, &ex.up], 2 * inter, d), (vec![&ex.down], d, inter)] {
-                let (mut ob, mut os) = (0usize, 0usize);
-                // this GPU's slice: rows part*inter.. of gate and up, columns part*inter.. of every down row
-                let mut slices = vec![];
-                for mt in &mats {
-                    let (b, sb) = (mt.bytes(), mt.scale_bytes());
-                    let (wb, ws) = if etp == 1 {
-                        (b.to_vec(), sb.to_vec())
-                    } else if rows == 2 * inter {
-                        let (rb, rs) = (d / 2, d / 32);
-                        (b[part * inter * rb..(part + 1) * inter * rb].to_vec(), sb[part * inter * rs..(part + 1) * inter * rs].to_vec())
-                    } else {
-                        let (rb, rs, full) = (inter / 2, inter / 32, c.inter);
-                        ((0..d).flat_map(|r| b[r * full / 2 + part * rb..][..rb].iter().copied()).collect(), (0..d).flat_map(|r| sb[r * full / 32 + part * rs..][..rs].iter().copied()).collect())
-                    };
-                    g.htod_sync(raw.ptr + ob as u64, &wb)?;
-                    g.htod_sync(rsc.ptr + os as u64, &ws)?;
-                    ob += wb.len();
-                    os += ws.len();
-                    slices.push(ws);
-                }
-                ensure!(ob == rows * cols / 2 && os == rows * cols / 32, "layer {l} expert {e}: unexpected MXFP4 sizes");
-                let groups = rows * cols / 32;
-                let (ow, osc) = (wbuf.ptr + (wo * 4) as u64, sbuf.ptr + so as u64);
-                let mul = if kind == K_FP4 {
-                    g.launch(kpack, ((groups as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::I(0), Arg::P(raw.ptr), Arg::P(rsc.ptr), Arg::I(rows as i32), Arg::I(cols as i32), Arg::P(ow), Arg::P(osc)])?;
-                    1.0f32
-                } else {
-                    // per-matrix factor: the largest group scale lands near 256 of E4M3's 448
-                    let smax = slices.iter().flatten().map(|&b| f32::from_bits((b as u32) << 23)).fold(0f32, f32::max);
-                    let mul = smax * 6.0 / 8.0 * 1.25 / 256.0;
-                    let (lv, nl, fmt) = if kind == K_CB3 { (luts + 1856, 8, 1) } else { (luts + 1888, 4, 2) };
-                    g.launch(kquant, ((groups as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(raw.ptr), Arg::P(rsc.ptr), Arg::I(rows as i32), Arg::I(cols as i32), Arg::P(lv), Arg::I(nl), Arg::F(mul), Arg::P(codes.ptr), Arg::P(sbs.ptr)])?;
-                    g.launch(kpack, ((groups as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::I(fmt), Arg::P(codes.ptr), Arg::P(sbs.ptr), Arg::I(rows as i32), Arg::I(cols as i32), Arg::P(ow), Arg::P(osc)])?;
-                    mul
-                };
-                if rows == 2 * inter {
-                    (slot.gu_w, slot.gu_s, slot.gu_mul) = ((wo / 32) as u64, so as u64, mul);
-                } else {
-                    (slot.dn_w, slot.dn_s, slot.dn_mul) = ((wo / 32) as u64, so as u64, mul);
-                }
-                wo += rows * cols * bits / 32;
-                so += groups;
-            }
-            tab.insert((l, e), slot);
-        }
+        let items: Vec<((usize, usize), &crate::model::Expert, u8)> = mine.iter().map(|&(l, e)| ((l, e), &m.layers[l].experts[e], tiers[l][e])).collect();
+        let (wo, so) = pack_lut(g, &items, d, c.inter, etp, part, luts, &wbuf, &sbuf, &mut tab)?;
         g.sync()?;
         ensure!(wo == wtot && so == stot, "expert store size mismatch");
         if let Some(path) = cache {
@@ -628,6 +576,105 @@ impl Experts {
         }
         Ok(Experts { w: wbuf, s: sbuf, tab })
     }
+}
+
+/// pack routed experts from MXFP4 into the lookup formats on the GPU, each at its tier, into wbuf / sbuf (sized by the
+/// caller); with etp > 1 only slice `part` of each expert's intermediate dim (gate / up rows, down columns)
+#[allow(clippy::too_many_arguments)]
+fn pack_lut(g: &Gpu, items: &[((usize, usize), &crate::model::Expert, u8)], d: usize, full_inter: usize, etp: usize, part: usize, luts: u64, wbuf: &Buf, sbuf: &Buf, tab: &mut HashMap<(usize, usize), ExpSlot>) -> Result<(usize, usize)> {
+    let inter = full_inter / etp;
+    // staging: raw nibbles, E8M0 scales, codebook codes and scale bytes of the largest matrix (gate+up)
+    let mx = 2 * inter * d;
+    let (raw, rsc, codes, sbs) = (g.alloc(mx / 2)?, g.alloc(mx / 32)?, g.alloc(mx)?, g.alloc(mx / 32)?);
+    let (kpack, kquant) = (g.kernel("vlut_pack")?, g.kernel("vcb_quant")?);
+    let (mut wo, mut so) = (0usize, 0usize);
+    for &((l, e), ex, tier) in items {
+        ensure!(ex.gate.ty == GType::Fp4 && ex.up.ty == GType::Fp4 && ex.down.ty == GType::Fp4, "layer {l} expert {e}: not MXFP4");
+        let (kind, bits) = tier_kind(tier);
+        let mut slot = ExpSlot { bits: kind | (kind << 8), ..Default::default() };
+        for (mats, rows, cols) in [(vec![&ex.gate, &ex.up], 2 * inter, d), (vec![&ex.down], d, inter)] {
+            let (mut ob, mut os) = (0usize, 0usize);
+            // this GPU's slice: rows part*inter.. of gate and up, columns part*inter.. of every down row
+            let mut slices = vec![];
+            for mt in &mats {
+                let (b, sb) = (mt.bytes(), mt.scale_bytes());
+                let (wb, ws) = if etp == 1 {
+                    (b.to_vec(), sb.to_vec())
+                } else if rows == 2 * inter {
+                    let (rb, rs) = (d / 2, d / 32);
+                    (b[part * inter * rb..(part + 1) * inter * rb].to_vec(), sb[part * inter * rs..(part + 1) * inter * rs].to_vec())
+                } else {
+                    let (rb, rs, full) = (inter / 2, inter / 32, full_inter);
+                    ((0..d).flat_map(|r| b[r * full / 2 + part * rb..][..rb].iter().copied()).collect(), (0..d).flat_map(|r| sb[r * full / 32 + part * rs..][..rs].iter().copied()).collect())
+                };
+                g.htod_sync(raw.ptr + ob as u64, &wb)?;
+                g.htod_sync(rsc.ptr + os as u64, &ws)?;
+                ob += wb.len();
+                os += ws.len();
+                slices.push(ws);
+            }
+            ensure!(ob == rows * cols / 2 && os == rows * cols / 32, "layer {l} expert {e}: unexpected MXFP4 sizes");
+            let groups = rows * cols / 32;
+            let (ow, osc) = (wbuf.ptr + (wo * 4) as u64, sbuf.ptr + so as u64);
+            let mul = if kind == K_FP4 {
+                g.launch(kpack, ((groups as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::I(0), Arg::P(raw.ptr), Arg::P(rsc.ptr), Arg::I(rows as i32), Arg::I(cols as i32), Arg::P(ow), Arg::P(osc)])?;
+                1.0f32
+            } else {
+                // per-matrix factor: the largest group scale lands near 256 of E4M3's 448
+                let smax = slices.iter().flatten().map(|&b| f32::from_bits((b as u32) << 23)).fold(0f32, f32::max);
+                let mul = smax * 6.0 / 8.0 * 1.25 / 256.0;
+                let (lv, nl, fmt) = if kind == K_CB3 { (luts + 1856, 8, 1) } else { (luts + 1888, 4, 2) };
+                g.launch(kquant, ((groups as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(raw.ptr), Arg::P(rsc.ptr), Arg::I(rows as i32), Arg::I(cols as i32), Arg::P(lv), Arg::I(nl), Arg::F(mul), Arg::P(codes.ptr), Arg::P(sbs.ptr)])?;
+                g.launch(kpack, ((groups as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::I(fmt), Arg::P(codes.ptr), Arg::P(sbs.ptr), Arg::I(rows as i32), Arg::I(cols as i32), Arg::P(ow), Arg::P(osc)])?;
+                mul
+            };
+            if rows == 2 * inter {
+                (slot.gu_w, slot.gu_s, slot.gu_mul) = ((wo / 32) as u64, so as u64, mul);
+            } else {
+                (slot.dn_w, slot.dn_s, slot.dn_mul) = ((wo / 32) as u64, so as u64, mul);
+            }
+            wo += rows * cols * bits / 32;
+            so += groups;
+        }
+        tab.insert((l, e), slot);
+    }
+    g.sync()?;
+    Ok((wo, so))
+}
+
+/// a layer's expert lists on this GPU: lidx [n_exp] (expert -> local index, -1 elsewhere) and one VWork list per
+/// (gate/up or down, format), pointing into `exps`
+fn local_layer(g: &Gpu, exps: &Experts, l: usize, es: &[usize], n_exp: usize) -> Result<LocalLayer> {
+    let mut lidx = vec![-1i32; n_exp];
+    for (j, &e) in es.iter().enumerate() {
+        lidx[e] = j as i32;
+    }
+    let mut lists = vec![];
+    for gu in [true, false] {
+        for kind in [2u32, 4, K_FP4, K_CB3, K_CB2] {
+            let lut = kind >= K_FP4;
+            let v: Vec<u32> = es
+                .iter()
+                .enumerate()
+                .filter(|&(_, &e)| { let b = exps.tab[&(l, e)].bits; (if gu { b & 0xff } else { b >> 8 }) == kind })
+                .flat_map(|(j, &e)| {
+                    let sl = exps.tab[&(l, e)];
+                    let (wo, so, mul) = if gu { (sl.gu_w, sl.gu_s, sl.gu_mul) } else { (sl.dn_w, sl.dn_s, sl.dn_mul) };
+                    // VWork (int kinds) or VWork2 (lookup kinds: + mul, padded to 32 bytes)
+                    let mut x = vec![wo as u32, so as u32, 0, j as u32];
+                    if lut {
+                        x.extend([mul.to_bits(), 0, 0, 0]);
+                    }
+                    x
+                })
+                .collect();
+            if !v.is_empty() {
+                let n = v.len() / if lut { 8 } else { 4 };
+                lists.push((gu, kind, g.upload(&v)?, n));
+            }
+        }
+    }
+    Ok(LocalLayer { wbase: exps.w.ptr, sbase: exps.s.ptr, lidx: g.upload(&lidx)?, lists, n_local: es.len() })
 }
 
 /// 2-bit codes as 4-bit (same values): code c (offset 2) -> c + 6 (offset 8)
@@ -812,12 +859,12 @@ fn upload_dense(g: &Gpu, w: &Mat, q6: bool) -> Result<DMat> {
 }
 
 struct VLayer {
-    /// q_a and kv as one matrix (same input): rows [q_lora | head_dim], when both are vmoe 4-bit
+    /// q_a and kv as one matrix (same input): rows [q_lora | head_dim], when both are vmoe 4-bit (q_a, kv: None)
     qkv_a: Option<VMat>,
-    q_a: Lin,
+    q_a: Option<Lin>,
     q_a_norm: Buf,
     q_b: Lin,
-    kv: Lin,
+    kv: Option<Lin>,
     kv_norm: Buf,
     o_a: Lin,
     o_b: Lin,
@@ -835,6 +882,9 @@ struct VLayer {
     hc_ffn: (Buf, Buf, Buf),
     gate_w: Buf, // f32 [E][d]: Volta has no bf16 GEMM; f32 is exact for the bf16 router weights
     gate_bias: Buf,
+    /// routed experts and picks per token (the draft layers have their own)
+    n_exp: usize,
+    top_k: usize,
     sh_gate: Option<Lin>,
     sh_up: Option<Lin>,
     sh_down: Option<Lin>,
@@ -937,6 +987,9 @@ struct Work {
 /// static per-layer launch tables for the local experts: lidx [E] (expert -> local list), and VWork lists for
 /// gate/up and down split by width
 struct LocalLayer {
+    /// the expert store these lists point into (words, scales)
+    wbase: u64,
+    sbase: u64,
     lidx: Buf,
     lists: Vec<(bool, u32, Buf, usize)>, // (gate/up?, bits, VWork entries, count)
     n_local: usize,
@@ -949,6 +1002,11 @@ struct Shard<'m> {
     sl: usize,
     /// run the shared slice and the > 8-token expert lists on the side stream (VOLTA_OVERLAP, default on)
     overlap: bool,
+    /// the DSpark draft (VOLTA_SPARK=<checkpoint dir>)
+    spark: Option<spark::Spark>,
+    /// this step returns greedy ids instead of logits (Engine::step_greedy)
+    greedy: bool,
+    spark_ids: Buf,
     /// fork / join events for the side stream
     evs: [crate::gpu::Event; 4],
     m: &'m Model,
@@ -996,7 +1054,7 @@ struct PeerBufs {
 }
 
 impl<'m> Shard<'m> {
-    fn new(m: &'m Model, gi: usize, o: &Opts, owner: Arc<Vec<Vec<u8>>>, tiers: Option<Arc<Vec<Vec<u8>>>>) -> Result<Shard<'m>> {
+    fn new(m: &'m Model, gi: usize, o: &Opts, owner: Arc<Vec<Vec<u8>>>, tiers: Option<Arc<Vec<Vec<u8>>>>, ds: Option<&crate::dspark::Dspark>) -> Result<Shard<'m>> {
         let g = Gpu::new(gi as i32)?;
         // owner[] names expert groups of etp GPUs; this GPU holds slice gi % etp of group gi / etp's experts
         let etp = expert_tp(m, o.ngpu);
@@ -1027,6 +1085,7 @@ impl<'m> Shard<'m> {
                 Ok(Lin::D(up(w)?))
             }
         };
+        let fuse_qkv = |l: &crate::model::Layer| v4 && v4_ok(&l.q_a) && v4_ok(&l.kv) && l.q_a.cols == l.kv.cols && l.q_a.act_fp8 == l.kv.act_fp8;
         let lino = |w: &Option<Mat>| -> Result<Option<Lin>> { w.as_ref().map(lin).transpose() };
         // the shared expert runs split over the GPUs (inside the MoE exchange) unless the layer is rotated (the
         // exchanged x is R x there) or VOLTA_SHARED_TP=0
@@ -1042,11 +1101,11 @@ impl<'m> Shard<'m> {
             let cp = o.max_ctx / ratio;
             cap.push(cp);
             layers.push(VLayer {
-                qkv_a: if v4 && v4_ok(&l.q_a) && v4_ok(&l.kv) && l.q_a.cols == l.kv.cols && l.q_a.act_fp8 == l.kv.act_fp8 { Some(upload_v4_cat(&g, &[&l.q_a, &l.kv])?) } else { None },
-                q_a: lin(&l.q_a)?,
+                qkv_a: if fuse_qkv(l) { Some(upload_v4_cat(&g, &[&l.q_a, &l.kv])?) } else { None },
+                q_a: if fuse_qkv(l) { None } else { Some(lin(&l.q_a)?) },
                 q_a_norm: f32buf(&g, &l.q_a_norm)?,
                 q_b: lin(&l.q_b)?,
-                kv: lin(&l.kv)?,
+                kv: if fuse_qkv(l) { None } else { Some(lin(&l.kv)?) },
                 kv_norm: f32buf(&g, &l.kv_norm)?,
                 o_a: if v4 && l.o_a.cols % 32 == 0 { Lin::V(upload_v4(&g, &l.o_a, c.o_groups)?) } else { Lin::D(up(&l.o_a)?) },
                 o_b: lin(&l.o_b)?,
@@ -1064,6 +1123,8 @@ impl<'m> Shard<'m> {
                 hc_ffn: (f32buf(&g, &l.hc_ffn_fn)?, f32buf(&g, &l.hc_ffn_scale)?, f32buf(&g, &l.hc_ffn_base)?),
                 gate_w: f32buf(&g, &l.gate_w)?,
                 gate_bias: f32buf(&g, &l.gate_bias)?,
+                n_exp: c.n_experts,
+                top_k: c.top_k,
                 sh_gate: if split_sh(l.id) { None } else { Some(lin(&l.sh_gate)?) },
                 sh_up: if split_sh(l.id) { None } else { Some(lin(&l.sh_up)?) },
                 sh_down: if split_sh(l.id) { None } else { Some(lin(&l.sh_down)?) },
@@ -1152,8 +1213,8 @@ impl<'m> Shard<'m> {
             wtg: fz(1)?,
             x16: g.alloc_zeroed(t * d * 2)?,
             parts: g.alloc_zeroed(o.ngpu * t * d * 2)?, // fp16 partials
-            gu: fz(tg * c.top_k * 2 * c.inter)?,
-            hm: g.alloc_zeroed(tg * c.top_k * c.inter * 2)?,
+            gu: fz(tg * c.top_k * 2 * (c.inter / etp))?,
+            hm: g.alloc_zeroed(tg * c.top_k * (c.inter / etp) * 2)?,
             ypart: fz(tg * d)?,
             ypart16: g.alloc_zeroed(tg * d * 2)?,
             hcp: fz(TMAX * 25 * HC_S)?,
@@ -1178,43 +1239,27 @@ impl<'m> Shard<'m> {
         let mut local = vec![];
         for l in 0..c.n_layers {
             let es: Vec<usize> = (0..c.n_experts).filter(|&e| owner[l][e] as usize == grp).collect();
-            let mut lidx = vec![-1i32; c.n_experts];
-            for (j, &e) in es.iter().enumerate() {
-                lidx[e] = j as i32;
-            }
-            let mut lists = vec![];
-            for gu in [true, false] {
-                for kind in [2u32, 4, K_FP4, K_CB3, K_CB2] {
-                    let lut = kind >= K_FP4;
-                    let v: Vec<u32> = es
-                        .iter()
-                        .enumerate()
-                        .filter(|&(_, &e)| { let b = exps.tab[&(l, e)].bits; (if gu { b & 0xff } else { b >> 8 }) == kind })
-                        .flat_map(|(j, &e)| {
-                            let sl = exps.tab[&(l, e)];
-                            let (wo, so, mul) = if gu { (sl.gu_w, sl.gu_s, sl.gu_mul) } else { (sl.dn_w, sl.dn_s, sl.dn_mul) };
-                            // VWork (int kinds) or VWork2 (lookup kinds: + mul, padded to 32 bytes)
-                            let mut x = vec![wo as u32, so as u32, 0, j as u32];
-                            if lut {
-                                x.extend([mul.to_bits(), 0, 0, 0]);
-                            }
-                            x
-                        })
-                        .collect();
-                    if !v.is_empty() {
-                        let n = v.len() / if lut { 8 } else { 4 };
-                        lists.push((gu, kind, g.upload(&v)?, n));
-                    }
-                }
-            }
-            local.push(LocalLayer { lidx: g.upload(&lidx)?, lists, n_local: es.len() });
+            local.push(local_layer(&g, &exps, l, &es, c.n_experts)?);
         }
+        // the draft layers go after the main ones (VOLTA_SPARK)
+        let spark = match ds {
+            Some(ds) => {
+                let (dl, dlocal, sp) = spark::build(&g, m, ds, gi, o.ngpu, etp, o.slots, luts.ptr)?;
+                layers.extend(dl);
+                local.extend(dlocal);
+                Some(sp)
+            }
+            None => None,
+        };
         let nl = c.n_layers;
         Ok(Shard {
             gi,
             ngpu: o.ngpu,
             sl: c.inter / etp,
             overlap: std::env::var("VOLTA_OVERLAP").map_or(true, |v| v != "0"),
+            spark,
+            greedy: false,
+            spark_ids: g.alloc_zeroed(TMAX * 4)?,
             evs: [g.event()?, g.event()?, g.event()?, g.event()?],
             m,
             // VOLTA_HEAD=q6 keeps the head in dsx's 6-bit planes (two GEMV passes per 16 tokens)
@@ -1600,9 +1645,9 @@ impl<'m> Shard<'m> {
             self.g.launch(self.k["rmsnorm"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.qkv.ptr), Arg::P(l.q_a_norm.ptr), Arg::P(w.qr.ptr), Arg::I(c.q_lora as i32), Arg::I(ld as i32), Arg::I(c.q_lora as i32), Arg::F(c.eps), Arg::I(1)])?;
             (w.qkv.ptr + (c.q_lora * 4) as u64, ld)
         } else {
-            self.mm(&l.q_a, w.x.ptr, w.qr.ptr, t)?;
+            self.mm(l.q_a.as_ref().unwrap(), w.x.ptr, w.qr.ptr, t)?;
             self.rms_rows(w.qr.ptr, &l.q_a_norm, w.qr.ptr, c.q_lora, t, true)?;
-            self.mm(&l.kv, w.x.ptr, w.kvv.ptr, t)?;
+            self.mm(l.kv.as_ref().unwrap(), w.x.ptr, w.kvv.ptr, t)?;
             (w.kvv.ptr, hd)
         };
         self.mm(&l.q_b, w.qr.ptr, w.q.ptr, t)?;
@@ -1722,10 +1767,11 @@ impl<'m> Shard<'m> {
         let (d, inter) = (c.dim, c.inter);
         let w = &self.w;
         let l = &self.layers[li];
-        ensure!(c.n_experts % 32 == 0 && d % 256 == 0, "router shape");
-        self.g.memset(w.router.ptr, t * c.n_experts * 4)?;
-        self.g.launch(self.k["vrouter"], ((c.n_experts / 32) as u32, (d / 256) as u32, 1), 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(w.router.ptr), Arg::I(c.n_experts as i32), Arg::I(d as i32), Arg::I(t as i32)])?;
-        self.g.launch(self.k["router_topk"], (t as u32, 1, 1), 32, 0, &[Arg::P(w.router.ptr), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(c.n_experts as i32), Arg::I(c.top_k as i32), Arg::F(c.route_scale), Arg::P(0)])?;
+        let (ne, kk) = (l.n_exp, l.top_k);
+        ensure!(ne % 32 == 0 && d % 256 == 0, "router shape");
+        self.g.memset(w.router.ptr, t * ne * 4)?;
+        self.g.launch(self.k["vrouter"], ((ne / 32) as u32, (d / 256) as u32, 1), 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(w.router.ptr), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32)])?;
+        self.g.launch(self.k["router_topk"], (t as u32, 1, 1), 32, 0, &[Arg::P(w.router.ptr), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(ne as i32), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(0)])?;
         if let (Some(sg), Some(su), Some(sd)) = (&l.sh_gate, &l.sh_up, &l.sh_down) {
             // shared expert -> a (local)
             let (gp, up, hp) = (w.t1.ptr, w.t1.ptr + (t * inter * 4) as u64, w.t2.ptr);
@@ -1742,11 +1788,11 @@ impl<'m> Shard<'m> {
         let rb = xrow_bytes(c);
         let xo = (me * TMAX * rb) as u64;
         self.g.launch(self.k["vto_f16"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.x16.ptr), Arg::I((t * d) as i32)])?;
-        if c.expert_rot[li] {
+        if c.expert_rot.get(li).copied().unwrap_or(false) {
             // rotated layers store W R: the routed experts take R x (the shared expert takes x)
             self.g.launch(self.k["fwht_rows_f16"], ((d / 128) as u32, t as u32, 1), 128, 0, &[Arg::P(w.x16.ptr), Arg::I(d as i32)])?;
         }
-        self.g.launch(self.k["vpack_x"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.x16.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::P(w.xg.ptr + xo), Arg::I(d as i32), Arg::I(c.top_k as i32), Arg::I(rb as i32)])
+        self.g.launch(self.k["vpack_x"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.x16.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::P(w.xg.ptr + xo), Arg::I(d as i32), Arg::I(kk as i32), Arg::I(rb as i32)])
     }
 
     /// cube all-gather of every GPU's exchange rows (vx_allgather)
@@ -1788,7 +1834,7 @@ impl<'m> Shard<'m> {
     fn moe_experts(&mut self, counts: &[usize], li: usize) -> Result<()> {
         let m = self.m;
         let c = &m.cfg;
-        let (d, inter, kk) = (c.dim, self.sl, c.top_k);
+        let (d, inter, kk) = (c.dim, self.sl, self.layers[li].top_k);
         let w = &self.w;
         let tg = self.ngpu * TMAX;
         let ll = &self.local[li];
@@ -1830,7 +1876,7 @@ impl<'m> Shard<'m> {
             self.g.wait(ev[1], false)?;
         }
         self.g.launch(self.k["vswiglu_c"], (4 * self.g.sms as u32, 1, 1), 256, 0, &[Arg::P(w.gu.ptr), Arg::P(w.wt.ptr), Arg::P(w.hm.ptr), Arg::P(total), Arg::I(pmax as i32), Arg::I(inter as i32), Arg::F(c.swiglu_limit)])?;
-        if c.expert_rot[li] {
+        if c.expert_rot.get(li).copied().unwrap_or(false) {
             self.g.launch(self.k["vfwht_c"], ((inter / 128) as u32, prow, 1), 128, 0, &[Arg::P(w.hm.ptr), Arg::I(inter as i32), Arg::P(total)])?;
         }
         // down: X = hm rows (pairs), Y = ypart rows (tokens)
@@ -1897,7 +1943,8 @@ impl<'m> Shard<'m> {
     fn vmoe_lists(&self, li: usize, gu: bool, in_rows: u64, out_rows: u64, x: u64, y: u64, n: usize, k: usize, cap: usize, off: u64, ldx: usize, side: bool) -> Result<()> {
         let kc = if k % 1024 == 0 { 1024 } else if k % 1152 == 0 { 1152 } else { k };
         ensure!(kc <= 1152 && kc % 32 == 0, "expert K {k}");
-        for (lg, kind, work, cnt) in &self.local[li].lists {
+        let ll = &self.local[li];
+        for (lg, kind, work, cnt) in &ll.lists {
             if *lg != gu {
                 continue;
             }
@@ -1926,7 +1973,7 @@ impl<'m> Shard<'m> {
                     if smem > 48 * 1024 {
                         self.g.set_smem(kern, smem)?;
                     }
-                    let mut args = vec![Arg::P(self.exps.w.ptr), Arg::P(self.exps.s.ptr), Arg::P(wptr), Arg::P(self.luts.ptr + tab), Arg::P(self.luts.ptr + 1344)];
+                    let mut args = vec![Arg::P(ll.wbase), Arg::P(ll.sbase), Arg::P(wptr), Arg::P(self.luts.ptr + tab), Arg::P(self.luts.ptr + 1344)];
                     args.extend(common);
                     self.lx(side, kern, grid, 256, smem as u32, &args)?;
                 } else {
@@ -1935,7 +1982,7 @@ impl<'m> Shard<'m> {
                     if smem > 48 * 1024 {
                         self.g.set_smem(kern, smem)?;
                     }
-                    let mut args = vec![Arg::P(self.exps.w.ptr), Arg::P(self.exps.s.ptr), Arg::P(wptr)];
+                    let mut args = vec![Arg::P(ll.wbase), Arg::P(ll.sbase), Arg::P(wptr)];
                     args.extend(common);
                     self.lx(side, kern, grid, 256, smem as u32, &args)?;
                 }
@@ -1968,6 +2015,12 @@ impl<'m> Shard<'m> {
             self.sess[s].pos += 1;
         }
         let _ = hc;
+        if self.greedy {
+            // greedy ids only (as f32 bit patterns on the result channel), not t x vocab logits
+            self.g.launch(self.k["vargmax_rows"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::I(c.vocab as i32), Arg::P(self.spark_ids.ptr)])?;
+            let ids: Vec<u32> = self.g.download(self.spark_ids.ptr, t)?;
+            return Ok(ids.into_iter().map(f32::from_bits).collect());
+        }
         self.g.download(w.logits.ptr, t * c.vocab)
     }
 }
@@ -2006,10 +2059,24 @@ struct StepState {
 enum Cmd {
     Step(Arc<Vec<Vec<(usize, u32)>>>),
     Reset(usize),
+    /// a main step that returns each token's greedy next id
+    StepGreedy(Arc<Vec<Vec<(usize, u32)>>>),
+    /// a draft step: per GPU (observed rows (slot, row, pos), drafts (slot, pos, next))
+    Spark(Arc<SparkPlan>),
+    /// drop slots' last tokens: (slot, n) per GPU
+    Rewind(Arc<Vec<Vec<(usize, usize)>>>),
     Stop,
 }
 
+/// a draft step's work, per GPU: main tokens to observe (slot, row of the last main step, position) and sessions
+/// to draft for (slot, position of the newest main token, next token)
+pub struct SparkPlan {
+    pub obs: Vec<Vec<(usize, usize, usize)>>,
+    pub drafts: Vec<Vec<(usize, usize, u32)>>,
+}
+
 pub struct Engine {
+    spark_block: Option<usize>,
     tx: Vec<mpsc::Sender<Cmd>>,
     rx: mpsc::Receiver<(usize, Result<Vec<f32>>)>,
     pub opts: Opts,
@@ -2073,6 +2140,16 @@ impl Engine {
         }
         let owner = Arc::new(owner_v);
         let tiers = tiers.map(Arc::new);
+        // the DSpark draft from the checkpoint directory in VOLTA_SPARK (its MXFP4 experts are packed at load)
+        let ds: Option<&'static crate::dspark::Dspark> = match std::env::var_os("VOLTA_SPARK") {
+            Some(dir) => {
+                let crate::model::Source::Hf(st) = &m.src else { bail!("VOLTA_SPARK needs the HF checkpoint") };
+                let ds = crate::dspark::Dspark::load(m, st, std::path::Path::new(&dir))?;
+                eprintln!("draft: {} layers, block {}", ds.layers.len(), ds.block);
+                Some(Box::leak(Box::new(ds)))
+            }
+            None => None,
+        };
         let mut tx = vec![];
         let mut joins = vec![];
         for gi in 0..n {
@@ -2082,7 +2159,7 @@ impl Engine {
             joins.push(std::thread::spawn(move || {
                 let r = (|| -> Result<()> {
                     let t0 = std::time::Instant::now();
-                    let mut sh = Shard::new(m, gi, &o, owner, tiers)?;
+                    let mut sh = Shard::new(m, gi, &o, owner, tiers, ds)?;
                     let (free, total) = sh.g.mem_info()?;
                     eprintln!("GPU{gi}: loaded in {:.0} s, {} experts, {:.1} of {:.1} GB free", t0.elapsed().as_secs_f64(), sh.exps.tab.len(), free as f64 / 1e9, total as f64 / 1e9);
                     peers.lock().unwrap()[gi] = Some(sh.peer_bufs());
@@ -2114,6 +2191,22 @@ impl Engine {
                                 let r = run_step(&mut sh, &plan, &barrier);
                                 rtx.send((gi, r)).ok();
                             }
+                            Cmd::Spark(p) => {
+                                // draft tokens travel as f32 bit patterns on the shared result channel
+                                let counts: Vec<usize> = p.drafts.iter().map(|d| d.len() * sh.spark.as_ref().map_or(0, |s| s.block)).collect();
+                                let r = sh.spark_step(&p.obs[gi], &p.drafts[gi], &counts).map(|v| v.into_iter().map(f32::from_bits).collect());
+                                rtx.send((gi, r)).ok();
+                            }
+                            Cmd::Rewind(v) => {
+                                let r = v[gi].iter().try_for_each(|&(s, n)| sh.rewind(s, n)).map(|_| vec![]);
+                                rtx.send((gi, r)).ok();
+                            }
+                            Cmd::StepGreedy(plan) => {
+                                sh.greedy = true;
+                                let r = run_step(&mut sh, &plan, &barrier);
+                                sh.greedy = false;
+                                rtx.send((gi, r)).ok();
+                            }
                         }
                     }
                     Ok(())
@@ -2124,7 +2217,7 @@ impl Engine {
                 }
             }));
         }
-        let e = Engine { tx, rx, opts: o, vocab: m.cfg.vocab, joins };
+        let e = Engine { spark_block: ds.map(|d| d.block), tx, rx, opts: o, vocab: m.cfg.vocab, joins };
         let _ = populate.join();
         for _ in 0..n {
             let (gi, r) = e.rx.recv()?;
@@ -2151,6 +2244,54 @@ impl Engine {
             out[gi] = r.with_context(|| format!("GPU{gi} step"))?;
         }
         Ok(out)
+    }
+
+    /// one draft step on every GPU; returns each GPU's drafts, `block` per entry of `p.drafts[gpu]`
+    pub fn spark(&self, p: SparkPlan) -> Result<Vec<Vec<u32>>> {
+        ensure!(p.obs.len() == self.opts.ngpu && p.drafts.len() == self.opts.ngpu, "spark plan: one list per GPU");
+        let p = Arc::new(p);
+        for t in &self.tx {
+            t.send(Cmd::Spark(p.clone()))?;
+        }
+        let mut out = vec![vec![]; self.opts.ngpu];
+        for _ in 0..self.opts.ngpu {
+            let (gi, r) = self.rx.recv()?;
+            out[gi] = r.with_context(|| format!("GPU{gi} draft step"))?.into_iter().map(f32::to_bits).collect();
+        }
+        Ok(out)
+    }
+
+    /// drop slots' last tokens (rejected drafts): (slot, n) per GPU
+    pub fn rewind(&self, v: Vec<Vec<(usize, usize)>>) -> Result<()> {
+        let v = Arc::new(v);
+        for t in &self.tx {
+            t.send(Cmd::Rewind(v.clone()))?;
+        }
+        for _ in 0..self.opts.ngpu {
+            let (gi, r) = self.rx.recv()?;
+            r.with_context(|| format!("GPU{gi} rewind"))?;
+        }
+        Ok(())
+    }
+
+    /// a step that returns every token's greedy next id instead of its logits
+    pub fn step_greedy(&self, plan: Vec<Vec<(usize, u32)>>) -> Result<Vec<Vec<u32>>> {
+        ensure!(plan.len() == self.opts.ngpu && plan.iter().all(|p| p.len() <= TMAX), "plan: one list per GPU, <= {TMAX} tokens each");
+        let plan = Arc::new(plan);
+        for t in &self.tx {
+            t.send(Cmd::StepGreedy(plan.clone()))?;
+        }
+        let mut out = vec![vec![]; self.opts.ngpu];
+        for _ in 0..self.opts.ngpu {
+            let (gi, r) = self.rx.recv()?;
+            out[gi] = r.with_context(|| format!("GPU{gi} step"))?.into_iter().map(f32::to_bits).collect();
+        }
+        Ok(out)
+    }
+
+    /// the draft block size, when a draft is loaded
+    pub fn spark_block(&self) -> Option<usize> {
+        self.spark_block
     }
 
     pub fn reset(&self, gpu: usize, slot: usize) -> Result<()> {
@@ -2262,6 +2403,7 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             if let Some(eidx) = c.engram_layers.iter().position(|&x| x == li) {
                 sh.engram(toks, li, eidx)?;
             }
+            sh.spark_capture(li, t)?;
             mark(sh, 0)?;
             let w = &sh.w;
             let l = &sh.layers[li];
