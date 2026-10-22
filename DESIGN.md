@@ -324,3 +324,22 @@ has to follow acceptance. Greedy decoding, 24 passes after a 256-token prompt:
 
 Next: the draft step in a CUDA graph (12 ms -> a few), k chosen per session from the confidence head or recent
 acceptance, and sampling (only greedy verification so far).
+
+### 2026-10-22: draft policy and where a verify step goes
+
+The draft step runs as a CUDA graph (observed rows padded to 64). `spec --adaptive` picks each session's drafts
+from its recent per-draft acceptance p: the most drafts j <= k with p^j >= 0.35. Every GPU then verifies the same
+number of tokens, the busiest GPU's rounded up to a multiple of 8. The step waits for that GPU anyway, so the
+spare slots go to the sessions likeliest to accept one more draft, and the few shapes stay in CUDA graphs.
+Without the equal counts and rounding, the shapes vary step to step, run without graphs, and cost ~25-30% more.
+The draft's experts are cb2: they accept as many drafts as cb3, and ~0.2 GB per GPU is needed for graphs.
+
+64 sessions, k <= 5, 48 passes: code 25.2 tok/s per session (best fixed k: 26.0), prose 17.6 (best fixed: 17.9;
+no drafts: 17.5). One setting serves both.
+
+One pass at 64 sessions, k = 3 (GPU0, nsys): the draft step spans 10.5 ms, 5.3 of it in dense 4-bit matmuls at
+40 tokens per GPU (32-token tiles read each weight, the head included, twice). The verify step spans 107 ms at 32
+tokens per GPU: routed experts 49 ms, dense matmuls 18.5, attention 15.8, collectives 6. Attention grows with tokens
+(2.2 ms at 8 per GPU): it runs on CUDA cores, and with one KV head shared by all 64 query heads each token's
+attention is a [64 x 512] x [512 x rows] product, tensor-core work. The 32-token expert and dense kernels are
+limited by their inner loop (register dequant + mma) more than by bandwidth at this size.

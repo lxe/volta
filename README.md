@@ -19,6 +19,7 @@ DeepSeek-V4.1-Flash-1017 from the official checkpoint, with its experts re-packe
 | With the DSpark draft, code, 64 sessions, 3 drafts per pass | 3.23 tokens per pass: **26.0 tok/s per session**, 1,667 tok/s aggregate |
 | With the DSpark draft, code, 8 sessions, 5 drafts per pass | 4.28 tokens per pass: **82.6 tok/s per session** |
 | With the DSpark draft, prose, 64 sessions, 1 draft per pass | 1.57 tokens per pass: 17.9 tok/s per session (17.5 without) |
+| With the DSpark draft, `--adaptive` (drafts per session from its acceptance), 64 sessions | code 25.2, prose 17.6 tok/s per session |
 | llama.cpp (PR #30817, UD-IQ1_M) on the same machine, for comparison | 26.7 tok/s for one session; 72-97 tok/s aggregate at most |
 
  [DESIGN.md](DESIGN.md) has the design, the
@@ -97,7 +98,7 @@ checkpoint as `--model`. The plan holds each expert's tier (15,172 in cb3, 188 i
 `volta eval --model ... --eval <dir>` runs the Lucebox eval (`--chunk k` feeds k tokens per sequence per step), and
 `volta check` compares logits with the CPU reference. `VOLTA_SPARK=<checkpoint dir> volta spec --model ... --text
 <tokens> --k 3` prefills each session and decodes greedily with k drafts per pass (`--k 0` is the no-draft
-baseline).
+baseline; `--k 5 --adaptive` picks each session's drafts from its acceptance).
 
 | Variable | Default | Effect |
 |---|---|---|
