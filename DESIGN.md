@@ -374,3 +374,20 @@ Container: an `nvidia/cuda:12.9.x-devel` image building `volta` for the target a
 reads the GPU count, memory and topology, picks the matching pack from the Hugging Face repo (`base/` plus
 `pack-<GB>gb-<N>x<gpu>/`), downloads what is missing, and starts. It becomes worth building with the API server
 (`core/src/server` on top of the engine), which the engine does not have yet.
+
+### 2026-10-22: the server
+
+`volta-server` puts dsx's HTTP layer (OpenAI and Anthropic routes, chat template, thinking levels, tools, web UI)
+in front of a batching scheduler (`engine/src/server/volta.rs`) instead of dsx's one-request-at-a-time engine.
+Every request takes a session slot on the least loaded GPU. Each iteration: the draft step (observe the main
+tokens the last step kept, draft for the decoding sessions), then one main step that mixes their verification tokens
+with prompt chunks of the sessions still prefilling, then emit, stop and rewind. Sampled requests verify drafts by
+speculative sampling: with a one-hot draft, d is kept with probability p(d) under the request's temperature and
+top-p, and a miss samples from p without d, which is exactly the target distribution. A finished session's slot
+keeps its tokens; a new prompt sharing at least 64 tokens with one is rewound to that point instead of prefilled
+(agents resend the whole conversation). Step shapes vary more than in the benches, so at most 4 are kept as CUDA
+graphs, and a graph that fails to instantiate (out of memory) turns capturing off instead of failing the step.
+
+Measured through the API, temperature 1, 300-token answers: 1 stream 38 tok/s; 8 streams 29 tok/s each (169
+in total); 32 streams 20 each (500 in total; 32 = 4 slots x 8 GPUs at an 8,192-token context). A repeated
+1,655-token prompt reused 1,654 cached tokens and returned its first token in 39 ms.

@@ -266,12 +266,20 @@ impl Shard<'_> {
         let eager = std::env::var("VOLTA_GRAPH").is_ok_and(|v| v == "0");
         let r = match graphs.get(&t) {
             Some(Some(gx)) if !eager => self.g.launch_graph(gx),
-            Some(None) if !eager => (|| {
+            Some(None) if !eager && !self.graph_full => (|| {
                 self.g.begin_capture()?;
                 self.spark_device(t, drafts.len(), tab, widx_p, rows)?;
-                let gx = self.g.end_capture()?;
-                self.g.launch_graph(&gx)?;
-                graphs.insert(t, Some(gx));
+                match self.g.end_capture() {
+                    Ok(gx) => {
+                        self.g.launch_graph(&gx)?;
+                        graphs.insert(t, Some(gx));
+                    }
+                    Err(e) => {
+                        eprintln!("GPU{}: no more draft graphs ({e:#})", self.gi);
+                        self.graph_full = true;
+                        self.spark_device(t, drafts.len(), tab, widx_p, rows)?;
+                    }
+                }
                 Ok(())
             })(),
             _ => {

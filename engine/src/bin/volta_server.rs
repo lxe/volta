@@ -1,0 +1,101 @@
+//! volta-server: the OpenAI / Anthropic compatible API of dsx-server (the same routes, chat template, thinking
+//! levels and sampling parameters) on the batched 8x V100 engine. Every request gets a session slot; the GPUs run
+//! all of them together, with DSpark drafts verified by speculative sampling.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use anyhow::{Result, anyhow};
+use clap::Parser;
+use dsx::server::{AppState, EngineHandle, ServerConfig};
+use tokenizers::Tokenizer;
+
+#[derive(Parser)]
+#[command(about = "OpenAI / Anthropic compatible API server for DeepSeek-V4.1-Flash on 8x V100 (volta)")]
+struct Cli {
+    /// checkpoint directory: the official one, or the Hugging Face repo's base/ with VOLTA_PACK set to its pack
+    #[arg(long)]
+    model: PathBuf,
+    /// tokenizer.json (default: the model directory's)
+    #[arg(long)]
+    tokenizer: Option<PathBuf>,
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
+    #[arg(long, default_value_t = 8090)]
+    port: u16,
+    /// model id reported by /v1/models
+    #[arg(long, default_value = "deepseek-v4.1-flash")]
+    model_name: String,
+    #[arg(long, default_value_t = 8)]
+    gpus: usize,
+    /// concurrent sessions per GPU
+    #[arg(long, default_value_t = 4)]
+    slots: usize,
+    /// context window per session (prompt + generated tokens)
+    #[arg(long, default_value_t = 8192)]
+    ctx: usize,
+    /// prompt tokens per session per step while prefilling
+    #[arg(long, default_value_t = 32)]
+    chunk: usize,
+    /// generation cap when a request sets no max_tokens
+    #[arg(long, default_value_t = 4096)]
+    max_tokens: usize,
+    /// default sampling when a request sets none (0 = greedy)
+    #[arg(long, default_value_t = 1.0)]
+    temperature: f32,
+    #[arg(long, default_value_t = 1.0)]
+    top_p: f32,
+    /// logit penalty on hesitation tokens while reasoning; 0 = off. A request's `hesitation_penalty` overrides it
+    #[arg(long, default_value_t = 0.0)]
+    hesitation_penalty: f32,
+    /// most DSpark drafts verified per pass (0 = no draft); greedy requests compare argmaxes, sampled ones run
+    /// speculative sampling, so outputs follow the same distribution as without drafts
+    #[arg(long, default_value_t = 5)]
+    spec_k: usize,
+    /// verify j drafts while p^j >= theta (p = the session's recent per-draft acceptance)
+    #[arg(long, default_value_t = 0.35)]
+    theta: f64,
+    /// require this key on every API request (`Authorization: Bearer <key>` or `x-api-key: <key>`)
+    #[arg(long, env = "DSX_API_KEY")]
+    api_key: Option<String>,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .init();
+    let cli = Cli::parse();
+    let tpath = cli.tokenizer.clone().unwrap_or_else(|| cli.model.join("tokenizer.json"));
+    let tok = Arc::new(Tokenizer::from_file(&tpath).map_err(|e| anyhow!("{}: {e}", tpath.display()))?);
+    // graphs cost memory, and served traffic comes in many step shapes: keep a few (VOLTA_GRAPHS overrides)
+    if std::env::var_os("VOLTA_GRAPHS").is_none() {
+        unsafe { std::env::set_var("VOLTA_GRAPHS", "4") };
+    }
+    // the draft lives in the same checkpoint (mtp.*)
+    if cli.spec_k > 0 && std::env::var_os("VOLTA_SPARK").is_none() {
+        unsafe { std::env::set_var("VOLTA_SPARK", &cli.model) };
+    }
+    let model = cli.model.clone();
+    let args = dsx::server::volta::VoltaArgs { gpus: cli.gpus, slots: cli.slots, ctx: cli.ctx, chunk: cli.chunk, spec_k: cli.spec_k, theta: cli.theta };
+    let engine = EngineHandle::spawn_batched(move || {
+        let m: &'static dsx::model::Model = Box::leak(Box::new(dsx::model::Model::load_hf(&model)?));
+        dsx::server::volta::volta_engine(m, args)
+    })?;
+    let cfg = ServerConfig {
+        model_name: cli.model_name.clone(),
+        ctx: cli.ctx,
+        default_max_tokens: cli.max_tokens,
+        default_temperature: cli.temperature,
+        default_top_p: cli.top_p,
+        hesitation_penalty: cli.hesitation_penalty,
+        vision: false,
+        api_key: cli.api_key.clone(),
+        ..ServerConfig::default()
+    };
+    let st = AppState::new(engine, tok, cfg)?;
+    let listener = tokio::net::TcpListener::bind((cli.host.as_str(), cli.port)).await?;
+    tracing::info!("listening on http://{} (volta, {} GPUs x {} sessions)", listener.local_addr()?, cli.gpus, cli.slots);
+    dsx::server::serve(listener, st).await?;
+    Ok(())
+}

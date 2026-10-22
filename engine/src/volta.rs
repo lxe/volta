@@ -1040,6 +1040,8 @@ struct Shard<'m> {
     eng_ids: Vec<Vec<u64>>,
     /// captured steps by (tokens, bucket); None = seen once (the next one captures)
     graphs: HashMap<(usize, usize), Option<crate::gpu::GraphExec>>,
+    /// a graph failed to instantiate (out of memory): capture no more
+    graph_full: bool,
 }
 
 /// device addresses of one GPU's exchange buffers (written by every peer)
@@ -1287,6 +1289,7 @@ impl<'m> Shard<'m> {
             eng_host: vec![],
             eng_ids: vec![],
             graphs: HashMap::new(),
+            graph_full: false,
             g,
         })
     }
@@ -2047,7 +2050,7 @@ impl<'m> Shard<'m> {
 }
 
 /// one layer's per-token tables for the current step (device pointers into Work::tabs; 0 = not used)
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct LTab {
     pos: u64,
     wrow: u64,
@@ -2393,18 +2396,33 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
     let key = (t, sh.bucket);
     // graphs cost device memory: past VOLTA_GRAPHS shapes (default 6), new shapes run without one
     let limit = std::env::var("VOLTA_GRAPHS").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(6);
-    let eager = eager || (!sh.graphs.contains_key(&key) && sh.graphs.values().filter(|g| g.is_some()).count() >= limit);
+    let eager = eager || (!sh.graphs.contains_key(&key) && (sh.graph_full || sh.graphs.values().filter(|g| g.is_some()).count() >= limit));
     if eager {
         layers(sh, toks, &counts, prof)?;
     } else if let Some(Some(g)) = sh.graphs.get(&key).map(|g| g.as_ref()) {
         sh.g.launch_graph(g)?;
     } else if sh.graphs.contains_key(&key) {
         // second time this shape comes up: capture it (the first run warmed cuBLAS and the kernel attributes)
+        // attention consumes the step tables while recording: keep a copy to rerun the step if capture fails
+        let lt = sh.lt.clone();
         sh.g.begin_capture()?;
         layers(sh, toks, &counts, false)?;
-        let g = sh.g.end_capture()?;
-        sh.g.launch_graph(&g)?;
-        sh.graphs.insert(key, Some(g));
+        match sh.g.end_capture() {
+            Ok(g) => {
+                sh.g.launch_graph(&g)?;
+                sh.graphs.insert(key, Some(g));
+            }
+            Err(e) => {
+                // usually out of memory for one more graph: run this shape without one, and capture no more
+                if !sh.graph_full {
+                    eprintln!("GPU{}: no more step graphs ({e:#}); new shapes run without one", sh.gi);
+                }
+                sh.graph_full = true;
+                sh.lt = lt;
+                layers(sh, toks, &counts, false)?;
+                sh.graphs.insert(key, None);
+            }
+        }
     } else {
         layers(sh, toks, &counts, false)?;
         sh.graphs.insert(key, None);

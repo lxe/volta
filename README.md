@@ -1,118 +1,264 @@
-# volta
+<h1 align="center">volta</h1>
 
-Batched inference for DeepSeek-V4.1-Flash on one 8x V100-SXM2-32GB machine (the DGX-1 NVLink mesh). Volta has
-no FP8, FP4 or bf16 math, and the official checkpoint does not fit in its 256 GB of HBM, so no existing serving
-engine runs this model there. The 8 cards together still read 6.9 TB/s of HBM. This engine turns that bandwidth
-into throughput for many concurrent agent sessions with its own low-bit formats and kernels, written for sm_70.
+<p align="center"><b>DeepSeek-V4.1-Flash-1017 (552 B + 196 B Engram) on one used 8x V100 server</b><br>
+2,400-3,000 tokens/s across hundreds of sessions · DSpark speculative decoding · OpenAI- and Anthropic-compatible
+API · thinking levels, streaming, prefix reuse</p>
 
-## Results
+<p align="center">
+<a href="https://huggingface.co/lxe/DeepSeek-V4.1-Flash-1017-Volta"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20model-Volta-yellow" alt="Model: Volta"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+<a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-stable-orange?logo=rust" alt="Rust"></a>
+<a href="https://developer.nvidia.com/cuda-toolkit"><img src="https://img.shields.io/badge/CUDA-12.9-76B900?logo=nvidia" alt="CUDA 12.9"></a>
+</p>
 
-DeepSeek-V4.1-Flash-1017 from the official checkpoint, with its experts re-packed to 220 GB (27.5 GB per GPU):
+An 8x V100 machine (the DGX-1 NVLink layout, 256 GB of HBM) is old and cheap, and no serving engine runs
+**[DeepSeek-V4.1-Flash-1017](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017)** (DeepSeek, MIT license) on it:
+Volta has no FP8, FP4 or bf16 math, and the official checkpoint is larger than its memory. Together the eight cards
+still read 6.9 TB/s. volta is an engine in Rust and CUDA, written for this one model on this one class of machine,
+that turns that bandwidth into throughput for many sessions at once.
+
+- **Fast:** 2,400 tokens/s across 256 sessions and 3,070 across 512; ~20 tokens/s per session with 64 at once, and
+  38 tokens/s for a single stream.
+- **Close to the original:** the same next token as the FP8 model 84% of the time on the Lucebox eval (KL 0.127).
+- **Faster with the draft model:** the checkpoint's DSpark draft runs on the GPUs. With 64 sessions writing code, each
+  gets 27 tokens/s instead of 20, and sampled outputs keep the model's own distribution (speculative sampling).
+- **Plugs into your tools:** the OpenAI- and Anthropic-compatible API of [dsx](https://github.com/lxe/dsx), with
+  streaming, tools, thinking levels and the chat in the browser.
+- **Picks up where you left off:** a finished session's KV cache stays on the GPU, so an agent that resends the whole
+  conversation only pays for the new text.
+
+## The model
+
+https://huggingface.co/lxe/DeepSeek-V4.1-Flash-1017-Volta
+
+Two folders. `base/` (221 GB) is the official checkpoint without its routed experts: the dense weights, the draft
+layers and the Engram tables, unchanged. `pack-27.5gb-8xv100/` (220 GB) holds the routed experts, re-quantized for
+this engine and already split across the 8 GPUs: 15,172 experts in cb3 (3.25 bits per weight) and 188 cold ones in
+cb2 (2.25), chosen by how often the router picks them.
+
+Against the FP8 model on the [Lucebox](https://huggingface.co/Lucebox/DeepSeek-V4.1-Flash-1017-ROCMFP-GGUF) eval
+(8 x 1,024 tokens), it picks the same next token 84.1% of the time, with KL 0.127 and perplexity 8.88.
+
+## How fast is it?
+
+All on one 8x V100-SXM2-32GB machine. Engine benchmark (`volta bench`, real text, one token per session per step):
+
+| Sessions | Step | Total | Per session |
+|---|---|---|---|
+| 64 | 50.9 ms | 1,258 tok/s | 19.7 tok/s |
+| 128 | 69 ms | 1,850 tok/s | 14.5 tok/s |
+| 256 | 105 ms | 2,440 tok/s | 9.5 tok/s |
+| 512 | 167 ms | 3,070 tok/s | 6.0 tok/s |
+
+With the DSpark draft (`volta spec --adaptive`, greedy, 64 sessions): 27.2 tok/s per session on code and 18.2 on
+prose. With 8 sessions on code: 81 tok/s each.
+
+Through the server (`volta-server`, sampling at temperature 1 with drafts, 300-token answers):
+
+| Concurrent streams | Per stream | Total | First token |
+|---|---|---|---|
+| 1 | 38 tok/s | 38 tok/s | 0.27 s |
+| 8 | 29 tok/s | 169 tok/s | 0.22 s |
+| 32 | 20 tok/s | 500 tok/s | 0.4 s |
+
+For comparison, llama.cpp (PR #30817, UD-IQ1_M) on the same machine decodes 26.7 tok/s for one stream and 72-97
+tok/s in total at most.
+
+## Quick start
+
+Download the weights (base and pack, ~441 GB):
+
+```bash
+hf download lxe/DeepSeek-V4.1-Flash-1017-Volta --local-dir volta-weights
+```
+
+Build and start the server:
+
+```bash
+CUDA_ARCHS=70 cargo build --release -p dsx --features cuda --bin volta-server
+
+VOLTA_PACK=volta-weights/pack-27.5gb-8xv100 ./target/release/volta-server \
+  --model volta-weights/base \
+  --host 0.0.0.0 --port 8090
+```
+
+Loading takes ~2 minutes (the first start also maps the 196 GB Engram tables into RAM). Open `http://localhost:8090/`
+for the web UI, or point any OpenAI client at `http://localhost:8090/v1` (Anthropic clients at
+`http://localhost:8090`):
+
+```bash
+curl http://localhost:8090/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -d '{
+    "model": "deepseek-v4.1-flash",
+    "stream": true,
+    "reasoning_effort": "none",
+    "messages": [
+      {"role": "user", "content": "Write a haiku about MoE routing."}
+    ]
+  }'
+```
+
+From the official checkpoint instead of the Hugging Face build, drop `VOLTA_PACK` and pass the checkpoint as
+`--model`: the engine packs the experts on the GPUs at load (~3 minutes) and caches them in `/dev/shm/vcache`.
+
+### Agents
+
+For the [pi](https://github.com/badlogic/pi-mono) coding agent, add this to `~/.pi/agent/models.json`:
+
+```json
+{
+  "providers": {
+    "volta": {
+      "baseUrl": "http://localhost:8090/v1",
+      "api": "openai-completions",
+      "apiKey": "none",
+      "authHeader": false,
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": true,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "deepseek-v4.1-flash",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 8192,
+          "maxTokens": 4096,
+          "thinkingLevelMap": { "off": "none", "high": "high" }
+        }
+      ]
+    }
+  }
+}
+```
+
+```bash
+pi --provider volta --model deepseek-v4.1-flash:off
+```
+
+With `--api-key`: drop `"authHeader": false`, set `"apiKey"` to the key and point `baseUrl` at the server's URL.
+
+## Requirements
 
 | | |
 |---|---|
-| Quality, Lucebox eval (8 x 1024 tokens against the FP8 teacher's top-256) | KL 0.126-0.130 across runs, top-1 agreement 84%, ppl 8.95 |
-| 64 concurrent sessions, real text | 50.9 ms per step: 1,258 tok/s aggregate, 19.7 tok/s per session |
-| 128 sessions | 69.1 ms per step: 1,853 tok/s aggregate, 14.5 tok/s per session |
-| 256 sessions | 103.6 ms per step: **2,472 tok/s** aggregate, 9.7 tok/s per session |
-| 512 sessions | 166.8 ms per step: 3,070 tok/s aggregate, 6.0 tok/s per session |
-| With the DSpark draft, code, 64 sessions, 3 drafts per pass | 3.23 tokens per pass: **26.0 tok/s per session**, 1,667 tok/s aggregate |
-| With the DSpark draft, code, 8 sessions, 5 drafts per pass | 4.28 tokens per pass: **82.6 tok/s per session** |
-| With the DSpark draft, prose, 64 sessions, 1 draft per pass | 1.57 tokens per pass: 17.9 tok/s per session (17.5 without) |
-| With the DSpark draft, `--adaptive` (drafts per session from its acceptance), 64 sessions | code **27.2**, prose 18.2 tok/s per session |
-| llama.cpp (PR #30817, UD-IQ1_M) on the same machine, for comparison | 26.7 tok/s for one session; 72-97 tok/s aggregate at most |
+| GPUs | 8x V100 32 GB with NVLink in the DGX-1 layout (SXM2 or SXM3) |
+| CUDA | 12.9 (the last toolkit that builds for sm_70) |
+| RAM | ~400 GB (the Engram tables, 196 GB, are read from RAM) |
+| Disk | ~441 GB for the Hugging Face build; `/dev/shm` or fast disk for the 220 GB pack keeps loading short |
 
- [DESIGN.md](DESIGN.md) has the design, the
-hardware measurements, the time per step by kernel, and dated amendments where the plan changed.
+Other machines need other kernels and collectives; [DESIGN.md](DESIGN.md) lists what each would take.
+
+## Parameters
+
+`volta-server` needs `--model`; every other option has a default.
+
+**Model files**
+
+| | |
+|---|---|
+| `--model` | the official checkpoint directory, or the Hugging Face build's `base/` with `VOLTA_PACK` set |
+| `VOLTA_PACK` | the pack directory (`pack-27.5gb-8xv100/`): the routed experts, already packed for the 8 GPUs |
+| `--tokenizer` | `tokenizer.json`; default: the model directory's |
+
+**Server**
+
+| | |
+|---|---|
+| `--host`, `--port` | listen address (default `127.0.0.1:8090`) |
+| `--api-key` | require this key (`Authorization: Bearer <key>` or `x-api-key`; env `DSX_API_KEY`) |
+| `--model-name` | model id reported by `/v1/models` (default `deepseek-v4.1-flash`) |
+| `--slots` | concurrent sessions per GPU (default 4) |
+| `--ctx` | context window per session, prompt + generated tokens (default 8192); slots and context share the GPUs' spare memory |
+| `--max-tokens` | generation cap when a request sets none (default 4096) |
+| `--chunk` | prompt tokens per session per step while reading a prompt (default 32) |
+
+**Sampling defaults** (a request's own fields override them)
+
+| | |
+|---|---|
+| `--temperature`, `--top-p` | default 1.0 and 1.0, the model's recommended sampling |
+| `--hesitation-penalty` | logit penalty on hesitation tokens ("Wait", "But", ...) while reasoning; 0 = off (default) |
+
+**Draft**
+
+| | |
+|---|---|
+| `--spec-k` | most draft tokens verified per pass (default 5; 0 turns the draft off) |
+| `--theta` | a session verifies j drafts while p^j >= theta, p = its recent per-draft acceptance (default 0.35) |
+
+## Thinking
+
+Thinking is on by default, at high effort. A request turns it off or sets the effort:
+
+| | OpenAI API (`/v1/chat/completions`) | Anthropic API (`/v1/messages`) |
+|---|---|---|
+| Thinking off | `"reasoning_effort": "none"` or `"thinking": {"type": "disabled"}` | `"thinking": {"type": "disabled"}` |
+| Effort | `"reasoning_effort"`: `low` (or `minimal`), `high` (or `medium`), `xhigh`, `max` | `"output_config": {"effort": ...}`: `low`, `high` (or `medium`), `xhigh`, `max` |
 
 ## How it works
 
-- **Data-parallel attention.** Each GPU owns a pool of sessions with their compressed KV cache, and runs their
-  attention and dense layers itself.
-- **Every routed expert split 8 ways.** Each GPU holds 1/8 of the intermediate dim of every expert (and of the
-  shared expert), so expert work per GPU is the same whichever experts the router picks.
-- **NVLink-only collectives.** Per layer, an all-gather sends every token's hidden state to every GPU and an
-  all-to-all brings the partial sums home. Both are single kernels that store into peer memory and signal with
-  flags (~20-30 µs each, against NCCL's 40-60 µs floor).
-- **Lookup-table expert formats.** At load, each expert's MXFP4 weights are kept as is (4.25 bpw) or re-quantized
-  on the GPU to cb3 (3.25 bpw) or cb2 (2.25 bpw), by routing frequency, until they fit the byte budget. The kernel
-  decodes two weights per shared-memory lookup straight into Volta's `mma.m8n8k4` tensor-core fragments.
-- **Device-side routing and one CUDA graph per step.** The router's picks become per-expert token lists on the
-  GPU, so the host never waits inside a step.
-- **Engram** tables stay in host RAM, and their rows are gathered for each step.
-- **Several tokens per session in a step** (up to 64 per GPU): prefill chunks and draft verification use the
-  same step.
-- **DSpark**, the checkpoint's 3-layer draft, runs on the GPUs through the same MoE path. A pass drafts k tokens
-  per session, verifies them in one main step and keeps the agreed prefix. Greedy only for now.
+The model has 15,360 routed experts (384 in each of its 40 layers); each token uses 6 per layer, plus a shared expert,
+attention, and two Engram lookups. Every step runs all sessions' tokens together.
 
-## Layout
+- **Every expert split 8 ways:** each GPU holds 1/8 of every expert's weights (and of the shared expert), so every
+  GPU does the same work in every layer, whichever experts the router picks.
+- **Formats made for the hardware:** each expert's MXFP4 weights become cb3 or cb2 codes. The kernel turns two
+  weights into fp16 with one shared-memory lookup and feeds Volta's `mma.m8n8k4` tensor cores directly. The dense
+  weights are 4-bit with an fp16 scale per 16.
+- **Attention per GPU, experts across all of them:** each GPU keeps its own sessions' KV cache and runs their attention
+  and dense layers. Per layer, one NVLink all-gather sends every token's hidden state to every GPU, and one
+  all-to-all brings the partial sums home. Both are single kernels that write into peer memory and signal with
+  flags (~20-30 µs each).
+- **Attention on the tensor cores:** one KV row serves all 64 query heads, so a token's attention is a matrix product,
+  run with `mma.m8n8k4` in fp16.
+- **One CUDA graph per step:** routing is built on the GPU, small kernels are merged, and independent work (the
+  shared expert, the larger expert batches) runs on a second stream inside the graph.
+- **Several tokens per session per step:** prompts are read in chunks, and the draft's tokens are verified, in the same
+  step as everyone else's decoding.
+- **DSpark on the GPUs:** the checkpoint's 3-layer draft runs through the same MoE path. Each session verifies as many
+  drafts as its recent acceptance justifies; every GPU verifies the same number of tokens per step, so the step stays
+  in a CUDA graph.
 
-| Path | What |
+[DESIGN.md](DESIGN.md) has the design, the measurements behind each choice, and the time per step by kernel.
+
+## Command-line tools
+
+`volta` (`--bin volta`) runs the engine without the server:
+
+| | |
 |---|---|
-| `engine/src/volta.rs` | the engine: placement, expert packing, step planning, attention, MoE, collectives, CUDA graphs |
-| `engine/src/kernels/volta.cuh` | the sm_70 kernels: `vlut_*` and `vmoe_*` matmuls, routing, attention, collectives |
-| `engine/src/bin/volta.rs` | the CLI: `check`, `eval`, `bench`, `experts` |
-| `core/`, the rest of `engine/` | model loader, CPU reference and shared CUDA kernels, from [dsx](https://github.com/lxe/dsx) |
-| `tests/` | standalone kernel tests and sweeps (`vmoe_test`, `vlut_test`, `dense_test`, `split_test`) |
-| `bench/` | hardware probes and the existing-engine benchmarks |
-| `plans/` | the published pack's tier plan and placement, and the routing counts that choose tiers |
+| `volta bench --model ... --sessions 8 --steps 32 --text tokens.i32` | throughput with `--sessions` per GPU; `--text` feeds real tokens (i32 LE) |
+| `volta eval --model ... --eval <dir>` | the Lucebox eval; `--chunk k` feeds k tokens per sequence per step |
+| `volta spec --model ... --text tokens.i32 --k 5 --adaptive` | greedy decoding with the draft (`VOLTA_SPARK=<checkpoint dir>`); `--total N` for N sessions in all |
+| `volta check`, `volta experts` | logits and expert kernels against the CPU reference |
 
-## Build
+| Variable | Effect |
+|---|---|
+| `VOLTA_EXPERT_GB` | expert bytes per GPU when packing from the official checkpoint (default 25; the published pack is 27.5) |
+| `VOLTA_GRAPHS` | most step shapes kept as CUDA graphs (the server's default is 4) |
+| `VOLTA_TRACE_STEP` | wraps that step in a profiler range, for `nsys --capture-range=cudaProfilerApi` |
+| `VOLTA_PROF` | prints where each step's time went |
+| `VOLTA_OVERLAP=0`, `VOLTA_ATTN=tile5`, `VOLTA_SPARK_CB2=0` | one stream, CUDA-core attention, cb3 draft experts |
 
-Needs 8x V100 with NVLink, CUDA 12.9 (the last toolkit that compiles for sm_70), Rust stable, and ~380 GB of
-`/dev/shm` or RAM for the packed-expert cache.
+## Repo
 
-```bash
-CUDA_ARCHS=70 cargo build --release -p dsx --features cuda --bin volta
-```
+| Path | |
+|---|---|
+| [`engine/src/volta.rs`](engine/src/volta.rs), [`engine/src/volta/spark.rs`](engine/src/volta/spark.rs) | the engine: packing, placement, steps, attention, MoE, collectives, CUDA graphs; the draft |
+| [`engine/src/kernels/volta.cuh`](engine/src/kernels/volta.cuh) | the sm_70 kernels |
+| [`engine/src/server/volta.rs`](engine/src/server/volta.rs), [`engine/src/bin/volta_server.rs`](engine/src/bin/volta_server.rs) | the batching scheduler and the server |
+| [`core/`](core/), the rest of [`engine/`](engine/) | model loader, CPU reference, the HTTP server and web UI, from [dsx](https://github.com/lxe/dsx) |
+| [`plans/`](plans/) | the published pack's tier plan and placement, and the routing counts that choose tiers |
+| [`tests/`](tests/), [`bench/`](bench/) | kernel tests and sweeps; hardware probes |
 
-The kernel tests build with nvcc directly, from `tests/`:
+## Credits
 
-```bash
-nvcc -O3 -arch=sm_70 -std=c++17 -I../engine/src/kernels vlut_test.cu -o vlut_test
-```
+[DeepSeek](https://huggingface.co/deepseek-ai) for the model (MIT) · [dsx](https://github.com/lxe/dsx) for the model
+loader, CPU reference, server and web UI · [Lucebox](https://huggingface.co/Lucebox/DeepSeek-V4.1-Flash-1017-ROCMFP-GGUF)
+for the eval set · the web UI is [llama.cpp](https://github.com/ggml-org/llama.cpp)'s, by Georgi Gerganov and the ggml
+authors (MIT), vendored in [`core/webui`](core/webui) with its license.
 
-## Run
-
-The ready-made weights are on Hugging Face at
-[lxe/DeepSeek-V4.1-Flash-1017-Volta](https://huggingface.co/lxe/DeepSeek-V4.1-Flash-1017-Volta): `base/` is the
-official checkpoint without its routed experts (dense weights and Engram, unchanged), and `pack-27.5gb-8xv100/` holds
-the packed experts for each of the 8 GPUs. `/dev/shm` or a fast disk for the pack keeps the load at ~2 minutes.
-
-```bash
-VOLTA_PACK=pack-27.5gb-8xv100 ./target/release/volta bench --model base --sessions 8 --steps 32 --text heldout.i32
-```
-
-From the official checkpoint instead, the engine packs the experts on the GPUs at load (~3 minutes), using the
-routing counts in `plans/rank.json`, and caches the result in `/dev/shm/vcache`:
-
-```bash
-VOLTA_EXPERT_GB=27.5 ./target/release/volta bench --model DeepSeek-V4.1-Flash-1017 --sessions 8 --steps 32
-```
-
-To rebuild exactly the published pack, start a pack directory from its plan: `mkdir pack && cp
-plans/v41-1017-27.5gb-8xv100.json pack/manifest.json`, then run once with `VOLTA_PACK=pack` and the official
-checkpoint as `--model`. The plan holds each expert's tier (15,172 in cb3, 188 in cb2) and its placement.
-
-`--sessions` is per GPU. `--text` teacher-forces real tokens (i32 LE) so routing looks like real traffic.
-`volta eval --model ... --eval <dir>` runs the Lucebox eval (`--chunk k` feeds k tokens per sequence per step), and
-`volta check` compares logits with the CPU reference. `VOLTA_SPARK=<checkpoint dir> volta spec --model ... --text
-<tokens> --k 3` prefills each session and decodes greedily with k drafts per pass (`--k 0` is the no-draft
-baseline; `--k 5 --adaptive` picks each session's drafts from its acceptance).
-
-| Variable | Default | Effect |
-|---|---|---|
-| `VOLTA_PACK` | | load the experts from this pack directory, or make the pack there if it has no `gpu*.bin` yet |
-| `VOLTA_EXPERT_GB` | 25 | expert bytes per GPU; sets how many experts drop from MXFP4 to cb3 and cb2 |
-| `VOLTA_RANK` | `plans/rank.json` | routing counts per (layer, expert) as `[layer, expert, picks]`, which choose the tiers |
-| `VOLTA_EXPERT_TP` | 8 | GPUs that split each expert (1 places whole experts) |
-| `VOLTA_CACHE` | on | `0` skips the packed-expert cache in `/dev/shm/vcache` |
-| `VOLTA_TRACE_STEP` | | wraps that step in a CUDA profiler range, for `nsys --capture-range=cudaProfilerApi` |
-| `VOLTA_PROF` | | prints where each step's time went, with a sync at each boundary |
-| `VOLTA_SPARK` | | the checkpoint directory to load the DSpark draft from (its experts are packed at load) |
-| `VOLTA_ATTN` | | `tile5` runs attention on CUDA cores instead of the tensor cores |
-| `VOLTA_OVERLAP` | on | `0` runs everything on one stream (no side-stream branches in the step graph) |
-
-## License
-
-MIT
+MIT license.

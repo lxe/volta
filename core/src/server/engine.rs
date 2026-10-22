@@ -73,7 +73,32 @@ struct Job {
     queued: Instant,
 }
 
-/// Cloneable handle to the engine thread: a FIFO of jobs, one at a time.
+/// A job as a batching engine receives it (`EngineHandle::spawn_batched`): it sends `Event`s on `tx` and drops the
+/// job when it is finished (which updates the queue count).
+pub struct BatchJob {
+    pub id: String,
+    pub prompt: Vec<u32>,
+    pub params: GenParams,
+    pub tx: mpsc::UnboundedSender<Event>,
+    pub queued: Instant,
+    _pending: PendingGuard,
+}
+
+struct PendingGuard(Arc<AtomicUsize>);
+
+impl Drop for PendingGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// An engine that runs many generations at once: it takes every job as it arrives and schedules them itself.
+pub trait BatchEngine: Send {
+    /// Serve jobs until `rx` closes.
+    fn serve(&mut self, rx: std_mpsc::Receiver<BatchJob>);
+}
+
+/// Cloneable handle to the engine thread: a FIFO of jobs, one at a time (or all at once for a batching engine).
 #[derive(Clone)]
 pub struct EngineHandle {
     tx: std_mpsc::Sender<Job>,
@@ -104,6 +129,41 @@ impl EngineHandle {
                     run_job(engine.as_mut(), job);
                     pend.fetch_sub(1, Ordering::SeqCst);
                 }
+            })?;
+        ready_rx.recv().context("engine thread died during construction")??;
+        Ok(Self { tx, pending })
+    }
+
+    /// Construct a batching engine on a dedicated thread (`make` runs there): every submitted job goes to it at once.
+    pub fn spawn_batched(make: impl FnOnce() -> Result<Box<dyn BatchEngine>> + Send + 'static) -> Result<Self> {
+        let (tx, rx) = std_mpsc::channel::<Job>();
+        let (ready_tx, ready_rx) = std_mpsc::channel::<Result<()>>();
+        let pending = Arc::new(AtomicUsize::new(0));
+        let pend = pending.clone();
+        std::thread::Builder::new()
+            .name("dsx-engine".into())
+            .spawn(move || {
+                let mut engine = match make() {
+                    Ok(e) => {
+                        let _ = ready_tx.send(Ok(()));
+                        e
+                    }
+                    Err(e) => {
+                        let _ = ready_tx.send(Err(e));
+                        return;
+                    }
+                };
+                // forward the plain jobs as batch jobs (carrying the queue-count guard)
+                let (btx, brx) = std_mpsc::channel::<BatchJob>();
+                std::thread::spawn(move || {
+                    while let Ok(j) = rx.recv() {
+                        let b = BatchJob { id: j.id, prompt: j.prompt, params: j.params, tx: j.tx, queued: j.queued, _pending: PendingGuard(pend.clone()) };
+                        if btx.send(b).is_err() {
+                            break;
+                        }
+                    }
+                });
+                engine.serve(brx);
             })?;
         ready_rx.recv().context("engine thread died during construction")??;
         Ok(Self { tx, pending })

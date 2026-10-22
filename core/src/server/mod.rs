@@ -35,7 +35,7 @@ use serde_json::json;
 use tokenizers::Tokenizer;
 use tokio_stream::{Stream, StreamExt};
 
-pub use engine::{Engine, EngineHandle, Event, Finish, GenParams, GenStats, Hesitation};
+pub use engine::{BatchEngine, BatchJob, Engine, EngineHandle, Event, Finish, GenParams, GenStats, Hesitation};
 
 /// Tokens that end generation (never forwarded to the parser).
 pub const STOP_TOKENS: [&str; 2] = ["<｜end▁of▁sentence｜>", "<｜User｜>"];
