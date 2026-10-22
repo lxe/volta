@@ -919,6 +919,27 @@ extern "C" __global__ void vcompact(const unsigned *work, int n, int stride, con
   if (threadIdx.x == 0) *n_out = k;
 }
 
+// every list of a layer split by its entries' token counts into three compacted lists (<= 8, 9..16, more; empty
+// entries dropped): list b's bucket j goes to out + (3 b + j) * lmax 32-byte entries, its length to nout[3 b + j].
+// desc[b] = (work pointer, n | stride << 32). grid = lists, block 256
+extern "C" __global__ void vbuckets(const unsigned long long *desc, const int *cnt, unsigned *out, int *nout, int lmax) {
+  __shared__ int k[3];
+  const int b = blockIdx.x;
+  const unsigned *work = reinterpret_cast<const unsigned *>(desc[2 * b]);
+  const int n = (int)(desc[2 * b + 1] & 0xffffffffu), stride = (int)(desc[2 * b + 1] >> 32);
+  if (threadIdx.x < 3) k[threadIdx.x] = 0;
+  __syncthreads();
+  for (int i = threadIdx.x; i < n; i += blockDim.x) {
+    const int c = cnt[work[i * stride + 3]];
+    if (c == 0) continue;
+    const int j = c <= 8 ? 0 : c <= 16 ? 1 : 2;
+    unsigned *o = out + (size_t)(3 * b + j) * lmax * 8 + (size_t)atomicAdd(&k[j], 1) * stride;
+    for (int w = 0; w < stride; w++) o[w] = work[i * stride + w];
+  }
+  __syncthreads();
+  if (threadIdx.x < 3) nout[3 * b + threadIdx.x] = k[threadIdx.x];
+}
+
 // ---------------------------------------------------------------- hyper-connections over a batch of tokens
 // dsx's hc_pre / hc_post run one block per token (8 blocks at 8 tokens); these spread each token over d / 256 blocks.
 // grid (d / 256, T), block 256
@@ -1157,7 +1178,7 @@ extern "C" __global__ void vq16(const float *q, half *q16, float scale, int n) {
 }
 extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W,
                                                                const void *comp, const int *comp_idx, int K, float *part, int H,
-                                                               int hd, int comp_fp4) {
+                                                               int hd, int comp_fp4, int NSUB) {
   extern __shared__ __align__(16) unsigned char vsm[];
   half *R = reinterpret_cast<half *>(vsm);                       // [32][VAM_LD] this sub-tile's rows
   float *Sp = reinterpret_cast<float *>(R + 32 * VAM_LD);        // [4 k chunks][32 rows][16 heads] partial scores
@@ -1166,8 +1187,7 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
   float *Lh = Mh + 16, *Ah = Lh + 16;                            // running sum; this tile's rescale factor
   int *ok = reinterpret_cast<int *>(Ah + 32);
   int *any = ok + 32;
-  constexpr int NSUB = 5;
-  // grid (H / 16, T, splits): a token's head groups run next to each other and share its rows through L2
+  // grid (H / 16, T, splits), NSUB 32-row sub-tiles per split: a token's head groups run next to each other and share its rows through L2
   const int h0 = blockIdx.x * 16, t = blockIdx.y, z = blockIdx.z, S = gridDim.z, tid = threadIdx.x, lane = tid & 31, w = tid >> 5;
   const int q4 = (lane >> 2) & 3, hh = lane >> 4, arow = 8 * q4 + (lane & 3) + 4 * hh, bcol = (lane & 3) + 4 * hh;
   const int nrows = W + K;

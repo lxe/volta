@@ -30,6 +30,11 @@ const KX: usize = TMAX;
 
 /// the compressed KV rows and indexer keys are stored as packed FP4 (exact: the reference rounds them to FP4);
 /// VOLTA_KV=bf16 keeps bf16 rows
+/// blocks per SM that a <= 16-token expert bucket's launch aims for (VOLTA_LUT_BLOCKS, default 8)
+fn lut_blocks() -> usize {
+    std::env::var("VOLTA_LUT_BLOCKS").ok().and_then(|v| v.parse().ok()).unwrap_or(8)
+}
+
 fn kv_fp4() -> bool {
     std::env::var("VOLTA_KV").map_or(true, |v| v != "bf16")
 }
@@ -53,6 +58,8 @@ fn xrow_bytes(c: &crate::model::Config) -> usize {
 const VX_BLOCKS: usize = 8;
 
 /// most 32-row tiles of the small-T attention (window 128 + top-512 = 20)
+/// a layer's expert lists at most: (gate/up, down) x 5 formats
+const MAX_LISTS: usize = 10;
 const ATTN_SPLITS: usize = 4; // 160 rows per split: window + idx_topk = 640 rows
 
 #[derive(Clone, Debug)]
@@ -70,7 +77,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -680,7 +687,10 @@ fn local_layer(g: &Gpu, exps: &Experts, l: usize, es: &[usize], n_exp: usize) ->
             }
         }
     }
-    Ok(LocalLayer { wbase: exps.w.ptr, sbase: exps.s.ptr, lidx: g.upload(&lidx)?, lists, n_local: es.len() })
+    ensure!(lists.len() <= MAX_LISTS, "{} expert lists in layer {l}", lists.len());
+    let desc: Vec<u64> = lists.iter().flat_map(|(_, kind, b, n): &(bool, u32, Buf, usize)| [b.ptr, *n as u64 | (if *kind >= K_FP4 { 8u64 } else { 4 }) << 32]).collect();
+    let desc = g.upload(&desc)?;
+    Ok(LocalLayer { wbase: exps.w.ptr, sbase: exps.s.ptr, lidx: g.upload(&lidx)?, lists, desc, n_local: es.len() })
 }
 
 /// 2-bit codes as 4-bit (same values): code c (offset 2) -> c + 6 (offset 8)
@@ -1000,6 +1010,8 @@ struct LocalLayer {
     sbase: u64,
     lidx: Buf,
     lists: Vec<(bool, u32, Buf, usize)>, // (gate/up?, bits, VWork entries, count)
+    /// vbuckets' table: (entries pointer, count | stride << 32) per list
+    desc: Buf,
     n_local: usize,
 }
 
@@ -1008,6 +1020,8 @@ struct Shard<'m> {
     ngpu: usize,
     /// this GPU's width of the routed experts' intermediate dim (expert_tp)
     sl: usize,
+    /// a layer's local experts at most (the bucket buffers' length per list)
+    lmax: usize,
     /// run the shared slice and the > 8-token expert lists on the side stream (VOLTA_OVERLAP, default on)
     overlap: bool,
     /// the DSpark draft (VOLTA_SPARK=<checkpoint dir>)
@@ -1231,8 +1245,8 @@ impl<'m> Shard<'m> {
             ypart16: g.alloc_zeroed(tg * d * 2)?,
             hcp: fz(TMAX * 25 * HC_S)?,
             cnt: g.alloc_zeroed((3 * lmax + 1) * 4)?, // cnt [lmax] | off [lmax + 1] | cur [lmax]
-            hot: g.alloc_zeroed(lmax * 32)?,
-            nhot: g.alloc_zeroed(4)?,
+            hot: g.alloc_zeroed(3 * MAX_LISTS * lmax * 32)?,
+            nhot: g.alloc_zeroed(3 * MAX_LISTS * 4)?,
             tok: g.alloc_zeroed(tg * c.top_k * 4)?,
             wt: fz(tg * c.top_k)?,
             ntok: g.alloc_zeroed(o.ngpu * 4)?,
@@ -1264,9 +1278,11 @@ impl<'m> Shard<'m> {
             None => None,
         };
         let nl = c.n_layers;
+        ensure!(local.iter().all(|ll| ll.lists.iter().all(|x| x.3 <= lmax)), "an expert list longer than the bucket buffers ({lmax})");
         Ok(Shard {
             gi,
             ngpu: o.ngpu,
+            lmax,
             sl: c.inter / etp,
             overlap: std::env::var("VOLTA_OVERLAP").map_or(true, |v| v != "0"),
             spark,
@@ -1703,10 +1719,8 @@ impl<'m> Shard<'m> {
         let l = &self.layers[li];
         let comp_ptr = if kcomp > 0 { self.layers[x.comp_src].comp_cache.as_ref().unwrap().ptr } else { 0 };
         let scale = 1.0 / (hd as f32).sqrt();
-        // 160 rows per block (5 sub-tiles, online softmax): 4 partials per head for 640 rows
-        let s = (win + kcomp).div_ceil(160);
-        ensure!(s <= ATTN_SPLITS, "attention over {} rows", win + kcomp);
-        self.attn_tiles(t, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, s, scale)?;
+        // up to 160 rows per block (32-row sub-tiles, online softmax), one partial per block for the merge
+        let s = self.attn_tiles(t, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale)?;
         self.g.launch(self.k["sparse_attn_merge"], (t as u32, nh as u32, 1), 256, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32)])?;
         self.rope_rows(w.o.ptr, nh, hd, compressed, x.pos, t, true)?;
         self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?;
@@ -1876,6 +1890,8 @@ impl<'m> Shard<'m> {
         self.g.launch(self.k["vroute_count"], (gr, 1, 1), 256, 0, &[Arg::P(selp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::P(cnt)])?;
         self.g.launch(self.k["vroute_scan"], (1, 1, 1), 1024, 0, &[Arg::P(cnt), Arg::P(off), Arg::P(cur), Arg::I(nl as i32)])?;
         self.g.launch(self.k["vroute_fill"], (gr, 1, 1), 256, 0, &[Arg::P(selp), Arg::P(wtp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::P(off), Arg::P(cur), Arg::P(w.tok.ptr), Arg::P(w.wt.ptr)])?;
+        // every list's entries by token count: each bucket's launch below walks only its own experts
+        self.g.launch(self.k["vbuckets"], (ll.lists.len() as u32, 1, 1), 256, 0, &[Arg::P(ll.desc.ptr), Arg::P(cnt), Arg::P(w.hot.ptr), Arg::P(w.nhot.ptr), Arg::I(self.lmax as i32)])?;
         let prow = (pmax as u32).min(64); // grid rows: the kernels loop over the actual pair count
         self.g.launch(self.k["vzero_c"], (((2 * inter) as u32).div_ceil(256), prow, 1), 256, 0, &[Arg::P(w.gu.ptr), Arg::I((2 * inter) as i32), Arg::P(total)])?;
         // the side stream runs the shared-expert slice and the > 8-token lists alongside the main stream's
@@ -1970,11 +1986,11 @@ impl<'m> Shard<'m> {
         let kc = if k % 1024 == 0 { 1024 } else if k % 1152 == 0 { 1152 } else { k };
         ensure!(kc <= 1152 && kc % 32 == 0, "expert K {k}");
         let ll = &self.local[li];
-        for (lg, kind, work, cnt) in &ll.lists {
+        for (bi, (lg, kind, _, cnt)) in ll.lists.iter().enumerate() {
             if *lg != gu {
                 continue;
             }
-            for (nb, lo, hi) in [(1usize, 0usize, 8usize), (2, 8, 16), (4, 16, cap)] {
+            for (j, (nb, lo, hi)) in [(1usize, 0usize, 8usize), (2, 8, 16), (4, 16, cap)].into_iter().enumerate() {
                 // with overlap the <= 8-token bucket runs on the main stream and the others on the side stream
                 if self.overlap && (side != (nb > 1)) || !self.overlap && side {
                     continue;
@@ -1982,14 +1998,12 @@ impl<'m> Shard<'m> {
                 let r = if *kind >= K_FP4 { 1 } else { match nb { 1 => 4, 2 => 2, _ => 1 } };
                 let rtiles = n.div_ceil(8 * 32 * r);
                 let ttiles = if nb == 4 { cap.div_ceil(32) } else { 1 };
-                // lists over 16 tokens are rare: compact them first so the big-tile kernel (one block per SM) gets no idle blocks
-                let (wptr, ny, nwork) = if nb == 4 {
-                    let stride = if *kind >= K_FP4 { 8 } else { 4 };
-                    self.lx(side, self.k["vcompact"], (1, 1, 1), 256, 0, &[Arg::P(work.ptr), Arg::I(*cnt as i32), Arg::I(stride), Arg::P(self.w.cnt.ptr), Arg::I(lo as i32), Arg::P(self.w.hot.ptr), Arg::P(self.w.nhot.ptr)])?;
-                    (self.w.hot.ptr, (*cnt).min(8), self.w.nhot.ptr)
-                } else {
-                    (work.ptr, *cnt, 0)
-                };
+                let kz = k.div_ceil(kc);
+                // this bucket's compacted entries (vbuckets): blocks loop over them by grid y, sized for ~lut_blocks()
+                // blocks per SM (lists over 16 tokens: 8 entries at a time, one block per SM for the big tiles)
+                let at = (3 * bi + j) as u64;
+                let (wptr, nwork) = (self.w.hot.ptr + at * (self.lmax * 32) as u64, self.w.nhot.ptr + at * 4);
+                let ny = if nb == 4 { (*cnt).min(8) } else { (*cnt).min((lut_blocks() * self.g.sms).div_ceil(rtiles * kz).max(1)) };
                 let grid = ((rtiles * ttiles) as u32, ny as u32, (k as u32).div_ceil(kc as u32));
                 let common = [Arg::P(in_rows), Arg::P(out_rows), Arg::P(0), Arg::P(x), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(n as i32), Arg::P(self.w.cnt.ptr), Arg::P(off), Arg::I(lo as i32), Arg::I(hi as i32), Arg::I(rtiles as i32), Arg::I(ldx as i32), Arg::P(nwork)];
                 if *kind >= K_FP4 {
@@ -2020,20 +2034,34 @@ impl<'m> Shard<'m> {
     /// attention partials over each token's rows (window rows by win_idx, then compressed rows by comp_idx), 160 rows
     /// per split: tensor cores (vattn_mma) unless VOLTA_ATTN=tile5
     #[allow(clippy::too_many_arguments)]
-    fn attn_tiles(&self, t: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, s: usize, scale: f32) -> Result<()> {
+    fn attn_tiles(&self, t: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32) -> Result<usize> {
         let c = &self.m.cfg;
         let (hd, nh, w) = (c.head_dim, c.n_heads, &self.w);
+        let rows = nw + nk;
         if std::env::var("VOLTA_ATTN").is_ok_and(|v| v == "tile5") {
             ensure!(!kv_fp4() || nk == 0, "VOLTA_ATTN=tile5 reads bf16 KV rows: also set VOLTA_KV=bf16");
-            return self.g.launch(self.k["vattn_tile5"], (t as u32, (nh / 16) as u32, s as u32), 256, 0, &[Arg::P(w.q.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::F(scale)]);
+            let s = rows.div_ceil(160);
+            ensure!(s <= ATTN_SPLITS, "attention over {rows} rows");
+            self.g.launch(self.k["vattn_tile5"], (t as u32, (nh / 16) as u32, s as u32), 256, 0, &[Arg::P(w.q.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::F(scale)])?;
+            return Ok(s);
         }
         ensure!(hd == 512 && nh % 16 == 0, "vattn_mma: 512-dim heads in groups of 16");
+        // 32-row sub-tiles per block: 5 (160 rows) while that gives >= 2 blocks per SM, fewer for a few tokens so a
+        // single token's rows still spread over the GPU (the partials buffer holds TMAX * ATTN_SPLITS splits)
+        let splits = |nsub: usize| rows.div_ceil(32 * nsub);
+        let mut nsub = 5;
+        while nsub > 1 && (nh / 16) * t * splits(nsub) < 2 * self.g.sms && t * splits(nsub - 1) <= TMAX * ATTN_SPLITS {
+            nsub -= 1;
+        }
+        let s = splits(nsub);
+        ensure!(t * s <= TMAX * ATTN_SPLITS, "attention over {rows} rows");
         let n = t * nh * hd;
         self.g.launch(self.k["vq16"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32)])?;
         // VAM_SMEM in volta.cuh
         let smem = 32 * 520 * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
         self.g.set_smem(self.k["vattn_mma"], smem)?;
-        self.g.launch(self.k["vattn_mma"], ((nh / 16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32)])
+        self.g.launch(self.k["vattn_mma"], ((nh / 16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32), Arg::I(nsub as i32)])?;
+        Ok(s)
     }
 
     /// launch on the side stream (side) or the main one
