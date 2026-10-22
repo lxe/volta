@@ -61,6 +61,10 @@ Through the server (`volta-server`, sampling at temperature 1 with drafts, 300-t
 | 8 | 29 tok/s | 169 tok/s | 0.22 s |
 | 32 | 20 tok/s | 500 tok/s | 0.4 s |
 
+Long prompts (`volta spec`, 8 sessions, one per GPU, code, with drafts): with 64K-token prompts, prefill runs at
+2,490 tok/s in total and decoding at 71 tok/s per session; with 128K-token prompts, at 1,430 and 46. The compressed
+KV cache is stored as FP4, ~0.9 KB per token per session, so `--slots 2 --ctx 131072` gives 16 sessions of 128K.
+
 For comparison, llama.cpp (PR #30817, UD-IQ1_M) on the same machine decodes 26.7 tok/s for one stream and 72-97
 tok/s in total at most.
 
@@ -175,7 +179,7 @@ Other machines need other kernels and collectives; [DESIGN.md](DESIGN.md) lists 
 | `--api-key` | require this key (`Authorization: Bearer <key>` or `x-api-key`; env `DSX_API_KEY`) |
 | `--model-name` | model id reported by `/v1/models` (default `deepseek-v4.1-flash`) |
 | `--slots` | concurrent sessions per GPU (default 4) |
-| `--ctx` | context window per session, prompt + generated tokens (default 8192); slots and context share the GPUs' spare memory |
+| `--ctx` | context window per session, prompt + generated tokens (default 8192); slots and context share the GPUs' spare memory: 2 x 131072 fits |
 | `--max-tokens` | generation cap when a request sets none (default 4096) |
 | `--chunk` | prompt tokens per session per step while reading a prompt (default 32) |
 | `--admin-port` | the admin dashboard and `/stats` (default 8091, on `--host`; 0 = off). It has no API key: keep it on loopback or a private network |
@@ -218,7 +222,10 @@ attention, and two Engram lookups. Every step runs all sessions' tokens together
   all-to-all brings the partial sums home. Both are single kernels that write into peer memory and signal with
   flags (~20-30 µs each).
 - **Attention on the tensor cores:** one KV row serves all 64 query heads, so a token's attention is a matrix product,
-  run with `mma.m8n8k4` in fp16.
+  run with `mma.m8n8k4` in fp16. The indexer that picks each token's 512 compressed rows scores them on the tensor
+  cores too.
+- **KV cache in FP4:** the model rounds its compressed KV rows and indexer keys to FP4, so they are stored packed,
+  exactly: ~0.9 KB per token per session, 0.23 GB for a 256K-token context.
 - **One CUDA graph per step:** routing is built on the GPU, small kernels are merged, and independent work (the
   shared expert, the larger expert batches) runs on a second stream inside the graph.
 - **Several tokens per session per step:** prompts are read in chunks, and the draft's tokens are verified, in the same
@@ -247,6 +254,7 @@ attention, and two Engram lookups. Every step runs all sessions' tokens together
 | `VOLTA_TRACE_STEP` | wraps that step in a profiler range, for `nsys --capture-range=cudaProfilerApi` |
 | `VOLTA_PROF` | prints where each step's time went |
 | `VOLTA_OVERLAP=0`, `VOLTA_ATTN=tile5`, `VOLTA_SPARK_CB2=0` | one stream, CUDA-core attention, cb3 draft experts |
+| `VOLTA_KV=bf16` | store the compressed KV cache in bf16 instead of FP4 (3.5x larger) |
 
 ## Repo
 

@@ -391,3 +391,19 @@ graphs, and a graph that fails to instantiate (out of memory) turns capturing of
 Measured through the API, temperature 1, 300-token answers: 1 stream 38 tok/s; 8 streams 29 tok/s each (169
 in total); 32 streams 20 each (500 in total; 32 = 4 slots x 8 GPUs at an 8,192-token context). A repeated
 1,655-token prompt reused 1,654 cached tokens and returned its first token in 39 ms.
+
+### 2026-10-22: long context
+
+Only 4 layers store compressed KV (the other compressed layers read theirs), so a token costs 3.2 KB per session
+in bf16. The reference rounds those rows to FP4 with an E4M3 scale per 16, and the indexer keys to FP4 with an E8M0
+scale per 32, so they are now stored packed and exactly (`vstore_fp4_rows`, KL unchanged: 0.1287 against 0.1273):
+~0.9 KB per token, 0.12 GB for 128K and 0.23 GB for 256K per session. Attention per token does not grow with the
+context (window + top-512 compressed rows), but the indexer scans every compressed key: at 40K context it took 99
+of a 294 ms prefill step (64 tokens per GPU). On the tensor cores (`vindexer_mma`) it is 5.7x faster.
+
+8 sessions, one per GPU, code, drafts on: 64K-token prompts prefill at 2,490 tok/s in total and decode at 71 tok/s
+per session; 128K-token prompts (before the indexer change) at 1,430 and 46. A single long prompt prefills on its
+own GPU's attention, 64 tokens per step, so one 128K prompt alone takes minutes; larger prefill steps need
+memory the step buffers do not have yet. Next on that path: prefill steps that keep only the last row's logits,
+and the 32-token expert and dense kernels, which now take most of a prefill step.
+
