@@ -11,10 +11,10 @@ DeepSeek-V4.1-Flash-1017 from the official checkpoint, with its experts re-packe
 
 | | |
 |---|---|
-| Quality, Lucebox eval (8 x 1024 tokens against the FP8 teacher's top-256) | KL 0.130, top-1 agreement 84.6%, ppl 8.97 |
-| 64 concurrent sessions, real text | 55.2 ms per step: 1,160 tok/s aggregate, 18.1 tok/s per session |
-| 128 sessions | 73.7 ms per step: 1,737 tok/s aggregate, 13.6 tok/s per session |
-| 256 sessions | 109.6 ms per step: **2,337 tok/s** aggregate, 9.1 tok/s per session |
+| Quality, Lucebox eval (8 x 1024 tokens against the FP8 teacher's top-256) | KL 0.126-0.130 across runs, top-1 agreement 84%, ppl 8.95 |
+| 64 concurrent sessions, real text | 52.7 ms per step: 1,214 tok/s aggregate, 19.0 tok/s per session |
+| 128 sessions | 69.1 ms per step: 1,853 tok/s aggregate, 14.5 tok/s per session |
+| 256 sessions | 103.6 ms per step: **2,472 tok/s** aggregate, 9.7 tok/s per session |
 | llama.cpp (PR #30817, UD-IQ1_M) on the same machine, for comparison | 26.7 tok/s for one session; 72-97 tok/s aggregate at most |
 
 The next target is ~30 tok/s per session at 64 sessions. [DESIGN.md](DESIGN.md) has the design, the
@@ -98,6 +98,7 @@ reference.
 | `VOLTA_CACHE` | on | `0` skips the packed-expert cache in `/dev/shm/vcache` |
 | `VOLTA_TRACE_STEP` | | wraps that step in a CUDA profiler range, for `nsys --capture-range=cudaProfilerApi` |
 | `VOLTA_PROF` | | prints where each step's time went, with a sync at each boundary |
+| `VOLTA_OVERLAP` | on | `0` runs everything on one stream (no side-stream branches in the step graph) |
 
 ## License
 
