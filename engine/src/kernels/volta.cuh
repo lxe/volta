@@ -1130,3 +1130,130 @@ extern "C" __global__ void vargmax_rows(const float *logits, int vocab, int *out
     if (lane == 0) out[r] = arg;
   }
 }
+
+// ---------------------------------------------------------------- attention on the tensor cores
+// vattn_tile5 with mma.m8n8k4: one KV row serves all 64 query heads (and is both key and value), so per 32-row sub-tile
+// the scores are S[32 rows][16 heads] = R Q^T and the output O^T[512][16] += R^T P^T, both on the tensor cores in fp16
+// with fp32 accumulation (the CUDA-core version spent its time on the 512-wide dot products). Same grid, partial
+// layout and online softmax as vattn_tile5: block (16 heads, token, split of 5 sub-tiles), 256 threads. q16 is
+// fp16(q * scale) [T][H][hd] (vq16); only the row tile is staged in shared memory, so two blocks fit per SM.
+// Dynamic shared memory: VAM_SMEM bytes.
+#define VAM_LD 520  // fp16 row stride of the row tile (512 + 8: rows land on different banks)
+#define VAM_SMEM (32 * VAM_LD * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16)
+extern "C" __global__ void vq16(const float *q, half *q16, float scale, int n) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) q16[i] = __float2half(q[i] * scale);
+}
+extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W,
+                                                               const __nv_bfloat16 *comp, const int *comp_idx, int K, float *part, int H,
+                                                               int hd) {
+  extern __shared__ __align__(16) unsigned char vsm[];
+  half *R = reinterpret_cast<half *>(vsm);                       // [32][VAM_LD] this sub-tile's rows
+  float *Sp = reinterpret_cast<float *>(R + 32 * VAM_LD);        // [4 k chunks][32 rows][16 heads] partial scores
+  half *P16 = reinterpret_cast<half *>(Sp + 4 * 32 * 16);        // [16 heads][40] probabilities (pre-scaled)
+  float *Mh = reinterpret_cast<float *>(P16 + 16 * 40);          // running max per head
+  float *Lh = Mh + 16, *Ah = Lh + 16;                            // running sum; this tile's rescale factor
+  int *ok = reinterpret_cast<int *>(Ah + 32);
+  int *any = ok + 32;
+  constexpr int NSUB = 5;
+  // grid (H / 16, T, splits): a token's head groups run next to each other and share its rows through L2
+  const int h0 = blockIdx.x * 16, t = blockIdx.y, z = blockIdx.z, S = gridDim.z, tid = threadIdx.x, lane = tid & 31, w = tid >> 5;
+  const int q4 = (lane >> 2) & 3, hh = lane >> 4, arow = 8 * q4 + (lane & 3) + 4 * hh, bcol = (lane & 3) + 4 * hh;
+  const int nrows = W + K;
+  if (tid < 16) { Mh[tid] = -1e30f; Lh[tid] = 0.f; }
+  // the scores' B fragments: this warp's 8 heads (group w & 1) over its k chunk (w >> 1) of 128 (L1-resident)
+  const half *qh = q16 + ((size_t)t * H + h0 + (w & 1) * 8 + bcol) * hd + (w >> 1) * 128;
+  // output accumulators: warp w owns dims 64w .. 64w + 63 (two 32-dim fragments) x the two 8-head groups
+  float acc[2][2][8];
+#pragma unroll
+  for (int f = 0; f < 2; f++)
+#pragma unroll
+    for (int g = 0; g < 2; g++)
+#pragma unroll
+      for (int e = 0; e < 8; e++) acc[f][g][e] = 0.f;
+  for (int sub = 0; sub < NSUB; sub++) {
+    const int r0 = (z * NSUB + sub) * 32;
+    if (r0 >= nrows) break;
+    if (tid == 0) *any = 0;
+    __syncthreads();
+    for (int c = tid; c < 32 * 64; c += 256) {
+      const int r = c >> 6, p8 = c & 63, i = r0 + r;
+      const int idx = i >= nrows ? -1 : (i < W ? win_idx[t * W + i] : comp_idx[t * K + (i - W)]);
+      uint4 v = make_uint4(0, 0, 0, 0);
+      if (idx >= 0) v = *(const uint4 *)((i < W ? win : comp) + (size_t)idx * hd + p8 * 8);
+      const __nv_bfloat162 *b2 = reinterpret_cast<const __nv_bfloat162 *>(&v);
+      half2 o[4];
+#pragma unroll
+      for (int j = 0; j < 4; j++) o[j] = __float22half2_rn(__bfloat1622float2(b2[j]));
+      *reinterpret_cast<uint4 *>(&R[r * VAM_LD + p8 * 8]) = *reinterpret_cast<uint4 *>(o);
+      if (p8 == 0) { ok[r] = idx >= 0; if (idx >= 0) *any = 1; }
+    }
+    __syncthreads();
+    if (!*any) continue;  // block-uniform
+    {
+      const int g = w & 1, k0 = (w >> 1) * 128;
+      float s[8];
+#pragma unroll
+      for (int e = 0; e < 8; e++) s[e] = 0.f;
+#pragma unroll
+      for (int i = 0; i < 32; i++) {
+        const uint2 a = *reinterpret_cast<const uint2 *>(&R[arow * VAM_LD + k0 + 4 * i]);
+        const uint2 b = __ldg(reinterpret_cast<const uint2 *>(qh + 4 * i));
+        v_mma884(s, a.x, a.y, b.x, b.y);
+      }
+#pragma unroll
+      for (int e = 0; e < 8; e++) {
+        const int rs = 8 * q4 + (lane & 1) + 2 * ((e >> 1) & 1) + 4 * hh, tc = 2 * ((lane >> 1) & 1) + (e & 1) + 4 * (e >> 2);
+        Sp[((w >> 1) * 32 + rs) * 16 + g * 8 + tc] = s[e];
+      }
+    }
+    __syncthreads();
+    // softmax of this tile: warp w takes heads 2w, 2w + 1, lane = row
+#pragma unroll
+    for (int j = 0; j < 2; j++) {
+      const int h = 2 * w + j;
+      float sv = Sp[(0 * 32 + lane) * 16 + h] + Sp[(1 * 32 + lane) * 16 + h] + Sp[(2 * 32 + lane) * 16 + h] + Sp[(3 * 32 + lane) * 16 + h];
+      const bool v = ok[lane];
+      sv = v ? sv : -1e30f;
+      const float mt = warp_max(sv), mo = Mh[h], mn = fmaxf(mo, mt);
+      const float pv = v ? expf(sv - mt) : 0.f, lt = warp_sum(pv);
+      const float a = expf(mo - mn), bsc = expf(mt - mn);
+      P16[h * 40 + lane] = __float2half(pv * bsc);
+      if (lane == 0) { Ah[h] = a; Lh[h] = Lh[h] * a + lt * bsc; Mh[h] = mn; }
+    }
+    __syncthreads();
+    // output: O^T[dim][head] = O^T * a[head] + R^T P^T
+#pragma unroll
+    for (int f = 0; f < 2; f++) {
+      const int dim = 64 * w + 32 * f + arow;
+#pragma unroll
+      for (int g = 0; g < 2; g++) {
+#pragma unroll
+        for (int e = 0; e < 8; e++) acc[f][g][e] *= Ah[g * 8 + 2 * ((lane >> 1) & 1) + (e & 1) + 4 * (e >> 2)];
+#pragma unroll
+        for (int kk = 0; kk < 32; kk += 4) {
+          half2 a0 = __halves2half2(R[(kk + 0) * VAM_LD + dim], R[(kk + 1) * VAM_LD + dim]);
+          half2 a1 = __halves2half2(R[(kk + 2) * VAM_LD + dim], R[(kk + 3) * VAM_LD + dim]);
+          const uint2 b = *reinterpret_cast<const uint2 *>(&P16[(g * 8 + bcol) * 40 + kk]);
+          v_mma884(acc[f][g], *reinterpret_cast<uint32_t *>(&a0), *reinterpret_cast<uint32_t *>(&a1), b.x, b.y);
+        }
+      }
+    }
+    __syncthreads();  // the next tile overwrites R, P16, Ah
+  }
+#pragma unroll
+  for (int f = 0; f < 2; f++)
+#pragma unroll
+    for (int g = 0; g < 2; g++)
+#pragma unroll
+      for (int e = 0; e < 8; e++) {
+        const int dim = 64 * w + 32 * f + 8 * q4 + (lane & 1) + 2 * ((e >> 1) & 1) + 4 * hh;
+        const int h = g * 8 + 2 * ((lane >> 1) & 1) + (e & 1) + 4 * (e >> 2);
+        part[(((size_t)t * S + z) * H + h0 + h) * (hd + 2) + dim] = acc[f][g][e];
+      }
+  if (tid < 16) {
+    float *ph = part + (((size_t)t * S + z) * H + h0 + tid) * (hd + 2);
+    ph[hd] = Mh[tid];
+    ph[hd + 1] = Lh[tid];
+  }
+}

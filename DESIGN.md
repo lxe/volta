@@ -343,3 +343,34 @@ tokens per GPU: routed experts 49 ms, dense matmuls 18.5, attention 15.8, collec
 (2.2 ms at 8 per GPU): it runs on CUDA cores, and with one KV head shared by all 64 query heads each token's
 attention is a [64 x 512] x [512 x rows] product, tensor-core work. The 32-token expert and dense kernels are
 limited by their inner loop (register dequant + mma) more than by bandwidth at this size.
+
+### 2026-10-22: attention on the tensor cores
+
+`vattn_mma` replaces the CUDA-core attention. With one KV row per position shared by all 64 query heads (and
+used as both key and value), each 32-row tile is S = R Q^T for 16 heads, then O^T += R^T P^T, both with
+`mma.m8n8k4` in fp16 and fp32 accumulation; the online softmax, the 160-row splits and the partial layout are
+unchanged. Only the row tile is staged in shared memory (two blocks per SM). The grid puts a token's four head
+groups next to each other, so they share its rows through L2. In `tests/attn_test.cu` the kernel matches the
+CUDA-core one to 1e-3 (outputs up to 0.16) and runs 2.7x faster at 32 tokens per GPU (292 against 797 us per
+layer). In the engine: KL 0.127; 64 sessions 50.9 ms per step; adaptive drafts at 64 sessions, code 27.2 tok/s
+per session (25.2 before), prose 18.2 (17.6).
+
+### 2026-10-22: other hardware and an official container (plan, not built)
+
+What ties the engine to the DGX-1 V100 box today, and what each piece would need:
+
+| Piece | Today | To run elsewhere |
+|---|---|---|
+| Tensor-core kernels (experts, dense, attention) | `mma.m8n8k4`, Volta's only fp16 MMA | sm_80+: `mma.m16n8k16` with `ldmatrix` / `cp.async` variants of the same kernels, same packed formats; the formats (cb3/cb2 lookups, 4-bit dense) are not Volta-specific |
+| Collectives | cube kernels for the DGX-1 hybrid mesh (two quads + twins), 8 GPUs | a topology table from `nvidia-smi topo`: NVSwitch boxes (A100/H100 HGX) do the all-gather and all-to-all in one hop; PCIe boxes (8x RTX 3090/4090) need a host-staged or NCCL path |
+| Memory plan | 27.5 GB of experts per 32 GB GPU, experts split 8 ways | the tier plan is already a function of GPUs x expert bytes per GPU (`plans/`); a pack per (GPU count, memory) pair, e.g. 4 x 80 GB, 8 x 40 GB, 8 x 24 GB (cb2-heavy) |
+| Engram | 196 GB of tables in host RAM | unchanged; boxes with under ~400 GB of RAM need the tables quantized (4-bit ~100 GB, quality to be measured) |
+
+Machines that mimic this one closely enough to keep the same optimizations: 8x V100 32 GB (SXM2 or SXM3), 8x
+A100 40 GB (NVSwitch; same memory pressure, more bandwidth), 4x A100 / H100 80 GB (fewer, larger GPUs: experts
+split 4 ways). 8x V100 16 GB does not fit: even all-cb2 experts are ~153 GB.
+
+Container: an `nvidia/cuda:12.9.x-devel` image building `volta` for the target architectures, whose entrypoint
+reads the GPU count, memory and topology, picks the matching pack from the Hugging Face repo (`base/` plus
+`pack-<GB>gb-<N>x<gpu>/`), downloads what is missing, and starts. It becomes worth building with the API server
+(`core/src/server` on top of the engine), which the engine does not have yet.

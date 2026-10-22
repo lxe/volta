@@ -60,7 +60,7 @@ pub struct Opts {
 const KERNELS: &[&str] = &[
     "gemv_q8_0", "gemv_q8r", "gemv_q8r_sk", "gemv_f16", "gemv_f16_sk", "gemv_bf16", "gemv_bf16_sk", "gemv_f32", "gemv_f32_sk",
     "gemv_fp8b32", "gemv_q2_0", "gemv_ptq1_0", "gemv_q3_k", "gemv_q8g", "gemv_q6p", "gemv_q6g4", "gemv_q6s8", "gemv_q5p", "gemv_q5p4",
-    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_dots", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows",
+    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_dots", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows", "vq16", "vattn_mma",
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
@@ -918,6 +918,8 @@ struct Work {
     mix_f: Buf,
     qr: Buf,
     qkv: Buf,
+    /// fp16(q * scale) for vattn_mma
+    q16: Buf,
     q: Buf,
     kvv: Buf,
     o: Buf,
@@ -1175,6 +1177,7 @@ impl<'m> Shard<'m> {
             mix_f: fz(t * 24)?,
             qr: fz(t * c.q_lora)?,
             qkv: fz(t * (c.q_lora + c.head_dim))?,
+            q16: g.alloc_zeroed(t * c.n_heads * c.head_dim * 2)?,
             q: fz(t * c.n_heads * c.head_dim)?,
             kvv: fz(t * c.head_dim)?,
             o: fz(t * c.n_heads * c.head_dim)?,
@@ -1689,7 +1692,7 @@ impl<'m> Shard<'m> {
         // 160 rows per block (5 sub-tiles, online softmax): 4 partials per head for 640 rows
         let s = (win + kcomp).div_ceil(160);
         ensure!(s <= ATTN_SPLITS, "attention over {} rows", win + kcomp);
-        self.g.launch(self.k["vattn_tile5"], (t as u32, (nh / 16) as u32, s as u32), 256, 0, &[Arg::P(w.q.ptr), Arg::P(l.window.ptr), Arg::P(w.win_idx.ptr), Arg::I(win as i32), Arg::P(comp_ptr), Arg::P(w.comp_idx.ptr), Arg::I(kcomp as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::F(scale)])?;
+        self.attn_tiles(t, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, s, scale)?;
         self.g.launch(self.k["sparse_attn_merge"], (t as u32, nh as u32, 1), 256, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32)])?;
         self.rope_rows(w.o.ptr, nh, hd, compressed, x.pos, t, true)?;
         self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?;
@@ -1989,6 +1992,24 @@ impl<'m> Shard<'m> {
             }
         }
         Ok(())
+    }
+
+    /// attention partials over each token's rows (window rows by win_idx, then compressed rows by comp_idx), 160 rows
+    /// per split: tensor cores (vattn_mma) unless VOLTA_ATTN=tile5
+    #[allow(clippy::too_many_arguments)]
+    fn attn_tiles(&self, t: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, s: usize, scale: f32) -> Result<()> {
+        let c = &self.m.cfg;
+        let (hd, nh, w) = (c.head_dim, c.n_heads, &self.w);
+        if std::env::var("VOLTA_ATTN").is_ok_and(|v| v == "tile5") {
+            return self.g.launch(self.k["vattn_tile5"], (t as u32, (nh / 16) as u32, s as u32), 256, 0, &[Arg::P(w.q.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::F(scale)]);
+        }
+        ensure!(hd == 512 && nh % 16 == 0, "vattn_mma: 512-dim heads in groups of 16");
+        let n = t * nh * hd;
+        self.g.launch(self.k["vq16"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32)])?;
+        // VAM_SMEM in volta.cuh
+        let smem = 32 * 520 * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
+        self.g.set_smem(self.k["vattn_mma"], smem)?;
+        self.g.launch(self.k["vattn_mma"], ((nh / 16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32)])
     }
 
     /// launch on the side stream (side) or the main one

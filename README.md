@@ -12,14 +12,14 @@ DeepSeek-V4.1-Flash-1017 from the official checkpoint, with its experts re-packe
 | | |
 |---|---|
 | Quality, Lucebox eval (8 x 1024 tokens against the FP8 teacher's top-256) | KL 0.126-0.130 across runs, top-1 agreement 84%, ppl 8.95 |
-| 64 concurrent sessions, real text | 52.7 ms per step: 1,214 tok/s aggregate, 19.0 tok/s per session |
+| 64 concurrent sessions, real text | 50.9 ms per step: 1,258 tok/s aggregate, 19.7 tok/s per session |
 | 128 sessions | 69.1 ms per step: 1,853 tok/s aggregate, 14.5 tok/s per session |
 | 256 sessions | 103.6 ms per step: **2,472 tok/s** aggregate, 9.7 tok/s per session |
 | 512 sessions | 166.8 ms per step: 3,070 tok/s aggregate, 6.0 tok/s per session |
 | With the DSpark draft, code, 64 sessions, 3 drafts per pass | 3.23 tokens per pass: **26.0 tok/s per session**, 1,667 tok/s aggregate |
 | With the DSpark draft, code, 8 sessions, 5 drafts per pass | 4.28 tokens per pass: **82.6 tok/s per session** |
 | With the DSpark draft, prose, 64 sessions, 1 draft per pass | 1.57 tokens per pass: 17.9 tok/s per session (17.5 without) |
-| With the DSpark draft, `--adaptive` (drafts per session from its acceptance), 64 sessions | code 25.2, prose 17.6 tok/s per session |
+| With the DSpark draft, `--adaptive` (drafts per session from its acceptance), 64 sessions | code **27.2**, prose 18.2 tok/s per session |
 | llama.cpp (PR #30817, UD-IQ1_M) on the same machine, for comparison | 26.7 tok/s for one session; 72-97 tok/s aggregate at most |
 
  [DESIGN.md](DESIGN.md) has the design, the
@@ -110,6 +110,7 @@ baseline; `--k 5 --adaptive` picks each session's drafts from its acceptance).
 | `VOLTA_TRACE_STEP` | | wraps that step in a CUDA profiler range, for `nsys --capture-range=cudaProfilerApi` |
 | `VOLTA_PROF` | | prints where each step's time went, with a sync at each boundary |
 | `VOLTA_SPARK` | | the checkpoint directory to load the DSpark draft from (its experts are packed at load) |
+| `VOLTA_ATTN` | | `tile5` runs attention on CUDA cores instead of the tensor cores |
 | `VOLTA_OVERLAP` | on | `0` runs everything on one stream (no side-stream branches in the step graph) |
 
 ## License
