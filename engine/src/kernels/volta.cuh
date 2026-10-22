@@ -323,12 +323,25 @@ extern "C" __global__ void vroute_count(const int *selg, int lds, const int *nto
   int j = lidx[selg[t * lds + i % k]];
   if (j >= 0) atomicAdd(&cnt[j], 1);
 }
+// exclusive scan of the per-expert counts (one block of 1024 threads, L <= 4096)
 extern "C" __global__ void vroute_scan(const int *cnt, int *off, int *cur, int L) {
-  if (threadIdx.x == 0) {
-    int a = 0;
-    for (int j = 0; j < L; j++) { off[j] = a; a += cnt[j]; cur[j] = 0; }
-    off[L] = a;
+  __shared__ int ws[32];
+  const int per = (L + blockDim.x - 1) / blockDim.x, j0 = threadIdx.x * per, lane = threadIdx.x & 31, w = threadIdx.x >> 5;
+  int a = 0;
+  for (int j = j0; j < min(j0 + per, L); j++) a += cnt[j];
+  int x = a;  // inclusive scan of the thread sums: within the warp, then over the warp totals
+  for (int o = 1; o < 32; o <<= 1) { int y = __shfl_up_sync(0xffffffffu, x, o); if (lane >= o) x += y; }
+  if (lane == 31) ws[w] = x;
+  __syncthreads();
+  if (w == 0) {
+    int v = lane < (int)(blockDim.x >> 5) ? ws[lane] : 0;
+    for (int o = 1; o < 32; o <<= 1) { int y = __shfl_up_sync(0xffffffffu, v, o); if (lane >= o) v += y; }
+    ws[lane] = v;
   }
+  __syncthreads();
+  int b = x - a + (w ? ws[w - 1] : 0);
+  for (int j = j0; j < min(j0 + per, L); j++) { off[j] = b; b += cnt[j]; cur[j] = 0; }
+  if (threadIdx.x == blockDim.x - 1) off[L] = b;
 }
 extern "C" __global__ void vroute_fill(const int *selg, const float *wtg, int lds, const int *ntok, int tmax, int ngpu, int k, const int *lidx,
                                        const int *off, int *cur, int *tok, float *wt) {
@@ -613,6 +626,9 @@ extern "C" __global__ void __launch_bounds__(256) vattn_tile5(const float *q, co
 // A pair code indexes a table of half2 (both weights' values): 256 / 64 / 16 entries in shared memory, so one lookup
 // decodes two weights. Layout: words [row group][unit][word][lane] u32, scales [row group][unit][lane] u8; cb scales
 // are multiplied by a per-matrix factor (VWork2::mul). Weight order inside a unit is natural (no x permutation).
+#ifndef VLUT_PROBE
+#define VLUT_PROBE 0  // tests only: 1 = weight loads only, 3 = also no x tile
+#endif
 #define VF_FP4 0
 #define VF_CB3 1
 #define VF_CB2 2
@@ -689,13 +705,13 @@ __device__ __forceinline__ void vlut_mm(const uint32_t *__restrict__ W, const ui
     for (int w = 0; w < UW; w++) qn[j][w] = j < rv ? __ldg(wp[j] + w * 32) : 0u;
     sn[j] = j < rv ? __ldg(sp[j]) : 0;
   }
-  for (int i = threadIdx.x; i < NT * 8 * (kc / 8); i += WARPS * 32) {
+  for (int i = threadIdx.x; i < NT * 8 * (kc / 8) && VLUT_PROBE != 3; i += WARPS * 32) {
     int t = i / (kc / 8), c8 = (i % (kc / 8)) * 8;
     uint4 v = make_uint4(0, 0, 0, 0);
     if (t < (int)wk.nt) v = *reinterpret_cast<const uint4 *>(X + (size_t)(in_rows ? in_rows[wk.t0 + t] : (int)wk.t0 + t) * ldx + k0 + c8);
     *reinterpret_cast<uint4 *>(&xs[t * LDX + c8]) = v;
   }
-  __syncthreads();
+  if (VLUT_PROBE != 3) __syncthreads();
   if (active) {
   const half mulh = __float2half(wk.mul);
   float acc[R][NT][8];
@@ -728,6 +744,11 @@ __device__ __forceinline__ void vlut_mm(const uint32_t *__restrict__ W, const ui
       }
       s2[j] = __half2half2(s);
     }
+#if VLUT_PROBE == 1 || VLUT_PROBE == 3
+#pragma unroll
+    for (int j = 0; j < R; j++) { uint32_t z = 0; for (int w = 0; w < UW; w++) z ^= qc[j][w]; acc[j][0][0] += __uint_as_float(z) + __half2float(__low2half(s2[j])); }
+    continue;
+#endif
 #pragma unroll
     for (int m = 0; m < 8; m++) {  // 4 k per mma: pairs 2m, 2m+1
       const int kpos = u * 32 + 4 * m;
@@ -756,7 +777,7 @@ __device__ __forceinline__ void vlut_mm(const uint32_t *__restrict__ W, const ui
         }
       }
   }
-  __syncthreads();  // the next tile reuses the x tile
+  if (VLUT_PROBE != 3) __syncthreads();  // the next tile reuses the x tile
   }
   }
 }

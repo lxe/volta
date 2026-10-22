@@ -641,7 +641,9 @@ impl Model {
                 (Some(q), Some(k)) => Some(q.iter().zip(&k).map(|(a, b)| a * b).collect()),
                 _ => None,
             };
-            let experts = (0..cfg.n_experts)
+            // a checkpoint without routed experts (a volta pack's base) loads with none
+            let has_experts = st.tensors.contains_key(&p("ffn.experts.0.w1.weight"));
+            let experts = (0..if has_experts { cfg.n_experts } else { 0 })
                 .map(|e| {
                     Ok(Expert {
                         gate: m(&p(&format!("ffn.experts.{e}.w1.weight")))?,

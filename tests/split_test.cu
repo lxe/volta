@@ -3,6 +3,7 @@
 // nvcc -O3 -arch=sm_70 -std=c++17 -I../engine/src/kernels split_test.cu -o split_test
 #include <cstdio>
 #include <vector>
+#include <cstdlib>
 #include <cuda_fp16.h>
 #include "dsx.cu"
 #define CK(x) do{cudaError_t e=(x); if(e!=cudaSuccess){printf("CUDA %s @%d: %s\n",#x,__LINE__,cudaGetErrorString(e)); exit(1);}}while(0)
@@ -25,7 +26,7 @@ int main() {
       std::vector<VWork2> v;
       for (int e = 0; e < E; e++) v.push_back(VWork2{(unsigned)(e * mw / 128), (unsigned)(e * ms), 0, (unsigned)T, 1.f, {0, 0, 0}});
       CK(cudaMemcpy(wk, v.data(), v.size() * sizeof(VWork2), cudaMemcpyHostToDevice));
-      const int KC = K % 1024 == 0 ? 1024 : K % 1152 == 0 ? 1152 : K;
+      const int KC0 = getenv("KC") ? atoi(getenv("KC")) : 1024; const int KC = K % KC0 == 0 ? KC0 : K % 1152 == 0 && KC0 >= 1024 ? 1152 : K % 576 == 0 && KC0 >= 512 ? 576 : K <= KC0 ? K : 288;
       size_t smem = 64 * 4 + 512 + 8 * (KC + 8) * 2;
       for (int R : {4, 1}) {
       dim3 g((N + 256 * R - 1) / (256 * R), E, (K + KC - 1) / KC);

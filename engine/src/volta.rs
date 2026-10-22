@@ -223,12 +223,12 @@ fn expert_bytes(m: &Model, l: usize, e: usize, tiers: Option<&[Vec<u8>]>) -> usi
 
 /// owner[l][e]: the GPU holding expert e of layer l. Each expert's expected cost per step is its bytes x P(picked
 /// at least once) plus a term for its expected tokens, from the routing counts in VOLTA_RANK (dsx's rank.json:
-/// [layer, expert, picks], default /root/dsx/stage/rank.json) at VOLTA_PLACE_T tokens per step (default 128); without
+/// [layer, expert, picks], default plans/rank.json) at VOLTA_PLACE_T tokens per step (default 128); without
 /// counts every expert weighs its bytes. Per layer, largest cost first onto the GPU with the least cost so far.
 /// routing counts per (layer, expert) from VOLTA_RANK (dsx's rank.json: [layer, expert, picks]), if present
 fn routing_counts(m: &Model) -> Option<Vec<Vec<f64>>> {
     let c = &m.cfg;
-    let path = std::env::var("VOLTA_RANK").unwrap_or_else(|_| "/root/dsx/stage/rank.json".into());
+    let path = std::env::var("VOLTA_RANK").unwrap_or_else(|_| "plans/rank.json".into());
     let v = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Vec<[u64; 3]>>(&b).ok())?;
     let mut picks = vec![vec![0f64; c.n_experts]; c.n_layers];
     for [l, e, n] in v {
@@ -307,13 +307,47 @@ pub fn assign_experts(m: &Model, ngpu: usize, tiers: Option<&[Vec<u8>]>) -> Vec<
 /// group's experts. At tp = ngpu every GPU reads 1/ngpu of every picked expert, so no GPU waits on another's routing
 /// luck at the exchange.
 pub fn expert_tp(m: &Model, ngpu: usize) -> usize {
-    let fp4 = m.layers[0].experts[0].gate.ty == GType::Fp4;
+    if let Some(p) = Pack::open() {
+        return p.etp;
+    }
+    let fp4 = fp4_source(m);
     let tp = std::env::var("VOLTA_EXPERT_TP").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(if fp4 { ngpu } else { 1 });
     if tp > 1 && fp4 && ngpu % tp == 0 && m.cfg.inter % (32 * tp) == 0 && !m.cfg.expert_rot.iter().any(|&r| r) { tp } else { 1 }
 }
 
-/// bump when the packed expert layout changes (invalidates /dev/shm/vcache)
+/// bump when the packed expert layout changes (invalidates /dev/shm/vcache and packs)
 const FORMAT: u32 = 4;
+
+/// experts from DeepSeek's MXFP4 checkpoint (also when they come from a pack, which only that source makes)
+fn fp4_source(m: &Model) -> bool {
+    m.layers[0].experts.first().map_or(true, |e| e.gate.ty == GType::Fp4)
+}
+
+/// A pack (VOLTA_PACK=<dir>): the packed expert store of every GPU (`gpu<i>.bin`, the /dev/shm/vcache format) and
+/// `manifest.json` with the plan that made it, so a machine like this one loads the experts without the
+/// checkpoint's expert tensors or the GPU re-quantization. If the directory has no manifest yet, the run makes the
+/// pack from the full checkpoint (export).
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct Pack {
+    pub format: u32,
+    pub ngpu: usize,
+    pub etp: usize,
+    pub expert_gb: f64,
+    /// [layer][expert]: 0 MXFP4, 1 cb3, 2 cb2
+    pub tiers: Vec<Vec<u8>>,
+    /// [layer][expert]: the expert group (of etp GPUs) that holds it
+    pub owner: Vec<Vec<u8>>,
+}
+
+impl Pack {
+    pub fn dir() -> Option<std::path::PathBuf> {
+        std::env::var_os("VOLTA_PACK").map(std::path::PathBuf::from)
+    }
+    pub fn open() -> Option<Pack> {
+        let b = std::fs::read(Self::dir()?.join("manifest.json")).ok()?;
+        serde_json::from_slice(&b).ok()
+    }
+}
 
 impl Experts {
     /// convert and upload the experts this GPU owns (layer-major), streaming one layer at a time; the packed store is
@@ -455,7 +489,9 @@ impl Experts {
         let wbuf = g.alloc(wtot * 4)?;
         let sbuf = g.alloc(stot)?;
         let mut tab = HashMap::new();
-        let cache = if std::env::var("VOLTA_CACHE").is_ok_and(|v| v == "0") {
+        let cache = if let Some(dir) = Pack::dir() {
+            Some(dir.join(format!("gpu{gi}.bin")))
+        } else if std::env::var("VOLTA_CACHE").is_ok_and(|v| v == "0") {
             None
         } else {
             use std::hash::{Hash, Hasher};
@@ -1667,7 +1703,7 @@ impl<'m> Shard<'m> {
         let rb = xrow_bytes(c);
         let (selp, wtp, lds) = (w.xg.ptr + (d * 2) as u64, w.xg.ptr + (d * 2 + kk * 4) as u64, rb / 4);
         self.g.launch(self.k["vroute_count"], (gr, 1, 1), 256, 0, &[Arg::P(selp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::P(cnt)])?;
-        self.g.launch(self.k["vroute_scan"], (1, 1, 1), 32, 0, &[Arg::P(cnt), Arg::P(off), Arg::P(cur), Arg::I(nl as i32)])?;
+        self.g.launch(self.k["vroute_scan"], (1, 1, 1), 1024, 0, &[Arg::P(cnt), Arg::P(off), Arg::P(cur), Arg::I(nl as i32)])?;
         self.g.launch(self.k["vroute_fill"], (gr, 1, 1), 256, 0, &[Arg::P(selp), Arg::P(wtp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::P(off), Arg::P(cur), Arg::P(w.tok.ptr), Arg::P(w.wt.ptr)])?;
         let prow = (pmax as u32).min(64); // grid rows: the kernels loop over the actual pair count
         self.g.launch(self.k["vzero_c"], (((2 * inter) as u32).div_ceil(256), prow, 1), 256, 0, &[Arg::P(w.gu.ptr), Arg::I((2 * inter) as i32), Arg::P(total)])?;
@@ -1862,13 +1898,22 @@ impl Engine {
         let gpus_ready = Arc::new(Barrier::new(n));
         // MXFP4 source (the HF checkpoint): tiers under VOLTA_EXPERT_GB per GPU (default 25), shrunk until the
         // placement fits every GPU
-        let fp4 = m.layers[0].experts[0].gate.ty == GType::Fp4;
+        let fp4 = fp4_source(m);
+        let pack = Pack::open();
+        if let Some(p) = &pack {
+            ensure!(p.format == FORMAT && p.ngpu == o.ngpu, "pack: format {} for {} GPUs, this engine is format {FORMAT} on {}", p.format, p.ngpu, o.ngpu);
+        } else if Pack::dir().is_some() {
+            ensure!(m.layers[0].experts.len() == m.cfg.n_experts, "VOLTA_PACK has no manifest.json, and making one needs the checkpoint's experts");
+        }
         let per_gpu = std::env::var("VOLTA_EXPERT_GB").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or(25.0) * 1e9;
         // experts are placed over groups of etp GPUs; a GPU holds 1/etp of its group's bytes
         let etp = expert_tp(m, n);
         let ng = n / etp;
-        let (mut tiers, mut owner_v) = (None, assign_experts(m, ng, None));
-        if fp4 {
+        let (mut tiers, mut owner_v) = (None, if pack.is_some() { vec![] } else { assign_experts(m, ng, None) });
+        if let Some(p) = &pack {
+            (tiers, owner_v) = (Some(p.tiers.clone()), p.owner.clone());
+            eprintln!("experts from the pack: split {etp} ways, {} GB per GPU", p.expert_gb);
+        } else if fp4 {
             let mut budget = per_gpu * n as f64;
             for _ in 0..6 {
                 let t = plan_tiers(m, budget);
@@ -1888,6 +1933,11 @@ impl Engine {
                 budget -= (worst - per_gpu) * n as f64 + 0.05e9 * n as f64;
             }
             eprintln!("experts split {etp} ways over {ng} group(s)");
+            if let (Some(dir), Some(t)) = (Pack::dir(), &tiers) {
+                std::fs::create_dir_all(&dir)?;
+                let p = Pack { format: FORMAT, ngpu: n, etp, expert_gb: per_gpu / 1e9, tiers: t.clone(), owner: owner_v.clone() };
+                std::fs::write(dir.join("manifest.json"), serde_json::to_vec(&p)?)?;
+            }
         }
         let owner = Arc::new(owner_v);
         let tiers = tiers.map(Arc::new);

@@ -7,15 +7,17 @@ into throughput for many concurrent agent sessions with its own low-bit formats 
 
 ## Results
 
-DeepSeek-V4.1-Flash-1017 from the official checkpoint, re-packed at load to 220 GB of experts (27.5 GB per GPU):
+DeepSeek-V4.1-Flash-1017 from the official checkpoint, with its experts re-packed to 220 GB (27.5 GB per GPU):
 
 | | |
 |---|---|
 | Quality, Lucebox eval (8 x 1024 tokens against the FP8 teacher's top-256) | KL 0.130, top-1 agreement 84.6%, ppl 8.97 |
-| 64 concurrent sessions, real text | 58.7 ms per step: **1,091 tok/s** aggregate, 17.0 tok/s per session |
+| 64 concurrent sessions, real text | 55.2 ms per step: 1,160 tok/s aggregate, 18.1 tok/s per session |
+| 128 sessions | 73.7 ms per step: 1,737 tok/s aggregate, 13.6 tok/s per session |
+| 256 sessions | 109.6 ms per step: **2,337 tok/s** aggregate, 9.1 tok/s per session |
 | llama.cpp (PR #30817, UD-IQ1_M) on the same machine, for comparison | 26.7 tok/s for one session; 72-97 tok/s aggregate at most |
 
-The target is ~2,000 tok/s aggregate at ~30 tok/s per session. [DESIGN.md](DESIGN.md) has the design, the
+The next target is ~30 tok/s per session at 64 sessions. [DESIGN.md](DESIGN.md) has the design, the
 hardware measurements, the time per step by kernel, and dated amendments where the plan changed.
 
 ## How it works
@@ -44,6 +46,7 @@ hardware measurements, the time per step by kernel, and dated amendments where t
 | `core/`, the rest of `engine/` | model loader, CPU reference and shared CUDA kernels, from [dsx](https://github.com/lxe/dsx) |
 | `tests/` | standalone kernel tests and sweeps (`vmoe_test`, `vlut_test`, `dense_test`, `split_test`) |
 | `bench/` | hardware probes and the existing-engine benchmarks |
+| `plans/` | the published pack's tier plan and placement, and the routing counts that choose tiers |
 
 ## Build
 
@@ -62,11 +65,25 @@ nvcc -O3 -arch=sm_70 -std=c++17 -I../engine/src/kernels vlut_test.cu -o vlut_tes
 
 ## Run
 
-`--model` is the checkpoint directory (`config.json`, the safetensors shards, Engram included).
+The ready-made weights are on Hugging Face at
+[lxe/DeepSeek-V4.1-Flash-1017-Volta](https://huggingface.co/lxe/DeepSeek-V4.1-Flash-1017-Volta): `base/` is the
+official checkpoint without its routed experts (dense weights and Engram, unchanged), and `pack-27.5gb-8xv100/` holds
+the packed experts for each of the 8 GPUs. `/dev/shm` or a fast disk for the pack keeps the load at ~2 minutes.
 
 ```bash
-VOLTA_EXPERT_GB=27.5 ./target/release/volta bench --model DeepSeek-V4.1-Flash-1017 --sessions 8 --steps 32 --text heldout.i32
+VOLTA_PACK=pack-27.5gb-8xv100 ./target/release/volta bench --model base --sessions 8 --steps 32 --text heldout.i32
 ```
+
+From the official checkpoint instead, the engine packs the experts on the GPUs at load (~3 minutes), using the
+routing counts in `plans/rank.json`, and caches the result in `/dev/shm/vcache`:
+
+```bash
+VOLTA_EXPERT_GB=27.5 ./target/release/volta bench --model DeepSeek-V4.1-Flash-1017 --sessions 8 --steps 32
+```
+
+To rebuild exactly the published pack, start a pack directory from its plan: `mkdir pack && cp
+plans/v41-1017-27.5gb-8xv100.json pack/manifest.json`, then run once with `VOLTA_PACK=pack` and the official
+checkpoint as `--model`. The plan holds each expert's tier (15,172 in cb3, 188 in cb2) and its placement.
 
 `--sessions` is per GPU. `--text` teacher-forces real tokens (i32 LE) so routing looks like real traffic.
 `volta eval --model ... --eval <dir>` runs the Lucebox eval, and `volta check` compares logits with the CPU
@@ -74,8 +91,9 @@ reference.
 
 | Variable | Default | Effect |
 |---|---|---|
+| `VOLTA_PACK` | | load the experts from this pack directory, or make the pack there if it has no `gpu*.bin` yet |
 | `VOLTA_EXPERT_GB` | 25 | expert bytes per GPU; sets how many experts drop from MXFP4 to cb3 and cb2 |
-| `VOLTA_RANK` | `/root/dsx/stage/rank.json` | routing counts per (layer, expert) as `[layer, expert, picks]`, which choose the tiers |
+| `VOLTA_RANK` | `plans/rank.json` | routing counts per (layer, expert) as `[layer, expert, picks]`, which choose the tiers |
 | `VOLTA_EXPERT_TP` | 8 | GPUs that split each expert (1 places whole experts) |
 | `VOLTA_CACHE` | on | `0` skips the packed-expert cache in `/dev/shm/vcache` |
 | `VOLTA_TRACE_STEP` | | wraps that step in a CUDA profiler range, for `nsys --capture-range=cudaProfilerApi` |

@@ -269,7 +269,7 @@ The design changed in four places, all from measurements:
 4. **One CUDA graph per step**, keyed by tokens per GPU and a context bucket. Routing is built on the device
    (count, scan, fill), and lists with more than 16 tokens are compacted before their launch.
 
-Quality and speed with 27.5 GB of experts per GPU (220 GB total: 14,862 experts in cb3 and 498 in cb2, none in
+Quality and speed with 27.5 GB of experts per GPU (220 GB total: 15,172 experts in cb3 and 188 in cb2, none in
 MXFP4):
 
 | | Result |
