@@ -76,7 +76,7 @@ const KERNELS: &[&str] = &[
     "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_dots", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows", "vq16", "vattn_mma", "vstore_fp4_rows", "vindexer_score4", "vindexer_mma",
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
-    "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
+    "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
     "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
@@ -1844,9 +1844,8 @@ impl<'m> Shard<'m> {
     /// cube all-to-all of the partial sums: ypart rows of GPU d's tokens -> d's parts[me] (vx_alltoall)
     fn vx_scatter(&self, li: usize) -> Result<()> {
         let d = self.m.cfg.dim;
-        let tg = self.ngpu * TMAX;
         let w = &self.w;
-        self.g.launch(self.k["vto_f16"], (((tg * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.ypart.ptr), Arg::P(w.ypart16.ptr), Arg::I((tg * d) as i32)])?;
+        self.src_rows(w.ypart.ptr, w.ypart16.ptr, d, false)?;
         let slot = (TMAX * d * 2) as u64;
         self.g.launch(self.k["vx_alltoall"], (VX_BLOCKS as u32, 1, 1), 256, 0, &[Arg::P(w.vx_pb.ptr), Arg::I(self.gi as i32), Arg::P(slot), Arg::P(w.ypart16.ptr), Arg::P(slot), Arg::P(w.vx_bytes.ptr + 32), Arg::P(w.seqd.ptr), Arg::I(li as i32)])
     }
@@ -1883,7 +1882,7 @@ impl<'m> Shard<'m> {
         let (cnt, off, cur) = (w.cnt.ptr, w.cnt.ptr + (nl * 4) as u64, w.cnt.ptr + ((2 * nl + 1) * 4) as u64);
         let total = off + (nl * 4) as u64;
         self.g.memset(cnt, nl * 4)?;
-        self.g.memset(w.ypart.ptr, tg * d * 4)?;
+        self.src_rows(w.ypart.ptr, 0, d, false)?;
         let gr = ((tg * kk) as u32).div_ceil(256);
         let rb = xrow_bytes(c);
         let (selp, wtp, lds) = (w.xg.ptr + (d * 2) as u64, w.xg.ptr + (d * 2 + kk * 4) as u64, rb / 4);
@@ -1904,7 +1903,7 @@ impl<'m> Shard<'m> {
         if let Some((sgu, sdn)) = &self.layers[li].sh_slice {
             // this GPU's slice of the shared expert over every exchange row (rows past a GPU's count are unused)
             let sl = sdn.cols;
-            self.lx(ov, self.k["vzero_rows"], (((2 * sl) as u32).div_ceil(256), tg as u32, 1), 256, 0, &[Arg::P(w.shgu.ptr), Arg::I((2 * sl) as i32), Arg::I((2 * sl) as i32)])?;
+            self.src_rows(w.shgu.ptr, 0, 2 * sl, ov)?;
             self.lx(ov, self.k["vsrc_rows"], (1, 1, 1), 32, 0, &[Arg::P(w.ntok.ptr), Arg::I(self.ngpu as i32), Arg::I(TMAX as i32), Arg::P(w.srcl.ptr)])?;
             self.vrows_src(sgu, w.xg.ptr, rb / 2, w.shgu.ptr, 2 * sl, ov)?;
             self.lx(ov, self.k["vswiglu"], (((tg * sl) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.shgu.ptr), Arg::P(0), Arg::P(w.shh.ptr), Arg::I(tg as i32), Arg::I(sl as i32), Arg::F(c.swiglu_limit)])?;
@@ -1936,6 +1935,11 @@ impl<'m> Shard<'m> {
         Ok(())
     }
 
+    /// over the exchange rows that hold tokens (n floats each, by the device counts): y16 = fp16(y), or y = 0
+    fn src_rows(&self, y: u64, y16: u64, n: usize, side: bool) -> Result<()> {
+        self.lx(side, self.k["vsrc_f16"], ((n as u32).div_ceil(256), self.ngpu as u32, 8), 256, 0, &[Arg::P(y), Arg::P(y16), Arg::I(n as i32), Arg::P(self.w.ntok.ptr), Arg::I(TMAX as i32)])
+    }
+
     /// y[r][n] += W x[r] over the exchange rows that hold tokens: one work entry per source GPU (its count from ntok,
     /// rows from src * TMAX), launched per count bucket like the expert lists; one row group per warp (any N % 32)
     fn vrows_src(&self, v: &VMat, x: u64, ldx: usize, y: u64, ldy: usize, side: bool) -> Result<()> {
@@ -1943,7 +1947,8 @@ impl<'m> Shard<'m> {
         // weights are read once per tile instead of once per source GPU
         let (n, k) = (v.rows, v.cols);
         let rtiles = n.div_ceil(256);
-        let ttiles = (self.ngpu * TMAX).div_ceil(32);
+        // token tiles walked by up to 4 blocks each (a step rarely fills more than a few)
+        let ttiles = (self.ngpu * TMAX).div_ceil(32).min(4);
         let kc = if k <= 1152 { k } else { 256 };
         let kern = self.k["vmoe_b4_n4"];
         let smem = 4 * 8 * (kc + 8) * 2;
@@ -1997,7 +2002,7 @@ impl<'m> Shard<'m> {
                 }
                 let r = if *kind >= K_FP4 { 1 } else { match nb { 1 => 4, 2 => 2, _ => 1 } };
                 let rtiles = n.div_ceil(8 * 32 * r);
-                let ttiles = if nb == 4 { cap.div_ceil(32) } else { 1 };
+                let ttiles = if nb == 4 { cap.div_ceil(32).min(4) } else { 1 };
                 let kz = k.div_ceil(kc);
                 // this bucket's compacted entries (vbuckets): blocks loop over them by grid y, sized for ~lut_blocks()
                 // blocks per SM (lists over 16 tokens: 8 entries at a time, one block per SM for the big tiles)

@@ -413,6 +413,18 @@ extern "C" __global__ void vto_f16_rows(const float *x, int ldx, half *y, int n)
   if (i < n) y[(size_t)blockIdx.y * n + i] = __float2half(x[(size_t)blockIdx.y * ldx + i]);
 }
 
+// the exchange rows that hold tokens (source GPU g's first ntok[g] of its tmax rows, n floats each): y16 = fp16(y),
+// or y = 0 when y16 is null. grid (ceil(n / 256), ngpu, row phases), block 256
+extern "C" __global__ void vsrc_f16(float *y, half *y16, int n, const int *ntok, int tmax) {
+  const int g = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  for (int j = blockIdx.z; j < ntok[g]; j += gridDim.z) {
+    const size_t r = (size_t)(g * tmax + j) * n + i;
+    if (y16) y16[r] = __float2half(y[r]);
+    else y[r] = 0.f;
+  }
+}
+
 // zero T rows of n floats with stride ld; grid (ceil(n / 256), T)
 extern "C" __global__ void vzero_rows(float *y, int ld, int n) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
