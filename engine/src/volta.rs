@@ -28,6 +28,12 @@ const HC_S: usize = 32;
 /// most tokens one session may have in a step (prefill chunks, draft verification)
 const KX: usize = TMAX;
 
+/// the compressed KV rows and indexer keys are stored as packed FP4 (exact: the reference rounds them to FP4);
+/// VOLTA_KV=bf16 keeps bf16 rows
+fn kv_fp4() -> bool {
+    std::env::var("VOLTA_KV").map_or(true, |v| v != "bf16")
+}
+
 /// window ring rows per slot: the window plus room for a step's new tokens, so writing them never overwrites a row
 /// an earlier token of the same step still reads
 fn wring(win: usize) -> usize {
@@ -60,7 +66,7 @@ pub struct Opts {
 const KERNELS: &[&str] = &[
     "gemv_q8_0", "gemv_q8r", "gemv_q8r_sk", "gemv_f16", "gemv_f16_sk", "gemv_bf16", "gemv_bf16_sk", "gemv_f32", "gemv_f32_sk",
     "gemv_fp8b32", "gemv_q2_0", "gemv_ptq1_0", "gemv_q3_k", "gemv_q8g", "gemv_q6p", "gemv_q6g4", "gemv_q6s8", "gemv_q5p", "gemv_q5p4",
-    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_dots", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows", "vq16", "vattn_mma",
+    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_dots", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows", "vq16", "vattn_mma", "vstore_fp4_rows", "vindexer_score4",
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
@@ -1157,8 +1163,9 @@ impl<'m> Shard<'m> {
                 engram_kv: lino(&l.engram_kv)?,
                 engram_qk: upv(&l.engram_qk)?,
                 window: g.alloc_zeroed(o.slots * wring(c.window) * c.head_dim * 2)?,
-                comp_cache: if is_src { Some(g.alloc_zeroed(o.slots * cp * c.head_dim * 2)?) } else { None },
-                idx_cache: if is_src { Some(g.alloc_zeroed(o.slots * cp * c.idx_dim * 2)?) } else { None },
+                // FP4 rows (kv_fp4): codes + a scale per 16 (comp) / per 32 (idx); else bf16
+                comp_cache: if is_src { Some(g.alloc_zeroed(o.slots * cp * if kv_fp4() { c.head_dim / 2 + c.head_dim / 16 } else { c.head_dim * 2 })?) } else { None },
+                idx_cache: if is_src { Some(g.alloc_zeroed(o.slots * cp * if kv_fp4() { c.idx_dim / 2 + c.idx_dim / 32 } else { c.idx_dim * 2 })?) } else { None },
                 comp_state: if is_src && ratio > 1 {
                     Some((g.alloc_zeroed(o.slots * state_ring(ratio) * c.head_dim * 4)?, g.alloc_zeroed(o.slots * state_ring(ratio) * c.head_dim * 4)?))
                 } else {
@@ -1683,8 +1690,12 @@ impl<'m> Shard<'m> {
             if is_src {
                 let (w, l) = (&self.w, &self.layers[li]);
                 self.rope_rows(w.lat.ptr, 1, hd, true, x.lat_pos, t, false)?;
-                self.fake_fp4(w.lat.ptr, t * hd, 16, true)?;
-                self.g.launch(self.k["vstore_bf16_rows"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.lat.ptr), Arg::P(l.comp_cache.as_ref().unwrap().ptr), Arg::P(x.comp_rows), Arg::I(hd as i32)])?;
+                if kv_fp4() {
+                    self.g.launch(self.k["vstore_fp4_rows"], (t as u32, 1, 1), hd as u32, 0, &[Arg::P(w.lat.ptr), Arg::P(l.comp_cache.as_ref().unwrap().ptr), Arg::P(x.comp_rows), Arg::I(hd as i32), Arg::I(16), Arg::I(1)])?;
+                } else {
+                    self.fake_fp4(w.lat.ptr, t * hd, 16, true)?;
+                    self.g.launch(self.k["vstore_bf16_rows"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.lat.ptr), Arg::P(l.comp_cache.as_ref().unwrap().ptr), Arg::P(x.comp_rows), Arg::I(hd as i32)])?;
+                }
             }
         }
         let kcomp = x.kcomp;
@@ -1737,8 +1748,12 @@ impl<'m> Shard<'m> {
             self.mm(l.idx_k.as_ref().unwrap(), w.lat.ptr, w.t1.ptr, t)?;
             self.rms_rows(w.t1.ptr, l.idx_k_norm.as_ref().unwrap(), w.t1.ptr, id, t, false)?;
             self.rope_rows(w.t1.ptr, 1, id, true, x.lat_pos, t, false)?;
-            self.fake_fp4(w.t1.ptr, t * id, 32, false)?;
-            self.g.launch(self.k["vstore_bf16_rows"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.t1.ptr), Arg::P(l.idx_cache.as_ref().unwrap().ptr), Arg::P(x.idx_rows), Arg::I(id as i32)])?;
+            if kv_fp4() {
+                self.g.launch(self.k["vstore_fp4_rows"], (t as u32, 1, 1), id as u32, 0, &[Arg::P(w.t1.ptr), Arg::P(l.idx_cache.as_ref().unwrap().ptr), Arg::P(x.idx_rows), Arg::I(id as i32), Arg::I(32), Arg::I(0)])?;
+            } else {
+                self.fake_fp4(w.t1.ptr, t * id, 32, false)?;
+                self.g.launch(self.k["vstore_bf16_rows"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.t1.ptr), Arg::P(l.idx_cache.as_ref().unwrap().ptr), Arg::P(x.idx_rows), Arg::I(id as i32)])?;
+            }
         }
         // scores over the bucketed width: a token's rows past its visible count are -inf (ends)
         let n_max = x.n_max;
@@ -1750,7 +1765,7 @@ impl<'m> Shard<'m> {
         let wscale = (id as f32).powf(-0.5) * (nh as f32).powf(-0.5);
         self.g.launch(self.k["scale_bf16"], (((t * nh) as u32).div_ceil(32), 1, 1), 32, 0, &[Arg::P(w.iw.ptr), Arg::I((t * nh) as i32), Arg::F(wscale)])?;
         let kc = self.layers[x.idxk_src].idx_cache.as_ref().unwrap().ptr;
-        self.g.launch(self.k["vindexer_score"], ((n_max as u32).div_ceil(8), t as u32, 1), 256, 0, &[Arg::P(w.iq.ptr), Arg::P(kc), Arg::P(x.koff), Arg::P(w.iw.ptr), Arg::P(w.score.ptr), Arg::P(x.ends), Arg::I(n_max as i32), Arg::I(nh as i32), Arg::I(id as i32)])?;
+        self.g.launch(self.k[if kv_fp4() { "vindexer_score4" } else { "vindexer_score" }], ((n_max as u32).div_ceil(8), t as u32, 1), 256, 0, &[Arg::P(w.iq.ptr), Arg::P(kc), Arg::P(x.koff), Arg::P(w.iw.ptr), Arg::P(w.score.ptr), Arg::P(x.ends), Arg::I(n_max as i32), Arg::I(nh as i32), Arg::I(id as i32)])?;
         let rows = crate::topk::Rows { scores: w.score.ptr, lds: n_max, rows: t, ns: x.ends, n_max };
         let ldk = n_max.div_ceil(c.cand_block);
         if li == c.cand_layer {
@@ -2004,6 +2019,7 @@ impl<'m> Shard<'m> {
         let c = &self.m.cfg;
         let (hd, nh, w) = (c.head_dim, c.n_heads, &self.w);
         if std::env::var("VOLTA_ATTN").is_ok_and(|v| v == "tile5") {
+            ensure!(!kv_fp4() || nk == 0, "VOLTA_ATTN=tile5 reads bf16 KV rows: also set VOLTA_KV=bf16");
             return self.g.launch(self.k["vattn_tile5"], (t as u32, (nh / 16) as u32, s as u32), 256, 0, &[Arg::P(w.q.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::F(scale)]);
         }
         ensure!(hd == 512 && nh % 16 == 0, "vattn_mma: 512-dim heads in groups of 16");
@@ -2012,7 +2028,7 @@ impl<'m> Shard<'m> {
         // VAM_SMEM in volta.cuh
         let smem = 32 * 520 * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
         self.g.set_smem(self.k["vattn_mma"], smem)?;
-        self.g.launch(self.k["vattn_mma"], ((nh / 16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32)])
+        self.g.launch(self.k["vattn_mma"], ((nh / 16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32)])
     }
 
     /// launch on the side stream (side) or the main one

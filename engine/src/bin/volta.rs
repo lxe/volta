@@ -249,6 +249,7 @@ fn main() -> Result<()> {
             // prefill: chunks of TMAX / sessions tokens per session; the draft observes every prompt token
             let chunk = (TMAX / smax).max(1);
             let mut next = vec![0u32; ns];
+            let tp = Instant::now();
             for p0 in (0..prompt).step_by(chunk) {
                 let p1 = (p0 + chunk).min(prompt);
                 let w = p1 - p0;
@@ -263,6 +264,7 @@ fn main() -> Result<()> {
                     }
                 }
             }
+            eprintln!("prefill: {ns} x {prompt} tokens in {:.1} s ({:.0} tok/s)", tp.elapsed().as_secs_f64(), (ns * prompt) as f64 / tp.elapsed().as_secs_f64());
             // generation: draft k tokens after `next`, verify [next, drafts] in one main step, keep the agreed prefix
             let mut pos = vec![prompt - 1; ns]; // position of each session's newest main token
             let mut obs: Vec<Vec<(usize, usize, usize)>> = vec![vec![]; gpus];

@@ -1131,6 +1131,17 @@ extern "C" __global__ void vargmax_rows(const float *logits, int vocab, int *out
   }
 }
 
+// ---------------------------------------------------------------- KV rows stored as FP4 (VOLTA_KV, default fp4)
+// The reference rounds the compressed KV rows to FP4 with an E4M3 scale per 16 values, and the indexer keys to FP4
+// with a power-of-two (E8M0) scale per 32, so both store exactly as packed codes: row = n / 2 bytes of e2m1 codes
+// (value 2i in the low nibble) then n / block scale bytes. comp rows: 512 -> 288 bytes (bf16: 1024); idx rows:
+// 128 -> 68 (bf16: 256).
+__device__ __constant__ float V_E2M1[16] = {0.f, .5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f, -0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
+__device__ __forceinline__ uint32_t v_e2m1_code(float q) {
+  const float a = fabsf(q);
+  const uint32_t m = a < 0.25f ? 0 : a < 0.75f ? 1 : a < 1.25f ? 2 : a < 1.75f ? 3 : a < 2.5f ? 4 : a < 3.5f ? 5 : a < 5.f ? 6 : 7;
+  return m | (q < 0.f && m ? 8u : 0u);
+}
 // ---------------------------------------------------------------- attention on the tensor cores
 // vattn_tile5 with mma.m8n8k4: one KV row serves all 64 query heads (and is both key and value), so per 32-row sub-tile
 // the scores are S[32 rows][16 heads] = R Q^T and the output O^T[512][16] += R^T P^T, both on the tensor cores in fp16
@@ -1145,8 +1156,8 @@ extern "C" __global__ void vq16(const float *q, half *q16, float scale, int n) {
   if (i < n) q16[i] = __float2half(q[i] * scale);
 }
 extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W,
-                                                               const __nv_bfloat16 *comp, const int *comp_idx, int K, float *part, int H,
-                                                               int hd) {
+                                                               const void *comp, const int *comp_idx, int K, float *part, int H,
+                                                               int hd, int comp_fp4) {
   extern __shared__ __align__(16) unsigned char vsm[];
   half *R = reinterpret_cast<half *>(vsm);                       // [32][VAM_LD] this sub-tile's rows
   float *Sp = reinterpret_cast<float *>(R + 32 * VAM_LD);        // [4 k chunks][32 rows][16 heads] partial scores
@@ -1179,12 +1190,25 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
     for (int c = tid; c < 32 * 64; c += 256) {
       const int r = c >> 6, p8 = c & 63, i = r0 + r;
       const int idx = i >= nrows ? -1 : (i < W ? win_idx[t * W + i] : comp_idx[t * K + (i - W)]);
-      uint4 v = make_uint4(0, 0, 0, 0);
-      if (idx >= 0) v = *(const uint4 *)((i < W ? win : comp) + (size_t)idx * hd + p8 * 8);
-      const __nv_bfloat162 *b2 = reinterpret_cast<const __nv_bfloat162 *>(&v);
       half2 o[4];
+      if (i >= W && comp_fp4) {
+        // FP4 row: 4 code bytes for these 8 values, one E4M3 scale per 16
+        uint32_t cw = 0;
+        float sc = 0.f;
+        if (idx >= 0) {
+          const unsigned char *row = reinterpret_cast<const unsigned char *>(comp) + (size_t)idx * (hd / 2 + hd / 16);
+          cw = *reinterpret_cast<const uint32_t *>(row + p8 * 4);
+          sc = v_e4m3_dec(row[hd / 2 + p8 / 2]);
+        }
 #pragma unroll
-      for (int j = 0; j < 4; j++) o[j] = __float22half2_rn(__bfloat1622float2(b2[j]));
+        for (int j = 0; j < 4; j++) o[j] = __floats2half2_rn(V_E2M1[(cw >> (8 * j)) & 15] * sc, V_E2M1[(cw >> (8 * j + 4)) & 15] * sc);
+      } else {
+        uint4 v = make_uint4(0, 0, 0, 0);
+        if (idx >= 0) v = *(const uint4 *)((i < W ? win : reinterpret_cast<const __nv_bfloat16 *>(comp)) + (size_t)idx * hd + p8 * 8);
+        const __nv_bfloat162 *b2 = reinterpret_cast<const __nv_bfloat162 *>(&v);
+#pragma unroll
+        for (int j = 0; j < 4; j++) o[j] = __float22half2_rn(__bfloat1622float2(b2[j]));
+      }
       *reinterpret_cast<uint4 *>(&R[r * VAM_LD + p8 * 8]) = *reinterpret_cast<uint4 *>(o);
       if (p8 == 0) { ok[r] = idx >= 0; if (idx >= 0) *any = 1; }
     }
@@ -1256,4 +1280,52 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
     ph[hd] = Mh[tid];
     ph[hd + 1] = Lh[tid];
   }
+}
+
+// rows src[t][n] (f32, not yet rounded) -> FP4 rows of `pool` at dst_row[t] (-1 = skip), rounded as fake_fp4(block,
+// e4m3s) does. grid T, block n (n <= 1024, block 16 or 32)
+extern "C" __global__ void vstore_fp4_rows(const float *src, unsigned char *pool, const int *dst_row, int n, int block, int e4m3s) {
+  const int t = blockIdx.x, i = threadIdx.x;
+  const int row = dst_row[t];
+  if (row < 0) return;
+  const float v = src[(size_t)t * n + i];
+  float a = fabsf(v);
+  for (int o = block / 2; o; o >>= 1) a = fmaxf(a, __shfl_xor_sync(0xffffffffu, a, o));
+  const float s = e4m3s ? e4m3_round(fmaxf(a, 6.f * 0.001953125f) / 6.f) : pow2_ceil(fmaxf(a, 6.f * 1.1754944e-38f) / 6.f);
+  const float q = e2m1_round(fminf(fmaxf(v / s, -6.f), 6.f));
+  const uint32_t code = v_e2m1_code(v < 0.f ? -fabsf(q) : fabsf(q));
+  const uint32_t hi = __shfl_down_sync(0xffffffffu, code, 1);
+  unsigned char *r = pool + (size_t)row * (n / 2 + n / block);
+  if ((i & 1) == 0) r[i / 2] = (unsigned char)(code | (hi << 4));
+  if (i % block == 0) {
+    uint32_t sb;
+    if (e4m3s) sb = v_e4m3_enc(s);
+    else { int e; frexpf(s, &e); sb = (uint32_t)(e - 1 + 127); }  // s = 2^(e-1)
+    r[n / 2 + i / block] = (unsigned char)sb;
+  }
+}
+
+// vindexer_score over FP4 keys (68-byte rows: 64 code bytes, 4 E8M0 scales per 32); lane = 4 dims
+extern "C" __global__ void vindexer_score4(const float *q, const unsigned char *kpool, const int *koff, const float *w, float *score,
+                                           const int *n_vis, int n_max, int IH, int ID) {
+  int t = blockIdx.y, s = blockIdx.x * 8 + (threadIdx.x >> 5), lane = threadIdx.x & 31;
+  if (s >= n_max) return;
+  float *sc = score + (size_t)t * n_max;
+  if (s >= n_vis[t]) {
+    if (lane == 0) sc[s] = -INFINITY;
+    return;
+  }
+  const unsigned char *kr = kpool + ((size_t)koff[t] + s) * (ID / 2 + ID / 32);
+  const uint32_t c2 = kr[lane * 2] | (kr[lane * 2 + 1] << 8);
+  const float scl = ldexpf(1.f, (int)kr[ID / 2 + lane * 4 / 32] - 127);
+  float kv[4];
+  for (int j = 0; j < 4; j++) kv[j] = V_E2M1[(c2 >> (4 * j)) & 15] * scl;
+  float tot = 0.f;
+  for (int h = 0; h < IH; h++) {
+    const float *qh = q + ((size_t)t * IH + h) * ID + lane * 4;
+    float d = qh[0] * kv[0] + qh[1] * kv[1] + qh[2] * kv[2] + qh[3] * kv[3];
+    d = warp_sum(d);
+    tot += fmaxf(d, 0.f) * w[t * IH + h];
+  }
+  if (lane == 0) sc[s] = tot;
 }

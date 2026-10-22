@@ -36,7 +36,7 @@ int main() {
     CK(cudaFuncSetAttribute(vattn_mma, cudaFuncAttributeMaxDynamicSharedMemorySize, VAM_SMEM));
     dim3 g(T, H / 16, S);
     auto old_ = [&] { vattn_tile5<<<g, 256>>>(dq, dwin, dwi, W, dcomp, dci, K, dpart, H, hd, scale); };
-    auto new_ = [&] { vq16<<<(T * H * hd + 255) / 256, 256>>>(dq, dq16, scale, T * H * hd); vattn_mma<<<dim3(H / 16, T, S), 256, VAM_SMEM>>>(dq16, dwin, dwi, W, dcomp, dci, K, dpart, H, hd); };
+    auto new_ = [&] { vq16<<<(T * H * hd + 255) / 256, 256>>>(dq, dq16, scale, T * H * hd); vattn_mma<<<dim3(H / 16, T, S), 256, VAM_SMEM>>>(dq16, dwin, dwi, W, dcomp, dci, K, dpart, H, hd, 0); };
     old_(); sparse_attn_merge<<<dim3(T, H), 256>>>(dpart, S, dsinks, do1, H, hd);
     new_(); sparse_attn_merge<<<dim3(T, H), 256>>>(dpart, S, dsinks, do2, H, hd);
     CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
