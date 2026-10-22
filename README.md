@@ -153,6 +153,23 @@ pi --provider volta --model deepseek-v4.1-flash:off
 
 `contextWindow` must match the server's `--ctx` (here `--slots 2 --ctx 131072 --max-tokens 16384`).
 
+pi compacts long conversations by itself (it summarizes older messages when the context is nearly full). To start
+compaction with room for a full answer and keep more recent history, add this to `~/.pi/agent/settings.json`:
+
+```json
+{
+  "compaction": {
+    "enabled": true,
+    "modelOverrides": {
+      "volta/deepseek-v4.1-flash": { "reserveTokens": 20480, "keepRecentTokens": 32768 }
+    }
+  }
+}
+```
+
+The server's prefix cache reuses everything before the summary, so the first request after a compaction only
+reads the summary and the messages kept after it.
+
 With `--api-key`: drop `"authHeader": false`, set `"apiKey"` to the key and point `baseUrl` at the server's URL.
 
 ## Requirements
