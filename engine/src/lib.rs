@@ -27,6 +27,7 @@ pub mod server {
     pub use dsx_core::server::*;
     #[cfg(feature = "cuda")]
     pub mod real;
+    pub mod telemetry;
     #[cfg(feature = "cuda")]
     pub mod volta;
 }

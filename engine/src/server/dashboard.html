@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>volta admin</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e4e3de;
+  --accent: #2f6fdb; --accent2: #d9822b; --good: #2e8b57; --warn: #c0392b;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141413; --panel: #1d1d1b; --ink: #ecebe6; --muted: #9a998f; --line: #2e2d2a;
+          --accent: #6d9cf0; --accent2: #e6a15c; --good: #5cbf86; --warn: #e07060; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: baseline; gap: 14px; padding: 18px 24px 6px; flex-wrap: wrap; }
+header h1 { font-size: 18px; margin: 0; font-weight: 650; }
+header .sub { color: var(--muted); }
+#err { color: var(--warn); }
+main { padding: 8px 24px 32px; max-width: 1280px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.tile .k { color: var(--muted); font-size: 12px; }
+.tile .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .v small { font-size: 13px; color: var(--muted); font-weight: 500; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+section h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.legend i { display: inline-block; width: 10px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+canvas { width: 100%; height: 180px; display: block; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 9px; border: 1px solid var(--line); color: var(--muted); }
+.tag.decode { color: var(--good); border-color: var(--good); }
+.tag.prefill { color: var(--accent2); border-color: var(--accent2); }
+.scroll { overflow-x: auto; }
+.empty { color: var(--muted); padding: 6px 0; }
+.two { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.two > section { min-width: 0; }  /* let the tables scroll inside their panels */
+main { overflow-x: hidden; }
+@media (max-width: 860px) { .two { grid-template-columns: 1fr; } main, header { padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>volta</h1>
+  <span class="sub" id="sub">connecting…</span>
+  <span id="err"></span>
+</header>
+<main>
+  <div class="tiles">
+    <div class="tile"><div class="k">Output</div><div class="v" id="out">–</div></div>
+    <div class="tile"><div class="k">Prompt read</div><div class="v" id="prompt">–</div></div>
+    <div class="tile"><div class="k">Sessions</div><div class="v" id="sess">–</div></div>
+    <div class="tile"><div class="k">Per session (median)</div><div class="v" id="per">–</div></div>
+    <div class="tile"><div class="k">Drafts kept</div><div class="v" id="acc">–</div></div>
+    <div class="tile"><div class="k">Step</div><div class="v" id="step">–</div></div>
+  </div>
+  <section>
+    <h2>Throughput, last 5 minutes</h2>
+    <div class="legend"><span><i style="background:var(--accent)"></i>generated tok/s</span><span><i style="background:var(--accent2)"></i>prompt tok/s</span></div>
+    <canvas id="chart"></canvas>
+  </section>
+  <div class="two">
+    <section>
+      <h2>Active sessions</h2>
+      <div class="scroll"><table id="sessions"><thead><tr><th>request</th><th>GPU·slot</th><th>state</th><th>prompt</th><th>cached</th><th>generated</th><th>tok/s</th><th>drafts kept</th><th>age</th></tr></thead><tbody></tbody></table></div>
+    </section>
+    <section>
+      <h2>Recently finished</h2>
+      <div class="scroll"><table id="recent"><thead><tr><th>request</th><th>tokens</th><th>tok/s</th><th>ago</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+  <section>
+    <h2>Totals</h2>
+    <div class="tiles" style="margin-top:2px">
+      <div class="tile"><div class="k">Requests</div><div class="v" id="req">–</div></div>
+      <div class="tile"><div class="k">Tokens generated</div><div class="v" id="tout">–</div></div>
+      <div class="tile"><div class="k">Prompt tokens read</div><div class="v" id="tprompt">–</div></div>
+      <div class="tile"><div class="k">Prompt tokens reused</div><div class="v" id="tcached">–</div></div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (x, d = 0) => Number(x).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
+const dur = (s) => s < 60 ? `${fmt(s)} s` : s < 3600 ? `${fmt(s / 60)} min` : `${fmt(s / 3600, 1)} h`;
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function chart(h) {
+  const c = $("chart"), dpr = window.devicePixelRatio || 1, w = c.clientWidth, ht = c.clientHeight;
+  c.width = w * dpr; c.height = ht * dpr;
+  const g = c.getContext("2d"); g.scale(dpr, dpr); g.clearRect(0, 0, w, ht);
+  const pad = { l: 44, r: 8, t: 8, b: 20 };
+  const max = Math.max(10, ...h.map((p) => Math.max(p.out_tok_s, p.prompt_tok_s)));
+  const nice = Math.pow(10, Math.floor(Math.log10(max))); const top = Math.ceil(max / nice) * nice;
+  g.strokeStyle = css("--line"); g.fillStyle = css("--muted"); g.font = "11px system-ui"; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (ht - pad.t - pad.b) * (1 - i / 4);
+    g.beginPath(); g.moveTo(pad.l, y); g.lineTo(w - pad.r, y); g.stroke();
+    g.fillText(fmt(top * i / 4), 4, y + 4);
+  }
+  ["-5 min", "-4", "-3", "-2", "-1", "now"].forEach((t, i) => g.fillText(t, pad.l + (w - pad.l - pad.r) * i / 5 - (i == 5 ? 22 : 0), ht - 4));
+  const X = (t) => pad.l + (w - pad.l - pad.r) * (1 + t / 300), Y = (v) => pad.t + (ht - pad.t - pad.b) * (1 - v / top);
+  for (const [k, col] of [["prompt_tok_s", "--accent2"], ["out_tok_s", "--accent"]]) {
+    g.strokeStyle = css(col); g.lineWidth = 1.6; g.beginPath();
+    h.forEach((p, i) => (i ? g.lineTo(X(p.t), Y(p[k])) : g.moveTo(X(p.t), Y(p[k]))));
+    g.stroke();
+  }
+}
+async function tick() {
+  try {
+    const s = await (await fetch("stats")).json();
+    $("err").textContent = "";
+    $("sub").textContent = `${s.gpus} GPUs · ${s.capacity} session slots · ${fmt(s.ctx)}-token context · up ${dur(s.uptime_s)}`;
+    $("out").innerHTML = `${fmt(s.out_tok_s)} <small>tok/s</small>`;
+    $("prompt").innerHTML = `${fmt(s.prompt_tok_s)} <small>tok/s</small>`;
+    $("sess").innerHTML = `${s.active} <small>/ ${s.capacity}${s.prefilling ? ` · ${s.prefilling} reading` : ""}${s.queued ? ` · ${s.queued} queued` : ""}</small>`;
+    $("per").innerHTML = `${fmt(s.per_session_median, 1)} <small>tok/s</small>`;
+    $("acc").innerHTML = s.acceptance ? `${fmt(s.acceptance * 100)}<small>%</small>` : "–";
+    $("step").innerHTML = s.step_ms ? `${fmt(s.step_ms)} <small>ms + ${fmt(s.draft_ms)} draft</small>` : "–";
+    $("req").textContent = fmt(s.requests); $("tout").textContent = fmt(s.tokens_out);
+    $("tprompt").textContent = fmt(s.tokens_prompt); $("tcached").textContent = fmt(s.tokens_cached);
+    const tb = $("sessions").tBodies[0];
+    tb.innerHTML = s.sessions.length ? s.sessions.sort((a, b) => a.gpu - b.gpu || a.slot - b.slot).map((x) =>
+      `<tr><td class="id">${x.id}</td><td>${x.gpu}·${x.slot}</td><td><span class="tag ${x.state}">${x.state}</span>${x.sampled ? "" : ' <span class="tag">greedy</span>'}</td>` +
+      `<td>${fmt(x.prompt_tokens)}</td><td>${fmt(x.cached_tokens)}</td><td>${fmt(x.generated)}</td><td>${fmt(x.tok_s, 1)}</td>` +
+      `<td>${x.state == "decode" ? fmt(x.acceptance * 100) + "%" : "–"}</td><td>${dur(x.age_s)}</td></tr>`).join("")
+      : `<tr><td colspan="9" class="empty">No active sessions</td></tr>`;
+    const rb = $("recent").tBodies[0];
+    rb.innerHTML = s.recent.length ? s.recent.map(([id, n, v, ago]) => `<tr><td class="id">${id}</td><td>${fmt(n)}</td><td>${fmt(v, 1)}</td><td>${dur(ago)}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="empty">None yet</td></tr>`;
+    chart(s.history);
+  } catch (e) {
+    $("err").textContent = "· server unreachable";
+  }
+}
+tick(); setInterval(tick, 1000); window.addEventListener("resize", tick);
+</script>
+</body>
+</html>

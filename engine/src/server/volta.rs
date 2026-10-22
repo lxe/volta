@@ -17,7 +17,9 @@ use rayon::prelude::*;
 use super::engine::{BatchEngine, BatchJob, Event, Finish, Hesitation};
 use super::sample::{Rng, argmax};
 use crate::model::Model;
+use super::telemetry::{SessionInfo, Telemetry};
 use crate::volta::{Engine, Opts, SparkPlan, TMAX};
+use std::sync::Arc;
 
 pub struct VoltaArgs {
     pub gpus: usize,
@@ -31,12 +33,16 @@ pub struct VoltaArgs {
     pub spec_k: usize,
     /// verify j drafts while p^j >= theta, p = the session's recent per-draft acceptance
     pub theta: f64,
+    /// live numbers for the admin dashboard
+    pub tel: Option<Arc<Telemetry>>,
 }
 
 struct Seq {
     job: BatchJob,
     g: usize,
     s: usize,
+    /// prompt tokens served from a kept KV cache
+    cached: usize,
     /// tokens in the KV cache (the next position), and the tokens themselves
     fed: usize,
     hist: Vec<u32>,
@@ -181,7 +187,10 @@ impl Volta {
                 let greedy = j.params.temperature <= 0.0 && hes.is_none();
                 let seed = j.params.seed.unwrap_or_else(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1) ^ (g * 131 + s) as u64);
                 let hist = j.prompt[..reuse].to_vec();
-                seqs.push(Seq { job: j, g, s, fed: reuse, hist, next: None, drafts: vec![], generated: 0, rng: Rng::new(seed), greedy, hes, acc: 0.6, tried: 1.0, t0: Instant::now(), first: None, done: None });
+                if let Some(t) = &self.a.tel {
+                    t.admitted(reuse);
+                }
+                seqs.push(Seq { job: j, g, s, cached: reuse, fed: reuse, hist, next: None, drafts: vec![], generated: 0, rng: Rng::new(seed), greedy, hes, acc: 0.6, tried: 1.0, t0: Instant::now(), first: None, done: None });
             }
             for q in seqs.iter_mut() {
                 if q.done.is_none() && q.job.tx.is_closed() {
@@ -193,6 +202,8 @@ impl Volta {
                 continue;
             }
             // draft step: observe the last step's kept tokens, draft for greedy decoding sessions
+            let td = Instant::now();
+            let gen0: usize = seqs.iter().map(|q| q.generated).sum();
             if self.block > 0 {
                 let want: Vec<usize> = (0..seqs.len()).filter(|&i| seqs[i].hes.is_none() && seqs[i].next.is_some() && self.a.spec_k > 0).collect();
                 if !want.is_empty() || obs.iter().any(|o| !o.is_empty()) {
@@ -209,6 +220,7 @@ impl Volta {
                     }
                 }
             }
+            let draft_ms = td.elapsed().as_secs_f64() * 1e3;
             // main step: decoding sessions first ([next, drafts]), then prompt chunks
             let mut plan: Vec<Vec<(usize, u32)>> = vec![vec![]; ng];
             let mut rows: Vec<(usize, usize, usize, usize)> = vec![]; // (seq, gpu, first row, tokens)
@@ -233,6 +245,8 @@ impl Volta {
             if rows.is_empty() {
                 continue;
             }
+            let tm = Instant::now();
+            let (mut fed_prompt, mut drafted, mut kept_d) = (0usize, 0usize, 0usize);
             // what each row set decides: (drafts kept, the next token). Greedy sessions compare the GPU's argmax with
             // their drafts; sampled ones run speculative sampling on the logits (exact for the target distribution)
             let sampled = rows.iter().any(|&(i, ..)| !seqs[i].greedy);
@@ -320,6 +334,7 @@ impl Volta {
                         obs[g].push((q.s, r0 + j, q.fed + j));
                     }
                     q.hist.extend_from_slice(&q.job.prompt[q.fed..q.fed + n]);
+                    fed_prompt += n;
                     q.fed += n;
                     if q.fed == q.job.prompt.len() {
                         q.next = Some(tok);
@@ -328,6 +343,8 @@ impl Volta {
                     continue;
                 }
                 let k = n - 1;
+                drafted += k;
+                kept_d += a;
                 if k > 0 {
                     q.acc = 0.8 * q.acc + 0.2 * a as f64;
                     q.tried = 0.8 * q.tried + 0.2 * (a + 1).min(k) as f64;
@@ -358,6 +375,28 @@ impl Volta {
             if rw.iter().any(|r| !r.is_empty()) {
                 self.e.rewind(rw)?;
             }
+            if let Some(t) = &self.a.tel {
+                let now = Instant::now();
+                let gen1: usize = seqs.iter().map(|q| q.generated).sum();
+                let info = seqs
+                    .iter()
+                    .filter(|q| q.done.is_none())
+                    .map(|q| SessionInfo {
+                        id: q.job.id.clone(),
+                        gpu: q.g,
+                        slot: q.s,
+                        state: if q.next.is_none() { "prefill" } else { "decode" },
+                        prompt_tokens: q.job.prompt.len(),
+                        cached_tokens: q.cached,
+                        generated: q.generated,
+                        tok_s: q.first.map(|f| if q.generated > 1 { (q.generated - 1) as f64 / (now - f).as_secs_f64().max(1e-3) } else { 0.0 }).unwrap_or(0.0),
+                        acceptance: q.acc / q.tried,
+                        age_s: (now - q.t0).as_secs_f64(),
+                        sampled: !q.greedy,
+                    })
+                    .collect();
+                t.step(gen1 - gen0, fed_prompt, tm.elapsed().as_secs_f64() * 1e3, draft_ms, drafted, kept_d, info, queue.len());
+            }
             // a finished session's rows are not observed (its slot is about to be reset)
             for q in seqs.iter().filter(|q| q.done.is_some()) {
                 obs[q.g].retain(|&(s, ..)| s != q.s);
@@ -377,6 +416,9 @@ impl Volta {
             let ttft = q.first.map(|f| (f - q.t0).as_secs_f64()).unwrap_or(total);
             let tps = if q.generated > 1 { (q.generated - 1) as f64 / (total - ttft).max(1e-9) } else { 0.0 };
             tracing::info!(id = %q.job.id, prompt_tokens = q.job.prompt.len(), generated = q.generated, ttft_ms = (ttft * 1e3) as u64, decode_tps = format!("{tps:.1}"), finish = ?f, "done");
+            if let Some(t) = &self.a.tel {
+                t.finished(&q.job.id, q.generated, tps);
+            }
             false
         });
     }

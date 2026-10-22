@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use clap::Parser;
+use dsx::server::telemetry::Telemetry;
 use dsx::server::{AppState, EngineHandle, ServerConfig};
 use tokenizers::Tokenizer;
 
@@ -58,6 +59,10 @@ struct Cli {
     /// require this key on every API request (`Authorization: Bearer <key>` or `x-api-key: <key>`)
     #[arg(long, env = "DSX_API_KEY")]
     api_key: Option<String>,
+    /// admin dashboard and `/stats` (JSON) on this port, on --host; 0 = off. Not behind --api-key: keep it on
+    /// loopback or a private network
+    #[arg(long, default_value_t = 8091)]
+    admin_port: u16,
 }
 
 #[tokio::main]
@@ -77,7 +82,8 @@ async fn main() -> Result<()> {
         unsafe { std::env::set_var("VOLTA_SPARK", &cli.model) };
     }
     let model = cli.model.clone();
-    let args = dsx::server::volta::VoltaArgs { gpus: cli.gpus, slots: cli.slots, ctx: cli.ctx, chunk: cli.chunk, spec_k: cli.spec_k, theta: cli.theta };
+    let tel = Arc::new(Telemetry::new(cli.gpus, cli.slots, cli.ctx));
+    let args = dsx::server::volta::VoltaArgs { gpus: cli.gpus, slots: cli.slots, ctx: cli.ctx, chunk: cli.chunk, spec_k: cli.spec_k, theta: cli.theta, tel: Some(tel.clone()) };
     let engine = EngineHandle::spawn_batched(move || {
         let m: &'static dsx::model::Model = Box::leak(Box::new(dsx::model::Model::load_hf(&model)?));
         dsx::server::volta::volta_engine(m, args)
@@ -94,6 +100,14 @@ async fn main() -> Result<()> {
         ..ServerConfig::default()
     };
     let st = AppState::new(engine, tok, cfg)?;
+    if cli.admin_port != 0 {
+        let admin = axum::Router::new()
+            .route("/", axum::routing::get(|| async { axum::response::Html(include_str!("../server/dashboard.html")) }))
+            .route("/stats", axum::routing::get(move || { let t = tel.clone(); async move { axum::Json(t.snapshot()) } }));
+        let al = tokio::net::TcpListener::bind((cli.host.as_str(), cli.admin_port)).await?;
+        tracing::info!("admin dashboard on http://{}", al.local_addr()?);
+        tokio::spawn(async move { axum::serve(al, admin).await });
+    }
     let listener = tokio::net::TcpListener::bind((cli.host.as_str(), cli.port)).await?;
     tracing::info!("listening on http://{} (volta, {} GPUs x {} sessions)", listener.local_addr()?, cli.gpus, cli.slots);
     dsx::server::serve(listener, st).await?;

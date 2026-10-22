@@ -99,6 +99,10 @@ curl http://localhost:8090/v1/chat/completions \
   }'
 ```
 
+An admin dashboard runs on `http://localhost:8091/`: output and prompt throughput (live and over the last 5 minutes),
+sessions in use, speed per session, drafts kept, step time, and the active and recently finished requests. The same
+numbers are JSON at `/stats`.
+
 From the official checkpoint instead of the Hugging Face build, drop `VOLTA_PACK` and pass the checkpoint as
 `--model`: the engine packs the experts on the GPUs at load (~3 minutes) and caches them in `/dev/shm/vcache`.
 
@@ -174,6 +178,7 @@ Other machines need other kernels and collectives; [DESIGN.md](DESIGN.md) lists 
 | `--ctx` | context window per session, prompt + generated tokens (default 8192); slots and context share the GPUs' spare memory |
 | `--max-tokens` | generation cap when a request sets none (default 4096) |
 | `--chunk` | prompt tokens per session per step while reading a prompt (default 32) |
+| `--admin-port` | the admin dashboard and `/stats` (default 8091, on `--host`; 0 = off). It has no API key: keep it on loopback or a private network |
 
 **Sampling defaults** (a request's own fields override them)
 
@@ -250,6 +255,7 @@ attention, and two Engram lookups. Every step runs all sessions' tokens together
 | [`engine/src/volta.rs`](engine/src/volta.rs), [`engine/src/volta/spark.rs`](engine/src/volta/spark.rs) | the engine: packing, placement, steps, attention, MoE, collectives, CUDA graphs; the draft |
 | [`engine/src/kernels/volta.cuh`](engine/src/kernels/volta.cuh) | the sm_70 kernels |
 | [`engine/src/server/volta.rs`](engine/src/server/volta.rs), [`engine/src/bin/volta_server.rs`](engine/src/bin/volta_server.rs) | the batching scheduler and the server |
+| [`engine/src/server/telemetry.rs`](engine/src/server/telemetry.rs), [`engine/src/server/dashboard.html`](engine/src/server/dashboard.html) | the admin dashboard's numbers and page |
 | [`core/`](core/), the rest of [`engine/`](engine/) | model loader, CPU reference, the HTTP server and web UI, from [dsx](https://github.com/lxe/dsx) |
 | [`plans/`](plans/) | the published pack's tier plan and placement, and the routing counts that choose tiers |
 | [`tests/`](tests/), [`bench/`](bench/) | kernel tests and sweeps; hardware probes |
