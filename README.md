@@ -45,12 +45,12 @@ Against the FP8 model on the [Lucebox](https://huggingface.co/Lucebox/DeepSeek-V
 
 All on one 8x V100-SXM2-32GB machine. Engine benchmark (`volta bench`, real text, one token per session per step):
 
-| Sessions | Step | Total | Per session |
-|---|---|---|---|
-| 64 | 50.9 ms | 1,258 tok/s | 19.7 tok/s |
-| 128 | 69 ms | 1,850 tok/s | 14.5 tok/s |
-| 256 | 105 ms | 2,440 tok/s | 9.5 tok/s |
-| 512 | 167 ms | 3,070 tok/s | 6.0 tok/s |
+| Sessions | Step | Total |
+|---|---|---|
+| 64 | 50.9 ms | 1,258 tok/s |
+| 128 | 69 ms | 1,850 tok/s |
+| 256 | 105 ms | 2,440 tok/s |
+| 512 | 167 ms | 3,070 tok/s |
 
 With the DSpark draft (`volta spec --adaptive`, greedy, 64 sessions): 27.2 tok/s per session on code and 18.2 on
 prose. With 8 sessions on code: 81 tok/s each.
