@@ -63,6 +63,9 @@ enum Cmd {
         gpus: usize,
         #[arg(long, default_value_t = 8)]
         sessions: usize,
+        /// total sessions, spread round-robin over the GPUs (instead of `sessions` per GPU)
+        #[arg(long)]
+        total: Option<usize>,
         #[arg(long, default_value_t = 32)]
         steps: usize,
         #[arg(long, default_value_t = 256)]
@@ -228,33 +231,35 @@ fn main() -> Result<()> {
             }
             println!("{{\"tokens\": {cnt}, \"ppl\": {:.4}, \"kl_top{topk}\": {:.6}, \"top1_agree\": {:.6}, \"wall_s\": {:.1}}}", (nll / cnt as f64).exp(), kl / cnt as f64, agree as f64 / cnt as f64, t0.elapsed().as_secs_f64());
         }
-        Cmd::Spec { model, gpus, sessions, steps, prompt, text, k } => {
+        Cmd::Spec { model, gpus, sessions, total, steps, prompt, text, k } => {
             let m = load(&model, None)?;
             let corpus: Vec<u32> = std::fs::read(&text)?.chunks(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32).collect();
-            let e = Engine::new(m, Opts { ngpu: gpus, slots: sessions, max_ctx: prompt + steps * (k + 1) + 64 })?;
+            // sessions per GPU: `sessions` each, or `total` spread round-robin (some GPUs may have none)
+            let ns = total.unwrap_or(gpus * sessions);
+            let nper: Vec<usize> = (0..gpus).map(|g| ns / gpus + usize::from(g < ns % gpus)).collect();
+            let gid = |g: usize, s: usize| s * gpus + g; // global session index
+            let smax = *nper.iter().max().unwrap();
+            let e = Engine::new(m, Opts { ngpu: gpus, slots: smax.max(1), max_ctx: prompt + steps * (k + 1) + 64 })?;
             let block = e.spark_block().context("VOLTA_SPARK is not set")?;
-            anyhow::ensure!(k <= block && sessions * (k + 1) <= TMAX, "k {k}: at most the block ({block}), and sessions * (k + 1) <= {TMAX}");
-            let ns = gpus * sessions;
-            let am = |l: &[f32]| argmax(l) as u32;
+            anyhow::ensure!(k <= block && smax * (k + 1) <= TMAX, "k {k}: at most the block ({block}), and sessions per GPU * (k + 1) <= {TMAX}");
             // prefill: chunks of TMAX / sessions tokens per session; the draft observes every prompt token
-            let chunk = (TMAX / sessions).max(1);
-            let mut last: Vec<Vec<f32>> = vec![vec![]; ns];
+            let chunk = (TMAX / smax).max(1);
+            let mut next = vec![0u32; ns];
             for p0 in (0..prompt).step_by(chunk) {
                 let p1 = (p0 + chunk).min(prompt);
-                let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..sessions).flat_map(|s| (p0..p1).map(move |p| (s, (g * sessions + s, p)))).map(|(s, (i, p))| (s, corpus[(i * 997 + p) % corpus.len()])).collect()).collect();
-                let out = e.step(plan)?;
                 let w = p1 - p0;
-                let obs = (0..gpus).map(|_| (0..sessions).flat_map(|s| (0..w).map(move |j| (s, s * w + j, p0 + j))).collect()).collect();
+                let cv = &corpus;
+                let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..nper[g]).flat_map(|s| (p0..p1).map(move |p| (s, cv[(gid(g, s) * 997 + p) % cv.len()]))).collect()).collect();
+                let out = e.step_greedy(plan)?;
+                let obs = (0..gpus).map(|g| (0..nper[g]).flat_map(|s| (0..w).map(move |j| (s, s * w + j, p0 + j))).collect()).collect();
                 e.spark(SparkPlan { obs, drafts: vec![vec![]; gpus] })?;
                 for g in 0..gpus {
-                    for s in 0..sessions {
-                        let r = s * w + w - 1;
-                        last[g * sessions + s] = out[g][r * e.vocab..(r + 1) * e.vocab].to_vec();
+                    for s in 0..nper[g] {
+                        next[gid(g, s)] = out[g][s * w + w - 1];
                     }
                 }
             }
             // generation: draft k tokens after `next`, verify [next, drafts] in one main step, keep the agreed prefix
-            let mut next: Vec<u32> = last.iter().map(|l| am(l)).collect();
             let mut pos = vec![prompt - 1; ns]; // position of each session's newest main token
             let mut obs: Vec<Vec<(usize, usize, usize)>> = vec![vec![]; gpus];
             let (mut made, mut hist) = (0usize, vec![0usize; k + 1]);
@@ -262,19 +267,19 @@ fn main() -> Result<()> {
             let t0 = Instant::now();
             for it in 0..steps {
                 let td = Instant::now();
-                let drafts: Vec<Vec<(usize, usize, u32)>> = (0..gpus).map(|g| (0..sessions).map(|s| (s, pos[g * sessions + s], next[g * sessions + s])).collect()).collect();
+                let drafts: Vec<Vec<(usize, usize, u32)>> = (0..gpus).map(|g| (0..nper[g]).map(|s| (s, pos[gid(g, s)], next[gid(g, s)])).collect()).collect();
                 // k = 0: plain greedy decoding (the baseline), no draft step
-                let dr = if k == 0 { vec![vec![0u32; sessions * block]; gpus] } else { e.spark(SparkPlan { obs: std::mem::take(&mut obs), drafts })? };
+                let dr = if k == 0 { (0..gpus).map(|g| vec![0u32; nper[g] * block]).collect() } else { e.spark(SparkPlan { obs: std::mem::take(&mut obs), drafts })? };
                 t_draft += td.elapsed().as_secs_f64();
                 let tm = Instant::now();
-                let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..sessions).flat_map(|s| std::iter::once(next[g * sessions + s]).chain(dr[g][s * block..s * block + k].iter().copied()).map(move |t| (s, t))).collect()).collect();
+                let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..nper[g]).flat_map(|s| std::iter::once(next[gid(g, s)]).chain(dr[g][s * block..s * block + k].iter().copied()).map(move |t| (s, t))).collect()).collect();
                 let out = e.step_greedy(plan)?;
                 t_main += tm.elapsed().as_secs_f64();
                 obs = vec![vec![]; gpus];
                 let mut rw = vec![vec![]; gpus];
                 for g in 0..gpus {
-                    for s in 0..sessions {
-                        let i = g * sessions + s;
+                    for s in 0..nper[g] {
+                        let i = gid(g, s);
                         let row = |j: usize| out[g][s * (k + 1) + j];
                         let mut a = 0;
                         while a < k && row(a) == dr[g][s * block + a] {
