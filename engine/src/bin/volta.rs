@@ -295,11 +295,14 @@ fn main() -> Result<()> {
                 // this pass's drafts per session, and where each session's rows start in its GPU's plan
                 let mut kk: Vec<Vec<usize>> = (0..gpus).map(|g| (0..nper[g]).map(|s| ks(&acc, &tried, gid(g, s))).collect()).collect();
                 if adaptive {
-                    // round each GPU's verify tokens up to a multiple of 8 (few step shapes, so they stay in CUDA
-                    // graphs): the spare slots go to the sessions most likely to have one more draft accepted
+                    // every GPU verifies the same number of tokens, the largest GPU's rounded up to a multiple of 8:
+                    // the step waits for its busiest GPU anyway, and few shapes keep it in CUDA graphs. The spare
+                    // slots go to the sessions most likely to have one more draft accepted
+                    let top = (0..gpus).map(|g| kk[g].iter().map(|x| x + 1).sum::<usize>()).max().unwrap_or(0);
+                    let target = (top.div_ceil(8) * 8).min(TMAX);
                     for g in 0..gpus {
                         let tot: usize = kk[g].iter().map(|x| x + 1).sum();
-                        let mut spare = (tot.div_ceil(8) * 8).min(TMAX) - tot;
+                        let mut spare = target.saturating_sub(tot);
                         let mut order: Vec<usize> = (0..nper[g]).collect();
                         order.sort_by(|&a, &b| (acc[gid(g, b)] / tried[gid(g, b)]).partial_cmp(&(acc[gid(g, a)] / tried[gid(g, a)])).unwrap());
                         while spare > 0 && order.iter().any(|&s| kk[g][s] < k) {
