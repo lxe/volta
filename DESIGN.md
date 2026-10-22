@@ -299,3 +299,28 @@ Kernel facts measured on the way (`tests/split_test.cu`, `tests/dense_test.cu`):
 The 33 ms step that 30 tok/s per session needs at ~64 sessions is below what kernel fixes alone reach (~43 ms
 with every kernel at its floor). The DSpark draft layers (3 layers in the checkpoint, 5-token blocks) are the next
 lever, because verifying several draft tokens per session in one step reads each expert's weights once.
+
+### 2026-10-22: multi-token steps and DSpark
+
+A step now takes several tokens per session (up to 64 per GPU). Each token gets its own position; the window ring
+keeps 64 spare rows and the compressor state a whole group per 64 tokens, so a step never overwrites rows its own
+earlier tokens still read. Feeding 4, 32 or 64 tokens per sequence per step gives the same KL as token by token
+(0.128). This is also the prefill path: 8 sequences prefill at ~680 tok/s with 64 tokens per GPU per step.
+
+The DSpark draft runs on the GPUs as 3 extra layers after the main ones, so routing, the NVLink exchange and the
+8-way expert split serve it unchanged (its 384 experts in cb3, ~0.7 GB per GPU). Its attention reads a window of
+the main model's hidden-state means at layers 37-39, projected and stored per slot as main tokens are accepted.
+A pass drafts k tokens per session (~12 ms, not yet in a CUDA graph), verifies them in one main step and rewinds
+the rejected ones.
+
+Verification is not free at 64 sessions: a step with 6 tokens per session costs ~157 ms against ~55 ms for 1, so k
+has to follow acceptance. Greedy decoding, 24 passes after a 256-token prompt:
+
+| Text | Sessions | k | Tokens per pass | tok/s per session |
+|---|---|---|---|---|
+| prose (eval text) | 64 | 0 / 1 / 3 / 5 | 1.00 / 1.57 / 1.92 / 2.02 | 17.5 / 17.9 / 15.3 / 12.0 |
+| code (this repo's Rust) | 64 | 0 / 1 / 3 / 5 | 1.00 / 1.88 / 3.23 / 4.21 | 18.3 / 21.7 / 26.0 / 25.0 |
+| code | 8 | 0 / 3 / 5 | 1.00 / 3.40 / 4.28 | 28.9 / 69.8 / 82.6 |
+
+Next: the draft step in a CUDA graph (12 ms -> a few), k chosen per session from the confidence head or recent
+acceptance, and sampling (only greedy verification so far).

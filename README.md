@@ -15,9 +15,13 @@ DeepSeek-V4.1-Flash-1017 from the official checkpoint, with its experts re-packe
 | 64 concurrent sessions, real text | 52.7 ms per step: 1,214 tok/s aggregate, 19.0 tok/s per session |
 | 128 sessions | 69.1 ms per step: 1,853 tok/s aggregate, 14.5 tok/s per session |
 | 256 sessions | 103.6 ms per step: **2,472 tok/s** aggregate, 9.7 tok/s per session |
+| 512 sessions | 166.8 ms per step: 3,070 tok/s aggregate, 6.0 tok/s per session |
+| With the DSpark draft, code, 64 sessions, 3 drafts per pass | 3.23 tokens per pass: **26.0 tok/s per session**, 1,667 tok/s aggregate |
+| With the DSpark draft, code, 8 sessions, 5 drafts per pass | 4.28 tokens per pass: **82.6 tok/s per session** |
+| With the DSpark draft, prose, 64 sessions, 1 draft per pass | 1.57 tokens per pass: 17.9 tok/s per session (17.5 without) |
 | llama.cpp (PR #30817, UD-IQ1_M) on the same machine, for comparison | 26.7 tok/s for one session; 72-97 tok/s aggregate at most |
 
-The next target is ~30 tok/s per session at 64 sessions. [DESIGN.md](DESIGN.md) has the design, the
+ [DESIGN.md](DESIGN.md) has the design, the
 hardware measurements, the time per step by kernel, and dated amendments where the plan changed.
 
 ## How it works
@@ -35,6 +39,10 @@ hardware measurements, the time per step by kernel, and dated amendments where t
 - **Device-side routing and one CUDA graph per step.** The router's picks become per-expert token lists on the
   GPU, so the host never waits inside a step.
 - **Engram** tables stay in host RAM, and their rows are gathered for each step.
+- **Several tokens per session in a step** (up to 64 per GPU): prefill chunks and draft verification use the
+  same step.
+- **DSpark**, the checkpoint's 3-layer draft, runs on the GPUs through the same MoE path. A pass drafts k tokens
+  per session, verifies them in one main step and keeps the agreed prefix. Greedy only for now.
 
 ## Layout
 
@@ -86,8 +94,10 @@ plans/v41-1017-27.5gb-8xv100.json pack/manifest.json`, then run once with `VOLTA
 checkpoint as `--model`. The plan holds each expert's tier (15,172 in cb3, 188 in cb2) and its placement.
 
 `--sessions` is per GPU. `--text` teacher-forces real tokens (i32 LE) so routing looks like real traffic.
-`volta eval --model ... --eval <dir>` runs the Lucebox eval, and `volta check` compares logits with the CPU
-reference.
+`volta eval --model ... --eval <dir>` runs the Lucebox eval (`--chunk k` feeds k tokens per sequence per step), and
+`volta check` compares logits with the CPU reference. `VOLTA_SPARK=<checkpoint dir> volta spec --model ... --text
+<tokens> --k 3` prefills each session and decodes greedily with k drafts per pass (`--k 0` is the no-draft
+baseline).
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -98,6 +108,7 @@ reference.
 | `VOLTA_CACHE` | on | `0` skips the packed-expert cache in `/dev/shm/vcache` |
 | `VOLTA_TRACE_STEP` | | wraps that step in a CUDA profiler range, for `nsys --capture-range=cudaProfilerApi` |
 | `VOLTA_PROF` | | prints where each step's time went, with a sync at each boundary |
+| `VOLTA_SPARK` | | the checkpoint directory to load the DSpark draft from (its experts are packed at load) |
 | `VOLTA_OVERLAP` | on | `0` runs everything on one stream (no side-stream branches in the step graph) |
 
 ## License
