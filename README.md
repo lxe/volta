@@ -24,6 +24,8 @@ that turns that bandwidth into throughput for many sessions at once.
   gets 27 tokens/s instead of 20, and sampled outputs keep the model's own distribution (speculative sampling).
 - **Plugs into your tools:** the OpenAI- and Anthropic-compatible API of [dsx](https://github.com/lxe/dsx), with
   streaming, tools, thinking levels and the chat in the browser.
+- **Long context:** 128K tokens per session for 16 sessions at once (256K with one per GPU). The compressed KV
+  cache is stored as FP4, ~0.9 KB per token.
 - **Picks up where you left off:** a finished session's KV cache stays on the GPU, so an agent that resends the whole
   conversation only pays for the new text.
 
@@ -86,6 +88,9 @@ VOLTA_PACK=volta-weights/pack-27.5gb-8xv100 ./target/release/volta-server \
   --host 0.0.0.0 --port 8090
 ```
 
+That serves 32 sessions of 8,192 tokens. For agents with long conversations, trade sessions for context:
+`--slots 2 --ctx 131072` serves 16 sessions of 128K, and `--slots 1 --ctx 262144` 8 sessions of 256K.
+
 Loading takes ~2 minutes (the first start also maps the 196 GB Engram tables into RAM). Open `http://localhost:8090/`
 for the web UI, or point any OpenAI client at `http://localhost:8090/v1` (Anthropic clients at
 `http://localhost:8090`):
@@ -132,8 +137,8 @@ For the [pi](https://github.com/badlogic/pi-mono) coding agent, add this to `~/.
           "id": "deepseek-v4.1-flash",
           "reasoning": true,
           "input": ["text"],
-          "contextWindow": 8192,
-          "maxTokens": 4096,
+          "contextWindow": 131072,
+          "maxTokens": 16384,
           "thinkingLevelMap": { "off": "none", "high": "high" }
         }
       ]
@@ -145,6 +150,8 @@ For the [pi](https://github.com/badlogic/pi-mono) coding agent, add this to `~/.
 ```bash
 pi --provider volta --model deepseek-v4.1-flash:off
 ```
+
+`contextWindow` must match the server's `--ctx` (here `--slots 2 --ctx 131072 --max-tokens 16384`).
 
 With `--api-key`: drop `"authHeader": false`, set `"apiKey"` to the key and point `baseUrl` at the server's URL.
 
@@ -266,7 +273,8 @@ attention, and two Engram lookups. Every step runs all sessions' tokens together
 | [`engine/src/server/telemetry.rs`](engine/src/server/telemetry.rs), [`engine/src/server/dashboard.html`](engine/src/server/dashboard.html) | the admin dashboard's numbers and page |
 | [`core/`](core/), the rest of [`engine/`](engine/) | model loader, CPU reference, the HTTP server and web UI, from [dsx](https://github.com/lxe/dsx) |
 | [`plans/`](plans/) | the published pack's tier plan and placement, and the routing counts that choose tiers |
-| [`tests/`](tests/), [`bench/`](bench/) | kernel tests and sweeps; hardware probes |
+| [`tests/`](tests/) | standalone kernel tests against reference kernels: expert formats (`vmoe_test`, `vlut_test`), dense and expert launch shapes (`dense_test`, `split_test`), attention (`attn_test`), indexer (`indexer_test`) |
+| [`bench/`](bench/) | hardware probes and the existing-engine benchmarks |
 
 ## Credits
 
