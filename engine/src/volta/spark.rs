@@ -34,6 +34,8 @@ pub(super) struct Spark {
     out: Buf,
     emb: Buf,
     bias: Buf,
+    /// one CUDA graph per draft-token count (observed rows are always padded to TMAX)
+    graphs: HashMap<usize, Option<crate::gpu::GraphExec>>,
 }
 
 /// window pool rows per slot of a draft layer: the main model's window, then the block's own rows
@@ -113,8 +115,9 @@ pub(super) fn build(g: &Gpu, m: &Model, ds: &Dspark, gi: usize, ngpu: usize, etp
             comp_state: None,
         });
     }
-    // experts: cb3 (the draft only has to guess well), this GPU's slice of each
-    let tier = 1u8;
+    // experts: cb2 (the draft only has to guess: cb2 accepts as many drafts as cb3 and is ~0.2 GB smaller per GPU;
+    // VOLTA_SPARK_CB2=0 for cb3), this GPU's slice of each
+    let tier = if std::env::var("VOLTA_SPARK_CB2").is_ok_and(|v| v == "0") { 1u8 } else { 2u8 };
     let items: Vec<((usize, usize), &crate::model::Expert, u8)> =
         ds.layers.iter().enumerate().flat_map(|(j, dl)| dl.experts.iter().enumerate().map(move |(e, ex)| ((base + j, e), ex, tier))).collect();
     let bits = tier_kind(tier).1;
@@ -161,7 +164,8 @@ pub(super) fn build(g: &Gpu, m: &Model, ds: &Dspark, gi: usize, ngpu: usize, etp
         prev: g.alloc_zeroed(TMAX * 4)?,
         out: g.alloc_zeroed(TMAX * 4)?,
         emb: g.alloc_zeroed(TMAX * rank * 4)?,
-        bias: g.alloc_zeroed(TMAX * c.vocab * 4)?,
+        bias: g.alloc_zeroed((TMAX / ds.block + 1) * c.vocab * 4)?, // one row per drafting session
+        graphs: HashMap::new(),
     };
     Ok((layers, local, spark))
 }
@@ -182,11 +186,11 @@ impl Shard<'_> {
     pub(super) fn spark_step(&mut self, obs: &[(usize, usize, usize)], drafts: &[(usize, usize, u32)], counts: &[usize]) -> Result<Vec<u32>> {
         let m = self.m;
         let c = &m.cfg;
-        let (d, hc, hd, win) = (c.dim, c.hc, c.head_dim, c.window);
+        let (d, hc, win) = (c.dim, c.hc, c.window);
         self.g.bind();
-        let (b, base, nd, rank, noise) = {
+        let (b, nd, noise) = {
             let sp = self.spark.as_ref().context("no draft loaded (VOLTA_SPARK)")?;
-            (sp.block, sp.base, sp.n, sp.rank, sp.noise)
+            (sp.block, sp.n, sp.noise)
         };
         let rows = spark_rows(win, b);
         let t = drafts.len() * b;
@@ -203,7 +207,6 @@ impl Shard<'_> {
         let sp = self.spark.as_ref().unwrap();
         let (tab, widx_p) = (sp.tab.ptr, sp.widx.ptr);
         // tables: [0] draft positions, [1] draft kv rows, [2] observed rows' source rows, [3] their positions, [4] their kv rows
-        let ofs = |k: usize| tab + (k * TMAX * 4) as u64;
         let mut tabs = vec![0i32; 5 * TMAX];
         let mut widx = vec![-1i32; t * rows];
         for (si, &(s, p, _)) in drafts.iter().enumerate() {
@@ -221,6 +224,10 @@ impl Shard<'_> {
                 }
             }
         }
+        // observed rows, padded to TMAX (row 0, no store) so every step has the same shape
+        for i in 0..TMAX {
+            tabs[4 * TMAX + i] = -1;
+        }
         for (i, &(s, row, p)) in obs.iter().enumerate() {
             tabs[2 * TMAX + i] = row as i32;
             tabs[3 * TMAX + i] = p as i32;
@@ -229,21 +236,6 @@ impl Shard<'_> {
         self.g.htod_sync(tab, &tabs)?;
         if t > 0 {
             self.g.htod_sync(widx_p, &widx)?;
-        }
-        let f = self.freqs.0.ptr;
-        // observe: main hidden rows -> main_proj -> norm, then each draft layer's kv of them into its window
-        if !obs.is_empty() {
-            let sp = self.spark.as_ref().unwrap();
-            let (no, k3) = (obs.len(), sp.targets.len() * d);
-            let w = &self.w;
-            self.g.launch(self.k["vgather_rows"], ((k3 as u32).div_ceil(256), no as u32, 1), 256, 0, &[Arg::P(sp.mh.ptr), Arg::P(ofs(2)), Arg::P(sp.obs.ptr), Arg::I(k3 as i32)])?;
-            self.mm(&sp.main_proj, sp.obs.ptr, w.a.ptr, no)?;
-            self.rms_rows(w.a.ptr, &sp.main_norm, w.a.ptr, d, no, true)?;
-            for j in 0..nd {
-                let l = &self.layers[base + j];
-                self.mm(l.kv.as_ref().unwrap(), w.a.ptr, w.kvv.ptr, no)?;
-                self.g.launch(self.k["vkv_store"], (no as u32, 1, 1), 1024, 0, &[Arg::P(w.kvv.ptr), Arg::P(l.kv_norm.ptr), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(f), Arg::I(c.rope_dim as i32), Arg::P(ofs(3)), Arg::P(l.window.ptr), Arg::P(ofs(4)), Arg::I(hd as i32)])?;
-            }
         }
         // the block: `next`, then the noise token, at positions p + 1 ..
         if t > 0 {
@@ -263,6 +255,66 @@ impl Shard<'_> {
                 pre[i * 24] = 1.0;
             }
             self.g.htod_sync(self.w.mix_f.ptr, &pre)?;
+        }
+        if t > 0 {
+            let sp = self.spark.as_ref().unwrap();
+            let prev: Vec<i32> = drafts.iter().map(|&(_, _, n)| n as i32).collect();
+            self.g.htod_sync(sp.prev.ptr, &prev)?;
+        }
+        // the device part: eager the first time a shape comes up, captured the second, replayed after
+        let mut graphs = std::mem::take(&mut self.spark.as_mut().unwrap().graphs);
+        let eager = std::env::var("VOLTA_GRAPH").is_ok_and(|v| v == "0");
+        let r = match graphs.get(&t) {
+            Some(Some(gx)) if !eager => self.g.launch_graph(gx),
+            Some(None) if !eager => (|| {
+                self.g.begin_capture()?;
+                self.spark_device(t, drafts.len(), tab, widx_p, rows)?;
+                let gx = self.g.end_capture()?;
+                self.g.launch_graph(&gx)?;
+                graphs.insert(t, Some(gx));
+                Ok(())
+            })(),
+            _ => {
+                let r = self.spark_device(t, drafts.len(), tab, widx_p, rows);
+                graphs.entry(t).or_insert(None);
+                r
+            }
+        };
+        self.spark.as_mut().unwrap().graphs = graphs;
+        r?;
+        if t == 0 {
+            self.g.sync()?;
+            return Ok(vec![]);
+        }
+        let sp = self.spark.as_ref().unwrap();
+        let out: Vec<i32> = self.g.download(sp.out.ptr, t)?;
+        Ok(out.into_iter().map(|x| x as u32).collect())
+    }
+
+    /// the draft step's device work (graph-captured): observe TMAX rows, the draft layers, head and Markov chain
+    fn spark_device(&mut self, t: usize, ns: usize, tab: u64, widx_p: u64, rows: usize) -> Result<()> {
+        let m = self.m;
+        let c = &m.cfg;
+        let (d, hd) = (c.dim, c.head_dim);
+        let (b, base, nd, rank) = {
+            let sp = self.spark.as_ref().unwrap();
+            (sp.block, sp.base, sp.n, sp.rank)
+        };
+        let ofs = |k: usize| tab + (k * TMAX * 4) as u64;
+        let f = self.freqs.0.ptr;
+        // observe: main hidden rows -> main_proj -> norm, then each draft layer's kv of them into its window
+        {
+            let sp = self.spark.as_ref().unwrap();
+            let (no, k3) = (TMAX, sp.targets.len() * d);
+            let w = &self.w;
+            self.g.launch(self.k["vgather_rows"], ((k3 as u32).div_ceil(256), no as u32, 1), 256, 0, &[Arg::P(sp.mh.ptr), Arg::P(ofs(2)), Arg::P(sp.obs.ptr), Arg::I(k3 as i32)])?;
+            self.mm(&sp.main_proj, sp.obs.ptr, w.a.ptr, no)?;
+            self.rms_rows(w.a.ptr, &sp.main_norm, w.a.ptr, d, no, true)?;
+            for j in 0..nd {
+                let l = &self.layers[base + j];
+                self.mm(l.kv.as_ref().unwrap(), w.a.ptr, w.kvv.ptr, no)?;
+                self.g.launch(self.k["vkv_store"], (no as u32, 1, 1), 1024, 0, &[Arg::P(w.kvv.ptr), Arg::P(l.kv_norm.ptr), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(f), Arg::I(c.rope_dim as i32), Arg::P(ofs(3)), Arg::P(l.window.ptr), Arg::P(ofs(4)), Arg::I(hd as i32)])?;
+            }
         }
         for j in 0..nd {
             let li = base + j;
@@ -291,8 +343,7 @@ impl Shard<'_> {
             }
         }
         if t == 0 {
-            self.g.sync()?;
-            return Ok(vec![]);
+            return Ok(());
         }
         // head over every block position, then the Markov chain one position at a time
         let sp = self.spark.as_ref().unwrap();
@@ -300,16 +351,12 @@ impl Shard<'_> {
         self.g.launch(self.k["vhc_pre"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.mix_f.ptr), Arg::I(0), Arg::P(w.x.ptr), Arg::I(d as i32)])?;
         self.rms_rows(w.x.ptr, &sp.norm, w.x.ptr, d, t, false)?;
         self.mm(&self.head, w.x.ptr, w.logits.ptr, t)?;
-        let ns = drafts.len();
-        let prev: Vec<i32> = drafts.iter().map(|&(_, _, n)| n as i32).collect();
-        self.g.htod_sync(sp.prev.ptr, &prev)?;
         for i in 0..b {
             self.g.launch(self.k["vmarkov_embed"], (ns as u32, 1, 1), 256, 0, &[Arg::P(sp.markov_embed.ptr), Arg::P(sp.prev.ptr), Arg::P(sp.emb.ptr), Arg::I(rank as i32)])?;
             self.mm(&sp.markov_head, sp.emb.ptr, sp.bias.ptr, ns)?;
             self.g.launch(self.k["vmarkov_argmax"], (ns as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::P(sp.bias.ptr), Arg::I(c.vocab as i32), Arg::I(b as i32), Arg::I(i as i32), Arg::P(sp.prev.ptr), Arg::P(sp.out.ptr)])?;
         }
-        let out: Vec<i32> = self.g.download(sp.out.ptr, t)?;
-        Ok(out.into_iter().map(|x| x as u32).collect())
+        Ok(())
     }
 
     /// the draft layer's attention for the block's tokens (positions `pos`, kv rows `kvrow`, `rows` window indices

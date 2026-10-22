@@ -47,7 +47,7 @@ fn xrow_bytes(c: &crate::model::Config) -> usize {
 const VX_BLOCKS: usize = 8;
 
 /// most 32-row tiles of the small-T attention (window 128 + top-512 = 20)
-const ATTN_SPLITS: usize = 8;
+const ATTN_SPLITS: usize = 4; // 160 rows per split: window + idx_topk = 640 rows
 
 #[derive(Clone, Debug)]
 pub struct Opts {
@@ -2241,6 +2241,11 @@ impl Engine {
         let mut out = vec![vec![]; self.opts.ngpu];
         for _ in 0..self.opts.ngpu {
             let (gi, r) = self.rx.recv()?;
+            if let Err(e) = &r {
+                // the other GPUs wait on this one in the exchange and never answer: report before failing
+                eprintln!("GPU{gi} step failed: {e:#}");
+                std::process::exit(1);
+            }
             out[gi] = r.with_context(|| format!("GPU{gi} step"))?;
         }
         Ok(out)
@@ -2284,6 +2289,11 @@ impl Engine {
         let mut out = vec![vec![]; self.opts.ngpu];
         for _ in 0..self.opts.ngpu {
             let (gi, r) = self.rx.recv()?;
+            if let Err(e) = &r {
+                // the other GPUs wait on this one in the exchange and never answer: report before failing
+                eprintln!("GPU{gi} step failed: {e:#}");
+                std::process::exit(1);
+            }
             out[gi] = r.with_context(|| format!("GPU{gi} step"))?.into_iter().map(f32::to_bits).collect();
         }
         Ok(out)
@@ -2360,6 +2370,9 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
     let prof = sh.gi == 0 && std::env::var_os("VOLTA_PROF").is_some();
     let eager = prof || std::env::var_os("DSX_DUMP").is_some() || std::env::var("VOLTA_GRAPH").is_ok_and(|v| v == "0");
     let key = (t, sh.bucket);
+    // graphs cost device memory: past VOLTA_GRAPHS shapes (default 6), new shapes run without one
+    let limit = std::env::var("VOLTA_GRAPHS").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(6);
+    let eager = eager || (!sh.graphs.contains_key(&key) && sh.graphs.values().filter(|g| g.is_some()).count() >= limit);
     if eager {
         layers(sh, toks, &counts, prof)?;
     } else if let Some(Some(g)) = sh.graphs.get(&key).map(|g| g.as_ref()) {

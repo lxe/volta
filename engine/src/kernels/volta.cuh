@@ -204,6 +204,7 @@ extern "C" __global__ void vto_f16(const float *x, half *y, int n) {
 extern "C" __global__ void vkv_store(float *x, const float *w, int n, float eps, const float *freqs, int rd, const int *pos,
                                      __nv_bfloat16 *pool, const int *dst_row, int ldx) {
   __shared__ float sh[32];
+  if (dst_row[blockIdx.x] < 0) return;  // padding row (the draft's observe pads to a fixed count)
   float *xt = x + (size_t)blockIdx.x * ldx;
   float s = 0.f;
   for (int i = threadIdx.x; i < n; i += blockDim.x) s += xt[i] * xt[i];

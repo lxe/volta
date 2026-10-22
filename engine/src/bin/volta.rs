@@ -75,6 +75,10 @@ enum Cmd {
         /// draft tokens verified per pass (at most the draft's block)
         #[arg(long, default_value_t = 5)]
         k: usize,
+        /// per session, verify the most drafts j (<= k) whose chance of all being accepted, p^j for the session's
+        /// recent per-draft acceptance p, is at least VOLTA_SPEC_THETA (default 0.35)
+        #[arg(long)]
+        adaptive: bool,
     },
     /// expert path self-test: convert + pack + GPU kernels vs the CPU reference, for (layer:expert) pairs
     Experts {
@@ -231,7 +235,7 @@ fn main() -> Result<()> {
             }
             println!("{{\"tokens\": {cnt}, \"ppl\": {:.4}, \"kl_top{topk}\": {:.6}, \"top1_agree\": {:.6}, \"wall_s\": {:.1}}}", (nll / cnt as f64).exp(), kl / cnt as f64, agree as f64 / cnt as f64, t0.elapsed().as_secs_f64());
         }
-        Cmd::Spec { model, gpus, sessions, total, steps, prompt, text, k } => {
+        Cmd::Spec { model, gpus, sessions, total, steps, prompt, text, k, adaptive } => {
             let m = load(&model, None)?;
             let corpus: Vec<u32> = std::fs::read(&text)?.chunks(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32).collect();
             // sessions per GPU: `sessions` each, or `total` spread round-robin (some GPUs may have none)
@@ -263,49 +267,93 @@ fn main() -> Result<()> {
             let mut pos = vec![prompt - 1; ns]; // position of each session's newest main token
             let mut obs: Vec<Vec<(usize, usize, usize)>> = vec![vec![]; gpus];
             let (mut made, mut hist) = (0usize, vec![0usize; k + 1]);
+            // per session, the recent per-draft acceptance (exponential averages of accepted and tried drafts)
+            let theta = std::env::var("VOLTA_SPEC_THETA").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.35);
+            let (mut acc, mut tried) = (vec![0.6f64; ns], vec![1.0f64; ns]);
+            let ks = |acc: &[f64], tried: &[f64], i: usize| {
+                if !adaptive {
+                    return k;
+                }
+                let p = (acc[i] / tried[i]).clamp(0.0, 0.99);
+                (1..=k).take_while(|&j| p.powi(j as i32) >= theta).last().unwrap_or(1)
+            };
+            let mut verified = 0usize;
             let (mut t_draft, mut t_main) = (0f64, 0f64);
             let t0 = Instant::now();
+            let trace_at = std::env::var("VOLTA_TRACE_STEP").ok().and_then(|v| v.parse::<usize>().ok());
             for it in 0..steps {
+                // VOLTA_TRACE_STEP=n: profile pass n (draft + verify) for nsys --capture-range=cudaProfilerApi
+                if trace_at == Some(it) {
+                    dsx::volta::profiler(true)?;
+                }
                 let td = Instant::now();
                 let drafts: Vec<Vec<(usize, usize, u32)>> = (0..gpus).map(|g| (0..nper[g]).map(|s| (s, pos[gid(g, s)], next[gid(g, s)])).collect()).collect();
                 // k = 0: plain greedy decoding (the baseline), no draft step
                 let dr = if k == 0 { (0..gpus).map(|g| vec![0u32; nper[g] * block]).collect() } else { e.spark(SparkPlan { obs: std::mem::take(&mut obs), drafts })? };
                 t_draft += td.elapsed().as_secs_f64();
                 let tm = Instant::now();
-                let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..nper[g]).flat_map(|s| std::iter::once(next[gid(g, s)]).chain(dr[g][s * block..s * block + k].iter().copied()).map(move |t| (s, t))).collect()).collect();
+                // this pass's drafts per session, and where each session's rows start in its GPU's plan
+                let mut kk: Vec<Vec<usize>> = (0..gpus).map(|g| (0..nper[g]).map(|s| ks(&acc, &tried, gid(g, s))).collect()).collect();
+                if adaptive {
+                    // round each GPU's verify tokens up to a multiple of 8 (few step shapes, so they stay in CUDA
+                    // graphs): the spare slots go to the sessions most likely to have one more draft accepted
+                    for g in 0..gpus {
+                        let tot: usize = kk[g].iter().map(|x| x + 1).sum();
+                        let mut spare = (tot.div_ceil(8) * 8).min(TMAX) - tot;
+                        let mut order: Vec<usize> = (0..nper[g]).collect();
+                        order.sort_by(|&a, &b| (acc[gid(g, b)] / tried[gid(g, b)]).partial_cmp(&(acc[gid(g, a)] / tried[gid(g, a)])).unwrap());
+                        while spare > 0 && order.iter().any(|&s| kk[g][s] < k) {
+                            for &s in &order {
+                                if spare > 0 && kk[g][s] < k {
+                                    kk[g][s] += 1;
+                                    spare -= 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                let r0: Vec<Vec<usize>> = kk.iter().map(|v| v.iter().scan(0, |a, &x| { let r = *a; *a += x + 1; Some(r) }).collect()).collect();
+                let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..nper[g]).flat_map(|s| std::iter::once(next[gid(g, s)]).chain(dr[g][s * block..s * block + kk[g][s]].iter().copied()).map(move |t| (s, t))).collect()).collect();
+                verified += plan.iter().map(|p| p.len()).sum::<usize>();
                 let out = e.step_greedy(plan)?;
                 t_main += tm.elapsed().as_secs_f64();
                 obs = vec![vec![]; gpus];
                 let mut rw = vec![vec![]; gpus];
                 for g in 0..gpus {
                     for s in 0..nper[g] {
-                        let i = gid(g, s);
-                        let row = |j: usize| out[g][s * (k + 1) + j];
+                        let (i, ksi, rs) = (gid(g, s), kk[g][s], r0[g][s]);
+                        let row = |j: usize| out[g][rs + j];
                         let mut a = 0;
-                        while a < k && row(a) == dr[g][s * block + a] {
+                        while a < ksi && row(a) == dr[g][s * block + a] {
                             a += 1;
                         }
                         hist[a] += 1;
                         made += a + 1;
+                        // drafts tried until the first miss (all of them if every one held)
+                        acc[i] = 0.8 * acc[i] + 0.2 * a as f64;
+                        tried[i] = 0.8 * tried[i] + 0.2 * (a + 1).min(ksi) as f64;
                         for j in 0..=a {
-                            obs[g].push((s, s * (k + 1) + j, pos[i] + 1 + j));
+                            obs[g].push((s, rs + j, pos[i] + 1 + j));
                         }
-                        if a < k {
-                            rw[g].push((s, k - a));
+                        if a < ksi {
+                            rw[g].push((s, ksi - a));
                         }
                         next[i] = row(a);
                         pos[i] += a + 1;
                     }
                 }
                 e.rewind(rw)?;
+                if trace_at == Some(it) {
+                    dsx::volta::profiler(false)?;
+                }
                 if it == 0 {
                     eprintln!("first pass {:.0} ms", t0.elapsed().as_secs_f64() * 1e3);
                 }
             }
             let wall = t0.elapsed().as_secs_f64();
             let per = made as f64 / ns as f64;
-            println!("{ns} sessions, k {k}: {:.2} tokens per pass ({:?}), draft {:.1} ms + verify {:.1} ms per pass, {:.1} tok/s per session, {:.0} tok/s aggregate",
-                per / steps as f64, hist, t_draft / steps as f64 * 1e3, t_main / steps as f64 * 1e3, per / wall, made as f64 / wall);
+            println!("{ns} sessions, k {k}{}: {:.2} tokens per pass ({:?}), {:.2} verified per session-pass, draft {:.1} ms + verify {:.1} ms per pass, {:.1} tok/s per session, {:.0} tok/s aggregate",
+                if adaptive { " adaptive" } else { "" }, per / steps as f64, hist, verified as f64 / (ns * steps) as f64, t_draft / steps as f64 * 1e3, t_main / steps as f64 * 1e3, per / wall, made as f64 / wall);
         }
         Cmd::Experts { model, pairs } => {
             let m = load(&model, None)?;
