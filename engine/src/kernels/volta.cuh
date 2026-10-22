@@ -1329,3 +1329,69 @@ extern "C" __global__ void vindexer_score4(const float *q, const unsigned char *
   }
   if (lane == 0) sc[s] = tot;
 }
+
+// The indexer's scores on the tensor cores: score[t][s] = sum_h w[t][h] * relu(q[t][h] . k[s]) over 32 heads of 128
+// dims, for 128 FP4 keys per block. S[32 keys][16 heads] per warp with mma.m8n8k4 (fp16 in, fp32 out): the CUDA-core
+// version (vindexer_score4) did 32 dependent warp reductions per key, and its cost grows with the context.
+// grid (ceil(n_max / 128), T), block 256; IH = 32, ID = 128.
+#define VIX_LD 136
+extern "C" __global__ void __launch_bounds__(256) vindexer_mma(const float *q, const unsigned char *kpool, const int *koff, const float *w,
+                                                               float *score, const int *n_vis, int n_max) {
+  __shared__ __align__(16) half Qs[32 * VIX_LD];
+  __shared__ __align__(16) half Ks[128 * VIX_LD];
+  __shared__ float Wh[32], part[2][128];
+  const int t = blockIdx.y, s0 = blockIdx.x * 128, tid = threadIdx.x, lane = tid & 31, wp = tid >> 5;
+  const int nv = min(n_vis[t], n_max);
+  for (int i = tid; i < 32 * 128; i += 256) Qs[(i >> 7) * VIX_LD + (i & 127)] = __float2half(q[(size_t)t * 32 * 128 + i]);
+  if (tid < 32) Wh[tid] = w[t * 32 + tid];
+  // keys: 16 chunks of 8 dims per row; FP4 rows of 68 bytes (64 code bytes, 4 E8M0 scales)
+  for (int c = tid; c < 128 * 16; c += 256) {
+    const int r = c >> 4, ch = c & 15, s = s0 + r;
+    half2 o[4];
+    if (s < nv) {
+      const unsigned char *row = kpool + ((size_t)koff[t] + s) * 68;
+      const uint32_t cw = *reinterpret_cast<const uint32_t *>(row + ch * 4);
+      const float sc = ldexpf(1.f, (int)row[64 + ch / 4] - 127);
+#pragma unroll
+      for (int j = 0; j < 4; j++) o[j] = __floats2half2_rn(V_E2M1[(cw >> (8 * j)) & 15] * sc, V_E2M1[(cw >> (8 * j + 4)) & 15] * sc);
+    } else {
+#pragma unroll
+      for (int j = 0; j < 4; j++) o[j] = __floats2half2_rn(0.f, 0.f);
+    }
+    *reinterpret_cast<uint4 *>(&Ks[r * VIX_LD + ch * 8]) = *reinterpret_cast<uint4 *>(o);
+  }
+  __syncthreads();
+  const int kg = wp >> 1, hh = wp & 1, q4 = (lane >> 2) & 3, hb = lane >> 4;
+  const int arow = 32 * kg + 8 * q4 + (lane & 3) + 4 * hb, bcol = (lane & 3) + 4 * hb;
+  float acc[2][8];
+#pragma unroll
+  for (int g = 0; g < 2; g++)
+#pragma unroll
+    for (int e = 0; e < 8; e++) acc[g][e] = 0.f;
+#pragma unroll 8
+  for (int k = 0; k < 128; k += 4) {
+    const uint2 a = *reinterpret_cast<const uint2 *>(&Ks[arow * VIX_LD + k]);
+#pragma unroll
+    for (int g = 0; g < 2; g++) {
+      const uint2 b = *reinterpret_cast<const uint2 *>(&Qs[(16 * hh + 8 * g + bcol) * VIX_LD + k]);
+      v_mma884(acc[g], a.x, a.y, b.x, b.y);
+    }
+  }
+  // per key: sum over this warp's 16 heads of w * relu(s); a lane holds two keys (e bit 1) and 8 heads of each
+  float rs[2] = {0.f, 0.f};
+#pragma unroll
+  for (int g = 0; g < 2; g++)
+#pragma unroll
+    for (int e = 0; e < 8; e++) {
+      const int h = 16 * hh + 8 * g + 2 * ((lane >> 1) & 1) + (e & 1) + 4 * (e >> 2);
+      rs[(e >> 1) & 1] += fmaxf(acc[g][e], 0.f) * Wh[h];
+    }
+#pragma unroll
+  for (int j = 0; j < 2; j++) rs[j] += __shfl_xor_sync(0xffffffffu, rs[j], 2);
+  if (((lane >> 1) & 1) == 0) {
+#pragma unroll
+    for (int j = 0; j < 2; j++) part[hh][32 * kg + 8 * q4 + (lane & 1) + 2 * j + 4 * hb] = rs[j];
+  }
+  __syncthreads();
+  if (tid < 128 && s0 + tid < n_max) score[(size_t)t * n_max + s0 + tid] = s0 + tid < nv ? part[0][tid] + part[1][tid] : -INFINITY;
+}

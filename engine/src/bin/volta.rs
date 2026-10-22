@@ -250,14 +250,23 @@ fn main() -> Result<()> {
             let chunk = (TMAX / smax).max(1);
             let mut next = vec![0u32; ns];
             let tp = Instant::now();
+            let trace_pf = std::env::var("VOLTA_TRACE_PREFILL").ok().and_then(|v| v.parse::<usize>().ok());
             for p0 in (0..prompt).step_by(chunk) {
                 let p1 = (p0 + chunk).min(prompt);
                 let w = p1 - p0;
+                // VOLTA_TRACE_PREFILL=pos: profile the prefill step that starts at or after pos
+                let tr = trace_pf.is_some_and(|t| p0 >= t && p0 < t + chunk);
+                if tr {
+                    dsx::volta::profiler(true)?;
+                }
                 let cv = &corpus;
                 let plan: Vec<Vec<(usize, u32)>> = (0..gpus).map(|g| (0..nper[g]).flat_map(|s| (p0..p1).map(move |p| (s, cv[(gid(g, s) * 997 + p) % cv.len()]))).collect()).collect();
                 let out = e.step_greedy(plan)?;
                 let obs = (0..gpus).map(|g| (0..nper[g]).flat_map(|s| (0..w).map(move |j| (s, s * w + j, p0 + j))).collect()).collect();
                 e.spark(SparkPlan { obs, drafts: vec![vec![]; gpus] })?;
+                if tr {
+                    dsx::volta::profiler(false)?;
+                }
                 for g in 0..gpus {
                     for s in 0..nper[g] {
                         next[gid(g, s)] = out[g][s * w + w - 1];
