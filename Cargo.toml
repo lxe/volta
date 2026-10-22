@@ -1,0 +1,10 @@
+[workspace]
+resolver = "3"
+# core: model config, GGUF / safetensors readers, CPU reference (from dsx)
+# engine: CUDA engine; src/volta.rs + bin/volta.rs are the batched 8x V100 engine (kernels in src/kernels/volta.cuh)
+members = ["core", "engine"]
+default-members = ["core", "engine"]
+
+[profile.release]
+debug = 1
+codegen-units = 4

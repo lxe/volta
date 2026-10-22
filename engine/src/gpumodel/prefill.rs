@@ -1,0 +1,912 @@
+//! Prefill: a chunk of prompt tokens through the encoder half (layers 0..=20) for every token, and through the
+//! decoder half only for the last `tail` tokens of the prompt. Decoder layers keep just a 128-token window of their
+//! own; their long-range KV and index keys come from layer 20 (model.py kv_source_layers / SWA bounded replay), so
+//! skipping the decoder for older prompt tokens gives the same caches as decoding token by token.
+//!
+//! Dense weights are dequantized to f16 per layer and multiplied with cuBLAS (f32 accumulation). Routed experts
+//! run as one grouped GEMM per expert over the tokens routed to it; experts not resident on GPU0 are copied in
+//! from the RAM arena (hugepage, full PCIe speed) or the mmapped file.
+
+use super::*;
+use crate::gguf::GType;
+
+/// staging buffers for streamed experts (copies run ahead of compute by up to NSTAGE - 1 experts)
+const NSTAGE: usize = 4;
+
+pub struct PrefillBufs {
+    pub tmax: usize,
+    h: Buf,
+    x: Buf,
+    a: Buf,
+    qr: Buf,
+    q: Buf,
+    kv: Buf,
+    o: Buf,
+    r: Buf,
+    mix_a: Buf,
+    mix_f: Buf,
+    act16: Buf,
+    w16: Buf,
+    wins: Buf,
+    winidx: Buf,
+    pos: Buf,
+    lat: Buf,
+    ckv: Buf,
+    csc: Buf,
+    iq: Buf,
+    iw: Buf,
+    score: Buf,
+    ns: Buf,
+    compidx: Buf,
+    keep: Buf,
+    keep_tail: Buf,
+    tmp: Buf,
+    // experts
+    gx16: Buf,
+    gg: Buf,
+    gu: Buf,
+    h16: Buf,
+    go: Buf,
+    rows: Buf,
+    wrow: Buf,
+    estage: [Buf; NSTAGE],
+    ev_ready: [crate::gpu::Event; NSTAGE],
+    ev_free: [crate::gpu::Event; NSTAGE],
+    /// x shipped to the aux GPUs (prefill_moe_aux): the copy's event and pinned f16 staging
+    ev_x: crate::gpu::Event,
+    x_host: crate::gpu::HostBuf,
+    /// pinned staging for small per-layer uploads (positions, index rows), bump-allocated within a pass
+    stage: crate::gpu::HostBuf,
+    stage_off: std::cell::Cell<usize>,
+    out: Buf,
+    logits: Buf,
+    attn_tc: crate::attn::SparseAttnTc,
+}
+
+/// An aux GPU's share of prefill: its resident experts run there on activations shipped over its link
+/// (moving ~42 MB of activations per layer beats moving its ~0.6 GB of weights per layer over an x4 link).
+pub struct AuxPrefill {
+    x16: Buf,
+    rows: Buf,
+    wrow: Buf,
+    gx16: Buf,
+    gg: Buf,
+    gu: Buf,
+    h16: Buf,
+    go: Buf,
+    w16: Buf,
+    out: Buf,
+    out_host: crate::gpu::HostBuf,
+    k: std::collections::HashMap<&'static str, crate::gpu::Kernel>,
+}
+
+impl AuxPrefill {
+    pub fn new(g1: &Gpu, m: &Model, tmax: usize) -> Result<AuxPrefill> {
+        let c = &m.cfg;
+        let (d, inter) = (c.dim, c.inter);
+        let mut k = std::collections::HashMap::new();
+        for n in ["gather_h", "dequant_f16", "swiglu_rows_f16", "scatter_add", "fwht_rows_f16", "add_noise_rows"] {
+            k.insert(n, g1.kernel(n)?);
+        }
+        Ok(AuxPrefill {
+            x16: g1.alloc(tmax * d * 2)?,
+            rows: g1.alloc(tmax * 8 * 4)?,
+            wrow: g1.alloc(tmax * 8 * 4)?,
+            gx16: g1.alloc(tmax * d * 2)?,
+            gg: g1.alloc(tmax * inter * 4)?,
+            gu: g1.alloc(tmax * inter * 4)?,
+            h16: g1.alloc(tmax * inter * 2)?,
+            go: g1.alloc(tmax * d * 4)?,
+            w16: g1.alloc(inter * d * 2)?,
+            out: g1.alloc(tmax * d * 4)?,
+            out_host: crate::gpu::HostBuf::new(tmax * d * 4)?,
+            k,
+        })
+    }
+}
+
+/// DSX_NOISE=A-B:REL (sensitivity probe, prefill path): every routed expert output of layers A..=B gets Gaussian noise
+/// of REL x its per-token RMS before it is added
+fn noise_rel(li: usize) -> Option<f32> {
+    static N: std::sync::OnceLock<Option<(usize, usize, f32)>> = std::sync::OnceLock::new();
+    let n = N.get_or_init(|| {
+        let v = std::env::var("DSX_NOISE").ok()?;
+        let (r, rel) = v.split_once(':')?;
+        let (a, b) = r.split_once('-').unwrap_or((r, r));
+        Some((a.parse().ok()?, b.parse().ok()?, rel.parse().ok()?))
+    });
+    n.and_then(|(a, b, rel)| (li >= a && li <= b).then_some(rel))
+}
+
+pub(crate) const SUB: usize = 256; // indexer queries per pass (bounds the [queries][positions] score matrix)
+
+impl PrefillBufs {
+    pub fn new(g: &Gpu, m: &Model, tmax: usize, max_ctx: usize) -> Result<PrefillBufs> {
+        let c = &m.cfg;
+        let tmax = tmax.max(1);
+        let f = |n: usize| g.alloc(n * 4);
+        let hq = c.n_heads * c.head_dim;
+        let max_in = hq.max(c.hc * c.dim).max(6144);
+        let max_w = (32768 * 1280).max(c.dim * 8192).max(25600 * 6144).max(c.n_experts * c.dim);
+        let nb = max_ctx / c.cand_block + 1;
+        Ok(PrefillBufs {
+            tmax,
+            h: f(tmax * c.hc * c.dim)?,
+            x: f(tmax * c.dim)?,
+            a: f(tmax * c.dim)?,
+            qr: f(tmax * c.q_lora)?,
+            q: f(tmax * hq)?,
+            kv: f(tmax * c.head_dim)?,
+            o: f(tmax * hq)?,
+            r: f(tmax * c.o_groups * c.o_lora)?,
+            mix_a: f(tmax * 24)?,
+            mix_f: f(tmax * 24)?,
+            act16: g.alloc(tmax * max_in * 2)?,
+            w16: g.alloc(max_w * 2)?,
+            wins: g.alloc((c.window + tmax) * c.head_dim * 2)?,
+            winidx: g.alloc(tmax * c.window * 4)?,
+            pos: g.alloc(tmax * 4)?,
+            lat: f(tmax * c.head_dim)?,
+            ckv: f(tmax * c.head_dim)?,
+            csc: f(tmax * c.head_dim)?,
+            iq: f(tmax * c.idx_heads * c.idx_dim)?,
+            iw: f(tmax * c.idx_heads)?,
+            score: f(SUB * max_ctx)?,
+            ns: g.alloc(tmax * 4)?,
+            compidx: g.alloc(tmax * c.idx_topk * 4)?,
+            keep: g.alloc(SUB * nb)?,
+            keep_tail: g.alloc((c.n_layers - 1 - c.cand_layer) * c.window * nb)?,
+            tmp: f(tmax * 25600.max(c.n_experts))?,
+            gx16: g.alloc(tmax * c.dim * 2)?,
+            gg: f(tmax * c.inter)?,
+            gu: f(tmax * c.inter)?,
+            h16: g.alloc(tmax * c.inter * 2)?,
+            go: f(tmax * c.dim)?,
+            rows: g.alloc(tmax * 8 * 4)?,
+            wrow: f(tmax * 8)?,
+            estage: (0..NSTAGE).map(|_| g.alloc(3 * c.inter * c.dim / 32 * 34 + 4096)).collect::<Result<Vec<_>>>()?.try_into().map_err(|_| anyhow::anyhow!("estage"))?,
+            ev_ready: (0..NSTAGE).map(|_| g.event()).collect::<Result<Vec<_>>>()?.try_into().map_err(|_| anyhow::anyhow!("ev_ready"))?,
+            ev_free: (0..NSTAGE).map(|_| g.event()).collect::<Result<Vec<_>>>()?.try_into().map_err(|_| anyhow::anyhow!("ev_free"))?,
+            ev_x: g.event()?,
+            x_host: crate::gpu::HostBuf::new(tmax * c.dim * 2)?,
+            stage: crate::gpu::HostBuf::new(8 << 20)?,
+            stage_off: std::cell::Cell::new(0),
+            out: f(tmax * c.dim)?,
+            logits: f(crate::handoff::MAXT * c.vocab)?, // [rows][vocab]: a verify pass's logits
+            attn_tc: crate::attn::SparseAttnTc::new(g)?,
+        })
+    }
+}
+
+fn type_id(t: GType) -> i32 {
+    match t {
+        GType::Fp8B32 => 1000,
+        t => t as u32 as i32,
+    }
+}
+
+impl GpuModel<'_> {
+    /// Enqueue the aux GPUs' experts for this layer (`spans[i]`: aux i's share; returns without waiting,
+    /// prefill_moe syncs each before adding).
+    #[allow(clippy::too_many_arguments)]
+    fn prefill_moe_aux(&self, pb: &PrefillBufs, li: usize, x: u64, n: usize, spans: &[Vec<(usize, usize, usize)>], all_rows: &[i32], all_w: &[f32]) -> Result<()> {
+        let rot = self.m.cfg.expert_rot[li];
+        let c = &self.m.cfg;
+        let (d, inter) = (c.dim, c.inter);
+        // x -> f16 on GPU0 -> pinned host -> each aux GPU; the host waits for this copy only (an event), not for the
+        // rest of GPU0's queue: a full sync here stalled every layer behind the shared expert while no weights were copying
+        self.g.launch(self.k["to_f16"], (((n * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(x), Arg::P(pb.act16.ptr), Arg::I((n * d) as i32)])?;
+        let xh = unsafe { std::slice::from_raw_parts_mut(pb.x_host.host_ptr() as *mut u16, n * d) };
+        self.g.dtoh(xh, pb.act16.ptr)?;
+        self.g.record(pb.ev_x, false)?;
+        self.g.event_sync(pb.ev_x)?;
+        for (a, spans) in self.aux.iter().zip(spans) {
+            if spans.is_empty() {
+                continue;
+            }
+            let (g1, gp, s1) = (&a.g, a.pre.as_ref().unwrap(), &a.exp);
+            g1.htod(gp.x16.ptr, &xh[..])?;
+            g1.htod_sync(gp.rows.ptr, all_rows)?;
+            g1.htod_sync(gp.wrow.ptr, all_w)?;
+            g1.memset(gp.out.ptr, n * d * 4)?;
+            for &(e, off, nt) in spans {
+                let (wg, wu, wd, gt, dt) = s1.slot_ptrs(li, e).unwrap();
+                let rows_p = gp.rows.ptr + (off * 4) as u64;
+                let w_p = gp.wrow.ptr + (off * 4) as u64;
+                g1.launch(gp.k["gather_h"], ((d as u32).div_ceil(256), nt as u32, 1), 256, 0, &[Arg::P(gp.x16.ptr), Arg::P(rows_p), Arg::P(gp.gx16.ptr), Arg::I(d as i32)])?;
+                if rot {
+                    // rotated experts store W.R: rotate the activations (R x), not the weights
+                    g1.launch(gp.k["fwht_rows_f16"], ((d / 128) as u32, nt as u32, 1), 128, 0, &[Arg::P(gp.gx16.ptr), Arg::I(d as i32)])?;
+                }
+                for (wp, yp) in [(wg, gp.gg.ptr), (wu, gp.gu.ptr)] {
+                    g1.launch(gp.k["dequant_f16"], ((d as u32).div_ceil(256), inter as u32, 1), 256, 0, &[Arg::I(gt), Arg::P(wp), Arg::P(0), Arg::P(gp.w16.ptr), Arg::I(inter as i32), Arg::I(d as i32)])?;
+                    g1.gemm_f16(gp.gx16.ptr, gp.w16.ptr, yp, nt, d, inter, inter)?;
+                }
+                g1.launch(gp.k["swiglu_rows_f16"], ((inter as u32).div_ceil(256), nt as u32, 1), 256, 0, &[Arg::P(gp.gg.ptr), Arg::P(gp.gu.ptr), Arg::P(w_p), Arg::P(gp.h16.ptr), Arg::I(inter as i32), Arg::F(c.swiglu_limit)])?;
+                if rot {
+                    g1.launch(gp.k["fwht_rows_f16"], ((inter / 128) as u32, nt as u32, 1), 128, 0, &[Arg::P(gp.h16.ptr), Arg::I(inter as i32)])?;
+                }
+                g1.launch(gp.k["dequant_f16"], ((inter as u32).div_ceil(256), d as u32, 1), 256, 0, &[Arg::I(dt), Arg::P(wd), Arg::P(0), Arg::P(gp.w16.ptr), Arg::I(d as i32), Arg::I(inter as i32)])?;
+                g1.gemm_f16(gp.h16.ptr, gp.w16.ptr, gp.go.ptr, nt, inter, d, d)?;
+                if let Some(rel) = noise_rel(li) {
+                    g1.launch(gp.k["add_noise_rows"], (nt as u32, 1, 1), 256, 0, &[Arg::P(gp.go.ptr), Arg::I(d as i32), Arg::F(rel), Arg::I((li * 1000 + e + 1) as i32)])?;
+                }
+                g1.launch(gp.k["scatter_add"], ((d as u32).div_ceil(256), nt as u32, 1), 256, 0, &[Arg::P(gp.go.ptr), Arg::P(rows_p), Arg::P(gp.out.ptr), Arg::I(d as i32)])?;
+            }
+            let oh = unsafe { std::slice::from_raw_parts_mut(gp.out_host.host_ptr() as *mut f32, n * d) };
+            g1.dtoh(oh, gp.out.ptr)?;
+        }
+        self.g.bind();
+        Ok(())
+    }
+
+    /// y[n][w.rows] = x[n][w.cols] . W^T through f16 tensor cores (W dequantized into pb.w16 first)
+    /// upload `src` to `dst` in stream order without blocking the host: copied into the pass's pinned staging first
+    /// (blocking upload when the staging is full)
+    fn up<T: Copy>(&self, pb: &PrefillBufs, dst: u64, src: &[T]) -> Result<()> {
+        let bytes = std::mem::size_of_val(src);
+        let off = pb.stage_off.get();
+        if off + bytes > pb.stage.bytes {
+            return self.g.htod_sync(dst, src);
+        }
+        let host = unsafe {
+            let p = pb.stage.host_ptr().add(off);
+            std::ptr::copy_nonoverlapping(src.as_ptr() as *const u8, p, bytes);
+            std::slice::from_raw_parts(p as *const T, src.len())
+        };
+        pb.stage_off.set((off + bytes).div_ceil(256) * 256);
+        self.g.htod(dst, host)
+    }
+
+    fn gemm(&self, pb: &PrefillBufs, w: &DMat, x: u64, y: u64, n: usize) -> Result<()> {
+        if n <= crate::handoff::MAXT {
+            // a few rows (verify passes, tiny chunks): decode's GEMV with n columns reads the weight once, no f16 copy
+            return self.gemv_t(w, x, y, n);
+        }
+        if w.q6.is_some() {
+            return self.gemm_q6(pb, w, 0, w.rows, w.cols, x, w.cols, y, w.rows, n);
+        }
+        let (wp, sp, id) = w.ptrs(0);
+        self.gemm_raw(pb, id, wp, sp, w.rows, w.cols, w.act_fp8, x, y, n)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn gemm_raw(&self, pb: &PrefillBufs, ty: i32, wp: u64, sp: u64, rows: usize, cols: usize, act_fp8: bool, x: u64, y: u64, n: usize) -> Result<()> {
+        let g = &self.g;
+        let nx = n * cols;
+        let mut xin = x;
+        if act_fp8 {
+            g.launch(self.k["fake_fp8_copy"], ((nx as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(x), Arg::P(pb.tmp.ptr), Arg::I(nx as i32)])?;
+            xin = pb.tmp.ptr;
+        }
+        g.launch(self.k["to_f16"], ((nx as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(xin), Arg::P(pb.act16.ptr), Arg::I(nx as i32)])?;
+        g.launch(self.k["dequant_f16"], ((cols as u32).div_ceil(256), rows as u32, 1), 256, 0, &[Arg::I(ty), Arg::P(wp), Arg::P(sp), Arg::P(pb.w16.ptr), Arg::I(rows as i32), Arg::I(cols as i32)])?;
+        g.gemm_f16(pb.act16.ptr, pb.w16.ptr, y, n, cols, rows, rows)
+    }
+
+    fn hc_mixes_rows(&self, fnw: &(DMat, Buf, Buf), h: u64, out: u64, n: usize) -> Result<()> {
+        let c = &self.m.cfg;
+        self.g.launch(self.k["hc_dots"], (24, n as u32, 1), 256, 0, &[Arg::P(fnw.0.buf.ptr), Arg::P(h), Arg::P(out), Arg::I((c.hc * c.dim) as i32), Arg::F(c.eps)])?;
+        self.g.launch(self.k["hc_finish_w"], ((n as u32).div_ceil(4), 1, 1), 128, 0, &[Arg::P(out), Arg::P(fnw.1.ptr), Arg::P(fnw.2.ptr), Arg::F(c.hc_eps), Arg::I(c.sinkhorn_iters as i32), Arg::I(n as i32)])
+    }
+
+    fn rms_rows(&self, x: u64, w: &Buf, out: u64, n: usize, rows: usize, round: bool) -> Result<()> {
+        self.g.launch(self.k["rmsnorm"], (rows as u32, 1, 1), 1024, 0, &[Arg::P(x), Arg::P(w.ptr), Arg::P(out), Arg::I(n as i32), Arg::I(n as i32), Arg::I(n as i32), Arg::F(self.m.cfg.eps), Arg::I(round as i32)])
+    }
+
+    fn rope_rows(&self, x: u64, heads: usize, hd: usize, compressed: bool, pos: u64, rows: usize, inverse: bool) -> Result<()> {
+        let f = if compressed { &self.freqs.1 } else { &self.freqs.0 };
+        self.g.launch(self.k["rope_pos"], (rows as u32, 1, 1), 256, 0, &[Arg::P(x), Arg::P(f.ptr), Arg::I(heads as i32), Arg::I(hd as i32), Arg::I(self.m.cfg.rope_dim as i32), Arg::I((heads * hd) as i32), Arg::P(pos), Arg::I(inverse as i32)])
+    }
+
+    /// Prefill `tokens` at positions self.pos.. ; `last` = this chunk ends the prompt (run the decoder tail and
+    /// return the logits of the final token).
+    pub fn prefill_chunk(&mut self, pb: &PrefillBufs, tokens: &[u32], last: bool) -> Result<Option<Vec<f32>>> {
+        Ok(self.prefill_pass(pb, tokens, last, false)?.map(|mut v| v.pop().unwrap()))
+    }
+
+    /// Feed up to 8 tokens in one pass (speculative-decoding verify) and return the logits after each of them.
+    /// Attention runs batched as in prefill; the experts go through the decode handoff (main GPU / aux GPUs / CPU).
+    pub fn verify(&mut self, pb: &PrefillBufs, tokens: &[u32]) -> Result<Vec<Vec<f32>>> {
+        anyhow::ensure!(!tokens.is_empty() && tokens.len() <= crate::handoff::MAXT && self.worker.is_some(), "verify: 1..=8 tokens, handoff path");
+        self.verify_t = tokens.len();
+        self.enqueue_aux(tokens.len())?;
+        self.g.bind();
+        let r = self.prefill_pass(pb, tokens, true, true);
+        self.verify_t = 0;
+        self.seq_base += self.m.cfg.n_layers as u32;
+        Ok(r?.unwrap())
+    }
+
+    pub(super) fn prefill_pass(&mut self, pb: &PrefillBufs, tokens: &[u32], last: bool, all_logits: bool) -> Result<Option<Vec<Vec<f32>>>> {
+        self.adapt_flush()?;
+        if pb.stage_off.get() > 0 {
+            // the previous pass's staged uploads may still be in flight
+            self.g.sync()?;
+            pb.stage_off.set(0);
+        }
+        let m = self.m;
+        let c = &m.cfg;
+        let (d, hc, nh, w) = (c.dim, c.hc, c.n_heads, c.window);
+        let tn = tokens.len();
+        assert!(tn <= pb.tmax);
+        let p0 = self.pos;
+        let g = &self.g;
+        g.bind();
+        // ---- per-chunk host tables: positions, window rows (ring slot or W + chunk row)
+        let posv: Vec<i32> = (0..tn).map(|t| (p0 + t) as i32).collect();
+        g.htod_sync(pb.pos.ptr, &posv)?;
+        let mut widx = vec![-1i32; tn * w];
+        for t in 0..tn {
+            let p = p0 + t;
+            for i in 0..w {
+                let q = p as i64 - (w as i64 - 1) + i as i64;
+                if q < 0 {
+                    continue;
+                }
+                let q = q as usize;
+                widx[t * w + i] = if q >= p0 { (w + q - p0) as i32 } else { (q % w) as i32 };
+            }
+        }
+        g.htod_sync(pb.winidx.ptr, &widx)?;
+        // ---- image rows of this chunk (chunk-local ranges), embedding + engram history
+        self.img_rows.clear();
+        for (start, rows) in &self.images {
+            let (lo, hi) = (*start.max(&p0), (start + rows.len() / d).min(p0 + tn));
+            if lo < hi {
+                self.img_rows.push((lo - p0, hi - p0));
+            }
+        }
+        let in_img = |t: usize| self.img_rows.iter().any(|&(lo, hi)| t >= lo && t < hi);
+        for (t, &tk) in tokens.iter().enumerate() {
+            // image positions take no part in an n-gram (model.py: DEAD)
+            self.engram_hist.push(if in_img(t) { -1 } else { c.engram_token_map[tk as usize] as i64 });
+        }
+        let mut hbuf = vec![0f32; tn * hc * d];
+        let mut e = vec![0f32; d];
+        for (t, &tk) in tokens.iter().enumerate() {
+            let p = p0 + t;
+            match self.images.iter().find(|(s, r)| p >= *s && p < s + r.len() / d) {
+                Some((s, r)) => e.copy_from_slice(&r[(p - s) * d..(p - s + 1) * d]),
+                None => m.embed.dequant(tk as usize, &mut e),
+            }
+            for k in 0..hc {
+                hbuf[(t * hc + k) * d..(t * hc + k + 1) * d].copy_from_slice(&e);
+            }
+        }
+        g.htod_sync(pb.h.ptr, &hbuf)?;
+        let mut pre = vec![0f32; tn * 24];
+        for t in 0..tn {
+            pre[t * 24] = 1.0;
+        }
+        g.htod_sync(pb.mix_f.ptr, &pre)?;
+        // decoder layer L recomputes the last (n_layers - L) * W tokens: exactly the cone the final token and the
+        // decode windows depend on (each layer's window reaches one window further back than the next layer's)
+        for li in 0..c.n_layers {
+            let enc = li <= c.cand_layer; // layers 0..=20 see every token
+            if !enc && !last {
+                break;
+            }
+            // eval (logits at every position) needs the decoder on every row
+            let n = if enc || all_logits { tn } else { tn.min((c.n_layers - li) * w) };
+            let r0 = tn - n;
+            if let Some(eidx) = c.engram_layers.iter().position(|&x| x == li) {
+                let tq = std::time::Instant::now();
+                // image rows pass through untouched (model.py: the gate is shut on image tokens)
+                let row = hc * d * 4;
+                let saved: Vec<(usize, usize, crate::gpu::Buf)> = self
+                    .img_rows
+                    .iter()
+                    .map(|&(lo, hi)| -> Result<_> {
+                        let b = self.g.alloc((hi - lo) * row)?;
+                        self.g.dtod(b.ptr, pb.h.ptr + (lo * row) as u64, (hi - lo) * row)?;
+                        Ok((lo, hi, b))
+                    })
+                    .collect::<Result<_>>()?;
+                self.prefill_engram(pb, li, eidx, tn, p0)?;
+                for (lo, hi, b) in &saved {
+                    self.g.dtod(pb.h.ptr + (lo * row) as u64, b.ptr, (hi - lo) * row)?;
+                }
+                if !saved.is_empty() {
+                    self.g.sync()?;
+                }
+                if self.prof.is_some() {
+                    self.g.sync()?;
+                    *self.prof.as_mut().unwrap().entry("prefill engram").or_default() += tq.elapsed().as_secs_f64();
+                }
+            }
+            let hrow = |base: u64, width: usize| base + (r0 * width * 4) as u64;
+            // attention half
+            let l = &self.layers[li];
+            self.hc_mixes_rows(&l.hc_attn, hrow(pb.h.ptr, hc * d), hrow(pb.mix_a.ptr, 24), n)?;
+            self.g.launch(self.k["hc_pre"], (n as u32, 1, 1), 256, 0, &[Arg::P(hrow(pb.h.ptr, hc * d)), Arg::P(hrow(pb.mix_f.ptr, 24)), Arg::I(0), Arg::P(hrow(pb.x.ptr, d)), Arg::I(d as i32)])?;
+            self.rms_rows(hrow(pb.x.ptr, d), &l.attn_norm, hrow(pb.x.ptr, d), d, n, true)?;
+            let tq = std::time::Instant::now();
+            self.prefill_attention(pb, li, r0, n, tn, p0)?;
+            if self.prof.is_some() {
+                self.g.sync()?;
+                *self.prof.as_mut().unwrap().entry("prefill attention+indexer").or_default() += tq.elapsed().as_secs_f64();
+            }
+            self.g.launch(self.k["hc_post"], (n as u32, 1, 1), 256, 0, &[Arg::P(hrow(pb.h.ptr, hc * d)), Arg::P(hrow(pb.a.ptr, d)), Arg::P(hrow(pb.mix_a.ptr, 24)), Arg::I(d as i32)])?;
+            // ffn half
+            let l = &self.layers[li];
+            self.g.launch(self.k["hc_pre"], (n as u32, 1, 1), 256, 0, &[Arg::P(hrow(pb.h.ptr, hc * d)), Arg::P(hrow(pb.mix_a.ptr, 24)), Arg::I(0), Arg::P(hrow(pb.x.ptr, d)), Arg::I(d as i32)])?;
+            self.hc_mixes_rows(&l.hc_ffn, hrow(pb.h.ptr, hc * d), hrow(pb.mix_f.ptr, 24), n)?;
+            self.rms_rows(hrow(pb.x.ptr, d), &l.ffn_norm, hrow(pb.x.ptr, d), d, n, true)?;
+            let tq = std::time::Instant::now();
+            self.prefill_moe(pb, li, r0, n)?;
+            if self.prof.is_some() {
+                self.g.sync()?;
+                *self.prof.as_mut().unwrap().entry("prefill moe").or_default() += tq.elapsed().as_secs_f64();
+            }
+            self.g.launch(self.k["hc_post"], (n as u32, 1, 1), 256, 0, &[Arg::P(hrow(pb.h.ptr, hc * d)), Arg::P(hrow(pb.a.ptr, d)), Arg::P(hrow(pb.mix_f.ptr, 24)), Arg::I(d as i32)])?;
+        }
+        let _ = nh;
+        self.pos += tn;
+        if !last {
+            self.g.sync()?;
+            return Ok(None);
+        }
+        let _ = all_logits;
+        // logits of the final token (or of every token for a verify pass)
+        let rows: Vec<usize> = if all_logits { (0..tn).collect() } else { vec![tn - 1] };
+        for &t in &rows {
+            let off = |base: u64, width: usize| base + (t * width * 4) as u64;
+            self.g.launch(self.k["hc_pre"], (1, 1, 1), 256, 0, &[Arg::P(off(pb.h.ptr, hc * d)), Arg::P(off(pb.mix_f.ptr, 24)), Arg::I(0), Arg::P(off(pb.x.ptr, d)), Arg::I(d as i32)])?;
+            self.rms_rows(off(pb.x.ptr, d), &self.out_norm, off(pb.x.ptr, d), d, 1, false)?;
+        }
+        if rows.len() > 1 && rows.len() <= crate::handoff::MAXT {
+            // every row of a verify pass (rows 0..tn, contiguous): one pass over the head
+            self.gemv_t(&self.head, pb.x.ptr, pb.logits.ptr, rows.len())?;
+            let all: Vec<f32> = self.g.download(pb.logits.ptr, rows.len() * c.vocab)?;
+            return Ok(Some(all.chunks(c.vocab).map(|r| r.to_vec()).collect()));
+        }
+        let mut out = vec![];
+        for t in rows {
+            self.gemv(&self.head, pb.x.ptr + (t * d * 4) as u64, pb.logits.ptr)?;
+            out.push(self.g.download(pb.logits.ptr, c.vocab)?);
+        }
+        Ok(Some(out))
+    }
+
+    fn prefill_engram(&mut self, pb: &PrefillBufs, li: usize, eidx: usize, tn: usize, p0: usize) -> Result<()> {
+        let m = self.m;
+        let c = &m.cfg;
+        let tabs = m.engram.as_ref().ok_or_else(|| anyhow::anyhow!("engram tables not loaded"))?;
+        let tab = tabs.layer(eidx, c.engram_dim)?;
+        let tab = &tab;
+        let hd = c.engram_dim;
+        let hist_len = self.engram_hist.len();
+        let base = hist_len - tn; // history index of the chunk's first token
+        let per = (c.engram_ngram - 1) * c.engram_heads;
+        // hashes per token, then rows gathered in parallel (page faults overlap across threads)
+        let t_h = std::time::Instant::now();
+        let ids: Vec<u64> = (0..tn).flat_map(|t| m.engram_hashes_for(&self.engram_hist[..base + t + 1], eidx)).collect();
+        let t_hash = t_h.elapsed().as_secs_f64();
+        // distinct rows only (n-grams repeat), gathered by 32 plain threads (deep NVMe queue; rayon's pool shares
+        // cores with the spinning CPU-expert workers), then expanded back to per-token order
+        let mut uniq: Vec<u64> = ids.clone();
+        uniq.sort_unstable();
+        uniq.dedup();
+        let mut ubuf = vec![0f32; uniq.len() * hd];
+        let nthreads = 32;
+        let per_thread = uniq.len().div_ceil(nthreads).max(1);
+        std::thread::scope(|sc| {
+            for (chunk, idc) in ubuf.chunks_mut(per_thread * hd).zip(uniq.chunks(per_thread)) {
+                sc.spawn(move || {
+                    crate::cpu::pool::pin_to_set(&crate::cpu::pool::ALL_CPUS);
+                    for (o, &row) in chunk.chunks_mut(hd).zip(idc) {
+                        tab.row(row as usize, o);
+                    }
+                });
+            }
+        });
+        let mut ebuf = vec![0f32; tn * per * hd];
+        for (o, id) in ebuf.chunks_mut(hd).zip(&ids) {
+            let u = uniq.binary_search(id).unwrap();
+            o.copy_from_slice(&ubuf[u * hd..(u + 1) * hd]);
+        }
+        if std::env::var_os("DSX_PROF").is_some() {
+            eprintln!("engram L{li}: {} rows, {} distinct", ids.len(), uniq.len());
+        }
+        let _ = p0;
+        let t_gather = t_h.elapsed().as_secs_f64() - t_hash;
+        self.g.htod_sync(pb.o.ptr, &ebuf)?;
+        if std::env::var_os("DSX_PROF").is_some() {
+            eprintln!("engram L{li}: hash {:.0} ms, gather {:.0} ms, upload {:.0} ms", t_hash * 1e3, t_gather * 1e3, (t_h.elapsed().as_secs_f64() - t_hash - t_gather) * 1e3);
+        }
+        let l = &self.layers[li];
+        let kvw = l.engram_kv.as_ref().unwrap();
+        self.gemm(pb, kvw, pb.o.ptr, pb.tmp.ptr, tn)?;
+        self.g.launch(self.k["engram_gate_t"], (c.hc as u32, tn as u32, 1), 1024, 0, &[Arg::P(pb.h.ptr), Arg::P(pb.tmp.ptr), Arg::P(l.engram_qk.as_ref().unwrap().ptr), Arg::I(c.dim as i32), Arg::F(c.eps)])
+    }
+
+    fn prefill_attention(&mut self, pb: &PrefillBufs, li: usize, r0: usize, n: usize, tn: usize, p0: usize) -> Result<()> {
+        let m = self.m;
+        let c = &m.cfg;
+        let (d, hd, nh, w) = (c.dim, c.head_dim, c.n_heads, c.window);
+        let ratio = m.layers[li].ratio;
+        let compressed = ratio > 0;
+        let rowp = |base: u64, width: usize, bytes: usize| base + (r0 * width * bytes) as u64;
+        let x = rowp(pb.x.ptr, d, 4);
+        let posr = rowp(pb.pos.ptr, 1, 4);
+        let l = &self.layers[li];
+        self.gemm(pb, &l.q_a, x, pb.qr.ptr, n)?;
+        self.rms_rows(pb.qr.ptr, &l.q_a_norm, pb.qr.ptr, c.q_lora, n, true)?;
+        self.gemm(pb, &l.q_b, pb.qr.ptr, pb.q.ptr, n)?;
+        self.rope_rows(pb.q.ptr, nh, hd, compressed, posr, n, false)?;
+        self.gemm(pb, &l.kv, x, pb.kv.ptr, n)?;
+        self.rms_rows(pb.kv.ptr, &l.kv_norm, pb.kv.ptr, hd, n, false)?;
+        self.rope_rows(pb.kv.ptr, 1, hd, compressed, posr, n, false)?;
+        self.fake_fp8(pb.kv.ptr, n * hd)?;
+        // combined window rows: [ring (W) | chunk rows]; this pass covers chunk rows r0..r0+n
+        self.g.dtod(pb.wins.ptr, l.window.ptr, w * hd * 2)?;
+        self.store_bf16(pb.kv.ptr, pb.wins.ptr + ((w + r0) * hd * 2) as u64, n * hd)?;
+        // the ring keeps the newest W positions for decode
+        self.g.launch(self.k["ring_scatter"], (n as u32, 1, 1), 128, 0, &[Arg::P(pb.wins.ptr + ((w + r0) * hd * 2) as u64), Arg::P(l.window.ptr), Arg::I((p0 + r0) as i32), Arg::I(n as i32), Arg::I(w as i32), Arg::I(hd as i32)])?;
+        let mut kcomp = 0usize;
+        if compressed {
+            let is_src = c.kv_sources.contains(&li);
+            let mut new_lat = 0usize; // latents appended by this chunk (pre-RoPE copies in pb.lat)
+            let mut lat_pos: Vec<i32> = vec![];
+            if is_src {
+                let l = &self.layers[li];
+                if ratio == 1 {
+                    self.gemm(pb, l.comp_kv.as_ref().unwrap(), x, pb.lat.ptr, n)?;
+                    self.rms_rows(pb.lat.ptr, l.comp_norm.as_ref().unwrap(), pb.lat.ptr, hd, n, false)?;
+                    new_lat = n;
+                    lat_pos = (0..n).map(|t| (p0 + r0 + t) as i32).collect();
+                } else {
+                    self.gemm(pb, l.comp_kv.as_ref().unwrap(), x, pb.ckv.ptr, n)?;
+                    self.gemm(pb, l.comp_gate.as_ref().unwrap(), x, pb.csc.ptr, n)?;
+                    if let (true, Some(v)) = (self.verify_t > 0, self.vrows.as_ref()) {
+                        // speculative verify: keep this layer's per-token rows for keep()'s carry
+                        let base = v.ptr + (li * 2 * crate::handoff::MAXT * hd * 4) as u64;
+                        self.g.dtod(base, pb.ckv.ptr, n * hd * 4)?;
+                        self.g.dtod(base + (crate::handoff::MAXT * hd * 4) as u64, pb.csc.ptr, n * hd * 4)?;
+                    }
+                    let (ks, ss) = l.comp_state.as_ref().unwrap();
+                    let off = (p0 + r0) % 2; // 1: the first group's first token is in the carried state
+                    let total = off + n;
+                    let groups = total / 2;
+                    if groups > 0 {
+                        self.g.launch(self.k["compress_pairs"], (groups as u32, 1, 1), 512, 0, &[Arg::P(pb.ckv.ptr), Arg::P(pb.csc.ptr), Arg::P(ks.ptr), Arg::P(ss.ptr), Arg::I(off as i32), Arg::P(pb.lat.ptr), Arg::I(hd as i32)])?;
+                        self.rms_rows(pb.lat.ptr, l.comp_norm.as_ref().unwrap(), pb.lat.ptr, hd, groups, false)?;
+                    }
+                    // a trailing half group waits in the state (slot 0 = position with p % 2 == 0)
+                    if total % 2 == 1 {
+                        let last = n - 1;
+                        self.g.dtod(ks.ptr, pb.ckv.ptr + (last * hd * 4) as u64, hd * 4)?;
+                        self.g.dtod(ss.ptr, pb.csc.ptr + (last * hd * 4) as u64, hd * 4)?;
+                    }
+                    new_lat = groups;
+                    // group g ends at chunk row 2g + 1 - off: position p_end; the latent sits at p_end + 1 - ratio
+                    lat_pos = (0..groups).map(|gi| (p0 + r0 + 2 * gi + 1 - off + 1 - 2) as i32).collect();
+                }
+                self.comp_src = li;
+            }
+            // index keys from this chunk's latents (owners), then queries for the n rows
+            if c.index_sources.contains(&li) {
+                let tq = std::time::Instant::now();
+                self.prefill_indexer(pb, li, r0, n, p0, new_lat, &lat_pos)?;
+                if self.prof.is_some() {
+                    self.g.sync()?;
+                    *self.prof.as_mut().unwrap().entry("prefill . indexer").or_default() += tq.elapsed().as_secs_f64();
+                }
+            }
+            if new_lat > 0 {
+                let l = &self.layers[li];
+                self.up(pb, pb.ns.ptr, &lat_pos)?;
+                self.rope_rows(pb.lat.ptr, 1, hd, true, pb.ns.ptr, new_lat, false)?;
+                self.fake_fp4(pb.lat.ptr, new_lat * hd, 16, true)?;
+                let nc = l.n_comp;
+                self.store_bf16(pb.lat.ptr, l.comp_cache.as_ref().unwrap().ptr + (nc * hd * 2) as u64, new_lat * hd)?;
+                self.layers[li].n_comp += new_lat;
+            }
+            kcomp = c.idx_topk;
+        }
+        let _ = tn;
+        let l = &self.layers[li];
+        let comp_ptr = if kcomp > 0 { self.layers[self.comp_src].comp_cache.as_ref().unwrap().ptr } else { 0 };
+        let cidx = rowp(pb.compidx.ptr, c.idx_topk, 4);
+        if self.prof.is_some() {
+            self.g.sync()?;
+        }
+        let tq = std::time::Instant::now();
+        if n > 8 {
+            // many queries: tensor-core kernel (5x the CUDA-core one at 4K tokens, same results to a bf16 step)
+            pb.attn_tc.launch(&self.g, pb.q.ptr, pb.wins.ptr, rowp(pb.winidx.ptr, w, 4), w, comp_ptr, cidx, kcomp, l.sinks.ptr, pb.o.ptr, n, nh, hd)?;
+        } else {
+            self.sparse_attn_small(n, pb.q.ptr, pb.wins.ptr, rowp(pb.winidx.ptr, w, 4), w, comp_ptr, cidx, kcomp, l.sinks.ptr, pb.o.ptr)?;
+        }
+        if self.prof.is_some() {
+            self.g.sync()?;
+            *self.prof.as_mut().unwrap().entry("prefill . sparse_attn kernel").or_default() += tq.elapsed().as_secs_f64();
+        }
+        self.rope_rows(pb.o.ptr, nh, hd, compressed, posr, n, true)?;
+        self.fake_fp8(pb.o.ptr, n * nh * hd)?;
+        // grouped output projection: group gi takes o[:, gi*gsz..] -> r[:, gi*olora..]; done as per-group GEMMs
+        let gsz = nh * hd / c.o_groups;
+        for gi in 0..c.o_groups {
+            // gather the group's columns: o is [n][nh*hd]; GEMM with ld = nh*hd needs a strided input -> copy via to_f16 per row block
+            self.gemm_group(pb, &l.o_a, gi * c.o_lora, c.o_lora, gsz, pb.o.ptr + (gi * gsz * 4) as u64, nh * hd, pb.r.ptr + (gi * c.o_lora * 4) as u64, c.o_groups * c.o_lora, n)?;
+        }
+        let nr = n * c.o_groups * c.o_lora;
+        self.g.launch(self.k["round_bf16"], ((nr as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(pb.r.ptr), Arg::I(nr as i32)])?;
+        self.gemm(pb, &l.o_b, pb.r.ptr, rowp(pb.a.ptr, d, 4), n)
+    }
+
+    /// q6-plane weights: rows [r0, r0 + rows) dequantized to f16, x packed from stride ldx, y with stride ldy
+    #[allow(clippy::too_many_arguments)]
+    fn gemm_q6(&self, pb: &PrefillBufs, w: &DMat, r0: usize, rows: usize, k: usize, x: u64, ldx: usize, y: u64, ldy: usize, n: usize) -> Result<()> {
+        let g = &self.g;
+        let ([lo, hi, sc, d], _, dk) = w.planes(r0);
+        let kk = w.cols;
+        g.launch(self.k["pack_f16"], ((k as u32).div_ceil(256), n as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(pb.act16.ptr), Arg::I(k as i32)])?;
+        g.launch(self.k[dk], ((kk as u32).div_ceil(256), rows as u32, 1), 256, 0, &[Arg::P(lo), Arg::P(hi), Arg::P(sc), Arg::P(d), Arg::P(pb.w16.ptr), Arg::I(rows as i32), Arg::I(kk as i32)])?;
+        g.gemm_f16(pb.act16.ptr, pb.w16.ptr, y, n, k, rows, ldy)
+    }
+
+    /// y[n][ldy] (cols y0..) = x[n][ldx] (cols x0..x0+k) . W[r0..r0+rows]^T  (strided operands for the grouped wo_a)
+    #[allow(clippy::too_many_arguments)]
+    fn gemm_group(&self, pb: &PrefillBufs, w: &DMat, r0: usize, rows: usize, k: usize, x: u64, ldx: usize, y: u64, ldy: usize, n: usize) -> Result<()> {
+        if n <= crate::handoff::MAXT && w.q6.is_none() && k == w.cols {
+            // a few rows: decode's GEMV reads the strided operands directly
+            return self.gemv_rows_ld(w, r0, rows, x, ldx, y, ldy, n);
+        }
+        if w.q6.is_some() {
+            return self.gemm_q6(pb, w, r0, rows, k, x, ldx, y, ldy, n);
+        }
+        let g = &self.g;
+        // pack x columns into act16 [n][k]
+        g.launch(self.k["pack_f16"], ((k as u32).div_ceil(256), n as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(pb.act16.ptr), Arg::I(k as i32)])?;
+        let (wp, sp, id) = w.ptrs(r0);
+        g.launch(self.k["dequant_f16"], ((k as u32).div_ceil(256), rows as u32, 1), 256, 0, &[Arg::I(id), Arg::P(wp), Arg::P(sp), Arg::P(pb.w16.ptr), Arg::I(rows as i32), Arg::I(k as i32)])?;
+        g.gemm_f16(pb.act16.ptr, pb.w16.ptr, y, n, k, rows, ldy)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prefill_indexer(&mut self, pb: &PrefillBufs, li: usize, r0: usize, n: usize, p0: usize, new_lat: usize, lat_pos: &[i32]) -> Result<()> {
+        let m = self.m;
+        let c = &m.cfg;
+        let ratio = m.layers[li].ratio;
+        let (id, nhh, d) = (c.idx_dim, c.idx_heads, c.dim);
+        if c.kv_sources.contains(&li) {
+            if new_lat > 0 {
+                let l = &self.layers[li];
+                // keys from the pre-RoPE latents
+                self.gemm(pb, l.idx_k.as_ref().unwrap(), pb.lat.ptr, pb.ckv.ptr, new_lat)?;
+                self.rms_rows(pb.ckv.ptr, l.idx_k_norm.as_ref().unwrap(), pb.ckv.ptr, id, new_lat, false)?;
+                self.up(pb, pb.ns.ptr, lat_pos)?;
+                self.rope_rows(pb.ckv.ptr, 1, id, true, pb.ns.ptr, new_lat, false)?;
+                self.fake_fp4(pb.ckv.ptr, new_lat * id, 32, false)?;
+                let ni = l.n_idx;
+                self.store_bf16(pb.ckv.ptr, l.idx_cache.as_ref().unwrap().ptr + (ni * id * 2) as u64, new_lat * id)?;
+                self.layers[li].n_idx += new_lat;
+            }
+            self.idxk_src = li;
+        }
+        let l = &self.layers[li];
+        let x = pb.x.ptr + (r0 * d * 4) as u64;
+        self.gemm(pb, l.idx_q_b.as_ref().unwrap(), pb.qr.ptr, pb.iq.ptr, n)?;
+        self.rope_rows(pb.iq.ptr, nhh, id, true, pb.pos.ptr + (r0 * 4) as u64, n, false)?;
+        self.fake_fp4(pb.iq.ptr, n * nhh * id, 32, false)?;
+        self.gemm(pb, l.idx_proj.as_ref().unwrap(), x, pb.iw.ptr, n)?;
+        let wscale = (id as f32).powf(-0.5) * (nhh as f32).powf(-0.5);
+        self.g.launch(self.k["scale_bf16"], (((n * nhh) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(pb.iw.ptr), Arg::I((n * nhh) as i32), Arg::F(wscale)])?;
+        let kc = self.layers[self.idxk_src].idx_cache.as_ref().unwrap().ptr;
+        let nbmax = self.max_ctx / c.cand_block + 1;
+        let cone = (c.n_layers - 1 - c.cand_layer) * c.window; // decoder queries whose candidate masks layer 20 keeps
+        let tn_all = r0 + n; // chunk length (every pass ends at the chunk's last row)
+        let keep0 = tn_all.saturating_sub(cone); // chunk row of keep_tail row 0
+        let tail_start = if li == c.cand_layer { keep0 } else { usize::MAX };
+        for s0 in (0..n).step_by(SUB) {
+            let rows = SUB.min(n - s0);
+            let ns: Vec<i32> = (0..rows).map(|t| ((p0 + r0 + s0 + t + 1) / ratio) as i32).collect();
+            let n_max = *ns.last().unwrap() as usize;
+            if n_max == 0 {
+                // nothing visible yet: no compressed rows for these queries
+                let neg = vec![-1i32; rows * c.idx_topk];
+                self.up(pb, pb.compidx.ptr + ((r0 + s0) * c.idx_topk * 4) as u64, &neg)?;
+                continue;
+            }
+            self.up(pb, pb.ns.ptr, &ns)?;
+            self.g.launch(
+                self.k["indexer_score"],
+                ((n_max as u32).div_ceil(8), rows as u32, 1),
+                256,
+                0,
+                &[Arg::P(pb.iq.ptr + (s0 * nhh * id * 4) as u64), Arg::P(kc), Arg::P(pb.iw.ptr + (s0 * nhh * 4) as u64), Arg::P(pb.score.ptr), Arg::P(pb.ns.ptr), Arg::I(n_max as i32), Arg::I(nhh as i32), Arg::I(id as i32)],
+            )?;
+            let rr = crate::topk::Rows { scores: pb.score.ptr, lds: n_max, rows, ns: pb.ns.ptr, n_max };
+            // the top-k scratch is shared with decode: never let a pass write past it
+            let need = crate::topk::TopK::topk_scratch(n_max, c.idx_topk, rows).max(if li == c.cand_layer { crate::topk::TopK::blocks_scratch(n_max, c.cand_block, c.cand_blocks, rows) } else { 0 });
+            anyhow::ensure!(need <= self.topk_scratch.bytes, "top-k scratch: {need} bytes needed for {rows} rows of {n_max}, {} allocated", self.topk_scratch.bytes);
+            let out = pb.compidx.ptr + ((r0 + s0) * c.idx_topk * 4) as u64;
+            if li == c.cand_layer {
+                self.topk.blocks(&self.g, &rr, c.cand_block, c.cand_blocks, pb.keep.ptr, nbmax, self.topk_scratch.ptr)?;
+                self.topk.topk(&self.g, &rr, c.idx_topk, 0, nbmax, c.cand_block, out, c.idx_topk, self.topk_scratch.ptr)?;
+                // keep the candidate masks of the decoder tail's queries for layers 24..36
+                for t in 0..rows {
+                    let q = s0 + t;
+                    if q >= tail_start {
+                        self.g.dtod(pb.keep_tail.ptr + ((q - tail_start) * nbmax) as u64, pb.keep.ptr + (t * nbmax) as u64, nbmax)?;
+                    }
+                }
+            } else if li > c.cand_layer {
+                // decoder index layers: queries are the tail rows, masks saved by layer 20
+                let mask = pb.keep_tail.ptr + ((r0 + s0 - keep0) * nbmax) as u64;
+                self.topk.topk(&self.g, &rr, c.idx_topk, mask, nbmax, c.cand_block, out, c.idx_topk, self.topk_scratch.ptr)?;
+            } else {
+                self.topk.topk(&self.g, &rr, c.idx_topk, 0, nbmax, c.cand_block, out, c.idx_topk, self.topk_scratch.ptr)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn prefill_moe(&mut self, pb: &PrefillBufs, li: usize, r0: usize, n: usize) -> Result<()> {
+        let rot = self.m.cfg.expert_rot[li];
+        let m = self.m;
+        let c = &m.cfg;
+        let (d, inter) = (c.dim, c.inter);
+        let x = pb.x.ptr + (r0 * d * 4) as u64;
+        if self.verify_t > 0 {
+            // a verify pass (<= 8 tokens): experts through the decode handoff (main GPU / aux GPUs / CPU), no weight streaming
+            let a = pb.a.ptr + (r0 * d * 4) as u64;
+            return self.moe_fast_t(li, x, a, n);
+        }
+        let tp0 = std::time::Instant::now();
+        let l = &self.layers[li];
+        // router (exact f32)
+        // inputs are bf16-rounded, so bf16 x bf16 with f32 accumulation is exact
+        self.g.launch(self.k["to_bf16"], (((n * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(x), Arg::P(pb.act16.ptr), Arg::I((n * d) as i32)])?;
+        self.g.gemm_bf16(pb.act16.ptr, l.gate_w.buf.ptr, pb.tmp.ptr, n, d, c.n_experts, c.n_experts)?;
+        let (sel_buf, wts_buf) = (pb.gg.ptr, pb.go.ptr); // [n][k] each; both free until the experts run
+        self.g.launch(self.k["router_topk"], (n as u32, 1, 1), 32, 0, &[Arg::P(pb.tmp.ptr), Arg::P(l.gate_bias.ptr), Arg::P(sel_buf), Arg::P(wts_buf), Arg::I(c.n_experts as i32), Arg::I(c.top_k as i32), Arg::F(c.route_scale), Arg::P(self.bonus_ptr(li))])?;
+        // tokens inside an image span select with the vision bias (model.py Gate: bias_vl)
+        if let Some(bvl) = &l.gate_bias_vl {
+            for &(lo, hi) in &self.img_rows {
+                let (a, b) = (lo.max(r0), hi.min(r0 + n));
+                if a >= b {
+                    continue;
+                }
+                let t0 = a - r0;
+                let (ek, k4) = ((t0 * c.n_experts * 4) as u64, (t0 * c.top_k * 4) as u64);
+                self.g.launch(self.k["router_topk"], ((b - a) as u32, 1, 1), 32, 0, &[Arg::P(pb.tmp.ptr + ek), Arg::P(bvl.ptr), Arg::P(sel_buf + k4), Arg::P(wts_buf + k4), Arg::I(c.n_experts as i32), Arg::I(c.top_k as i32), Arg::F(c.route_scale), Arg::P(self.bonus_ptr(li))])?;
+            }
+        }
+        let sel: Vec<i32> = self.g.download(sel_buf, n * c.top_k)?;
+        let wts: Vec<f32> = self.g.download(wts_buf, n * c.top_k)?;
+        // routed experts grouped by expert
+        let mut by: Vec<Vec<(i32, f32)>> = vec![vec![]; c.n_experts];
+        for t in 0..n {
+            for j in 0..c.top_k {
+                by[sel[t * c.top_k + j] as usize].push((t as i32, wts[t * c.top_k + j]));
+            }
+        }
+        let ml = &m.layers[li];
+        // one upload of every expert's token rows and weights, then the per-expert kernels run without host syncs
+        let mut all_rows: Vec<i32> = Vec::with_capacity(n * c.top_k);
+        let mut all_w: Vec<f32> = Vec::with_capacity(n * c.top_k);
+        let mut spans = vec![];
+        for (e, toks) in by.iter().enumerate() {
+            if !toks.is_empty() {
+                spans.push((e, all_rows.len(), toks.len()));
+                all_rows.extend(toks.iter().map(|x| x.0));
+                all_w.extend(toks.iter().map(|x| x.1));
+            }
+        }
+        self.g.htod_sync(pb.rows.ptr, &all_rows)?;
+        self.g.htod_sync(pb.wrow.ptr, &all_w)?;
+        // the aux GPUs' resident experts: ship x there, run them concurrently, add their sums at the end
+        let aux_spans: Vec<Vec<(usize, usize, usize)>> = self
+            .aux
+            .iter()
+            .map(|a| if a.pre.is_some() && !self.skip_experts { spans.iter().cloned().filter(|&(e, _, _)| a.exp.has(li, e)).collect() } else { vec![] })
+            .collect();
+        let use_aux = aux_spans.iter().any(|v| !v.is_empty());
+        if use_aux {
+            self.prefill_moe_aux(pb, li, x, n, &aux_spans, &all_rows, &all_w)?;
+        }
+        let spans: Vec<(usize, usize, usize)> = spans.into_iter().filter(|&(e, _, _)| !aux_spans.iter().any(|v| v.iter().any(|s| s.0 == e))).collect();
+        let tp1 = std::time::Instant::now();
+        // shared expert over all rows -> out
+        self.gemm(pb, &l.sh_gate, x, pb.gg.ptr, n)?;
+        self.gemm(pb, &l.sh_up, x, pb.gu.ptr, n)?;
+        self.g.launch(self.k["swiglu_rows_f16"], ((inter as u32).div_ceil(256), n as u32, 1), 256, 0, &[Arg::P(pb.gg.ptr), Arg::P(pb.gu.ptr), Arg::P(0), Arg::P(pb.h16.ptr), Arg::I(inter as i32), Arg::F(c.swiglu_limit)])?;
+        let sd = &l.sh_down;
+        if sd.q6.is_some() {
+            // h16 is already f16: dequant + GEMM directly
+            let ([lo, hi, sc, d], _, dk) = sd.planes(0);
+            let kk = sd.cols;
+            self.g.launch(self.k[dk], ((kk as u32).div_ceil(256), sd.rows as u32, 1), 256, 0, &[Arg::P(lo), Arg::P(hi), Arg::P(sc), Arg::P(d), Arg::P(pb.w16.ptr), Arg::I(sd.rows as i32), Arg::I(kk as i32)])?;
+        }
+        let (sdw, sds, sdid) = sd.ptrs(0);
+        if sd.q6.is_none() {
+            self.g.launch(self.k["dequant_f16"], ((sd.cols as u32).div_ceil(256), sd.rows as u32, 1), 256, 0, &[Arg::I(sdid), Arg::P(sdw), Arg::P(sds), Arg::P(pb.w16.ptr), Arg::I(sd.rows as i32), Arg::I(sd.cols as i32)])?;
+        }
+        if sd.act_fp8 {
+            // FP8 checkpoint: the down input is fake-quantized to FP8 first (bf16 h -> f32 -> fp8 -> f16)
+            bail!("prefill with the FP8 checkpoint's shared expert is not wired (use a GGUF export)");
+        }
+        self.g.gemm_f16(pb.h16.ptr, pb.w16.ptr, pb.out.ptr, n, inter, d, d)?;
+        if self.skip_experts {
+            // profiling only: shared expert alone
+            let a = pb.a.ptr + (r0 * d * 4) as u64;
+            self.g.dtod(a, pb.out.ptr, n * d * 4)?;
+            return Ok(());
+        }
+        self.prof_mark("prefill moe . router+shared+aux ship", tp0)?;
+        let mut nstaged = 0usize;
+        // the side stream must not start copying before the main stream reaches this layer's experts
+        for e in pb.ev_free.iter() {
+            self.g.record(*e, false)?;
+        }
+        for &(e, off, nt) in &spans {
+            let rows_p = pb.rows.ptr + (off * 4) as u64;
+            let w_p = pb.wrow.ptr + (off * 4) as u64;
+            self.g.launch(self.k["gather_f16"], ((d as u32).div_ceil(256), nt as u32, 1), 256, 0, &[Arg::P(x), Arg::P(rows_p), Arg::P(pb.gx16.ptr), Arg::I(d as i32)])?;
+            if rot {
+                // rotated experts store W.R: rotate the activations (R x, R h), not the weights
+                self.g.launch(self.k["fwht_rows_f16"], ((d / 128) as u32, nt as u32, 1), 128, 0, &[Arg::P(pb.gx16.ptr), Arg::I(d as i32)])?;
+            }
+            // expert weights on the device: GPU0 store, else copied on the side stream into one of two staging
+            // buffers while the main stream computes the previous expert (double buffering)
+            let ex = &ml.experts[e];
+            let mut staged = None;
+            let (gp, up, dp, gt, dt) = match self.exp0.as_ref().and_then(|s| s.slot_ptrs(li, e)) {
+                Some(p) => p,
+                None => {
+                    let (gb, ub, db) = match self.arena.and_then(|a| a.get(li, e)) {
+                        Some([g, u, dn]) => (g, u, dn),
+                        None => (ex.gate.bytes(), ex.up.bytes(), ex.down.bytes()),
+                    };
+                    let b = nstaged % NSTAGE;
+                    nstaged += 1;
+                    let base = pb.estage[b].ptr;
+                    self.g.wait(pb.ev_free[b], true)?; // the main stream is done with this buffer's previous expert
+                    self.g.htod_side(base, gb)?;
+                    self.g.htod_side(base + gb.len() as u64, ub)?;
+                    self.g.htod_side(base + (gb.len() + ub.len()) as u64, db)?;
+                    self.g.record(pb.ev_ready[b], true)?;
+                    self.g.wait(pb.ev_ready[b], false)?;
+                    staged = Some(b);
+                    (base, base + gb.len() as u64, base + (gb.len() + ub.len()) as u64, type_id(ex.gate.ty), type_id(ex.down.ty))
+                }
+            };
+            for (wp, yp) in [(gp, pb.gg.ptr), (up, pb.gu.ptr)] {
+                self.g.launch(self.k["dequant_f16"], ((d as u32).div_ceil(256), inter as u32, 1), 256, 0, &[Arg::I(gt), Arg::P(wp), Arg::P(0), Arg::P(pb.w16.ptr), Arg::I(inter as i32), Arg::I(d as i32)])?;
+                self.g.gemm_f16(pb.gx16.ptr, pb.w16.ptr, yp, nt, d, inter, inter)?;
+            }
+            self.g.launch(self.k["swiglu_rows_f16"], ((inter as u32).div_ceil(256), nt as u32, 1), 256, 0, &[Arg::P(pb.gg.ptr), Arg::P(pb.gu.ptr), Arg::P(w_p), Arg::P(pb.h16.ptr), Arg::I(inter as i32), Arg::F(c.swiglu_limit)])?;
+            if rot {
+                self.g.launch(self.k["fwht_rows_f16"], ((inter / 128) as u32, nt as u32, 1), 128, 0, &[Arg::P(pb.h16.ptr), Arg::I(inter as i32)])?;
+            }
+            self.g.launch(self.k["dequant_f16"], ((inter as u32).div_ceil(256), d as u32, 1), 256, 0, &[Arg::I(dt), Arg::P(dp), Arg::P(0), Arg::P(pb.w16.ptr), Arg::I(d as i32), Arg::I(inter as i32)])?;
+            self.g.gemm_f16(pb.h16.ptr, pb.w16.ptr, pb.go.ptr, nt, inter, d, d)?;
+            if let Some(rel) = noise_rel(li) {
+                self.g.launch(self.k["add_noise_rows"], (nt as u32, 1, 1), 256, 0, &[Arg::P(pb.go.ptr), Arg::I(d as i32), Arg::F(rel), Arg::I((li * 1000 + e + 1) as i32)])?;
+            }
+            self.g.launch(self.k["scatter_add"], ((d as u32).div_ceil(256), nt as u32, 1), 256, 0, &[Arg::P(pb.go.ptr), Arg::P(rows_p), Arg::P(pb.out.ptr), Arg::I(d as i32)])?;
+            if let Some(b) = staged {
+                self.g.record(pb.ev_free[b], false)?;
+            }
+        }
+        self.prof_mark("prefill moe . GPU0 expert loop", tp1)?;
+        let tp2 = std::time::Instant::now();
+        for (a, sp) in self.aux.iter().zip(&aux_spans) {
+            if sp.is_empty() {
+                continue;
+            }
+            a.g.sync()?;
+            self.g.bind();
+            self.g.htod(pb.go.ptr, &a.pre.as_ref().unwrap().out_host.as_slice::<f32>()[..n * d])?;
+            self.g.launch(self.k["add_inplace"], (((n * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(pb.out.ptr), Arg::P(pb.go.ptr), Arg::I((n * d) as i32)])?;
+        }
+        self.prof_mark("prefill moe . wait aux GPUs + add", tp2)?;
+        // a = bf16(out)
+        let a = pb.a.ptr + (r0 * d * 4) as u64;
+        self.g.dtod(a, pb.out.ptr, n * d * 4)?;
+        self.g.launch(self.k["round_bf16"], (((n * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(a), Arg::I((n * d) as i32)])
+    }
+}
