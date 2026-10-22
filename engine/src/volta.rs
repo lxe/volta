@@ -23,6 +23,19 @@ use std::sync::{Arc, Barrier, Mutex};
 pub const TMAX: usize = 32;
 /// chunks of the hyper-connection mix dots (vhc_dots)
 const HC_S: usize = 32;
+/// most tokens one session may have in a step (prefill chunks, draft verification)
+const KX: usize = TMAX;
+
+/// window ring rows per slot: the window plus room for a step's new tokens, so writing them never overwrites a row
+/// an earlier token of the same step still reads
+fn wring(win: usize) -> usize {
+    win + KX
+}
+
+/// compressor state rows per slot at ratio r: enough whole groups that the groups a step closes never share rows
+fn state_ring(r: usize) -> usize {
+    r * (KX / r + 1)
+}
 /// bytes per exchange row: x fp16 [dim] | picks i32 [top_k] | weights f32 [top_k], padded to 64
 fn xrow_bytes(c: &crate::model::Config) -> usize {
     (c.dim * 2 + c.top_k * 8).div_ceil(64) * 64
@@ -739,6 +752,13 @@ fn upload_v4(g: &Gpu, m: &Mat, parts: usize) -> Result<VMat> {
     Ok(VMat { w: g.upload(w)?, s: g.upload(s)?, work: g.upload(&work)?, prow: g.upload(&prow)?, parts, rows: m.rows, cols: m.cols, act_fp8: m.act_fp8 })
 }
 
+/// K chunk for a split-K launch of `blocks` row tiles: the longest chunk (a multiple of 128, at most 1024) that
+/// divides K evenly and still gives at least `want` blocks; uneven chunks leave the short chunk's blocks idle
+fn even_kc(k: usize, blocks: usize, want: usize) -> usize {
+    let ok: Vec<usize> = (1..=k / 128).filter(|z| k % z == 0 && (k / z) % 128 == 0 && k / z <= 1024).map(|z| k / z).collect();
+    ok.iter().copied().find(|&kc| blocks * (k / kc) >= want).or(ok.last().copied()).unwrap_or(k.min(1024))
+}
+
 /// a row-major f32 matrix in the vmoe 4-bit layout (one partition), for slices that are not a GGUF / HF tensor
 fn upload_v4_f32(g: &Gpu, rows: usize, k: usize, x: &[f32], act_fp8: bool) -> Result<VMat> {
     use rayon::prelude::*;
@@ -956,6 +976,8 @@ struct Shard<'m> {
     bucket: usize,
     /// host staging for the step's Engram rows
     eng_host: Vec<f32>,
+    /// this step's Engram hashes [token][engram layer] (begin)
+    eng_ids: Vec<Vec<u64>>,
     /// captured steps by (tokens, bucket); None = seen once (the next one captures)
     graphs: HashMap<(usize, usize), Option<crate::gpu::GraphExec>>,
 }
@@ -1069,11 +1091,11 @@ impl<'m> Shard<'m> {
                 },
                 engram_kv: lino(&l.engram_kv)?,
                 engram_qk: upv(&l.engram_qk)?,
-                window: g.alloc_zeroed(o.slots * c.window * c.head_dim * 2)?,
+                window: g.alloc_zeroed(o.slots * wring(c.window) * c.head_dim * 2)?,
                 comp_cache: if is_src { Some(g.alloc_zeroed(o.slots * cp * c.head_dim * 2)?) } else { None },
                 idx_cache: if is_src { Some(g.alloc_zeroed(o.slots * cp * c.idx_dim * 2)?) } else { None },
                 comp_state: if is_src && ratio > 1 {
-                    Some((g.alloc_zeroed(o.slots * ratio * c.head_dim * 4)?, g.alloc_zeroed(o.slots * ratio * c.head_dim * 4)?))
+                    Some((g.alloc_zeroed(o.slots * state_ring(ratio) * c.head_dim * 4)?, g.alloc_zeroed(o.slots * state_ring(ratio) * c.head_dim * 4)?))
                 } else {
                     None
                 },
@@ -1215,6 +1237,7 @@ impl<'m> Shard<'m> {
             seq: 0,
             bucket: 64,
             eng_host: vec![],
+            eng_ids: vec![],
             graphs: HashMap::new(),
             g,
         })
@@ -1259,7 +1282,7 @@ impl<'m> Shard<'m> {
         // one row group per warp, and the longest K chunk that still gives >= 3 blocks per SM (tests/dense_test.cu:
         // 145 us per layer at 8 tokens, against 250 with four row groups per warp and ~2 blocks per SM)
         let rtiles = n.div_ceil(8 * 32);
-        let kc = [1024usize, 512, 256].into_iter().find(|&kc| rtiles * parts * k.div_ceil(kc) >= 3 * self.g.sms).unwrap_or(128).min(k);
+        let kc = even_kc(k, rtiles * parts, 3 * self.g.sms);
         let kern = self.k[match nb { 1 => "vmoe_b4_n1_r1", 2 => "vmoe_b4_n2_r1", _ => "vmoe_b4_n4" }];
         let smem = nb * 8 * (kc + 8) * 2;
         if smem > 48 * 1024 {
@@ -1361,20 +1384,29 @@ impl<'m> Shard<'m> {
         let mut hbuf = vec![0f32; t * hc * d];
         let mut e = vec![0f32; d];
         let mut widx = vec![-1i32; t * win];
+        let pos = self.tok_pos(toks);
+        let (wr, ne) = (wring(win), c.engram_layers.len());
+        self.eng_ids.clear();
         for (i, &(s, tk)) in toks.iter().enumerate() {
             ensure!(s < self.slots, "slot {s}");
-            let ss = &mut self.sess[s];
-            ensure!(ss.pos < self.cap[0], "slot {s}: context full");
-            ss.engram_hist.push(c.engram_token_map[tk as usize] as i64);
+            let p = pos[i];
+            ensure!(p < self.cap[0], "slot {s}: context full");
+            // a session's tokens arrive in order: each token's Engram n-grams end at itself
+            self.sess[s].engram_hist.push(c.engram_token_map[tk as usize] as i64);
+            if m.engram.is_some() {
+                for eidx in 0..ne {
+                    let h = m.engram_hashes_for(&self.sess[s].engram_hist, eidx);
+                    self.eng_ids.push(h);
+                }
+            }
             m.embed.dequant(tk as usize, &mut e);
             for k in 0..hc {
                 hbuf[(i * hc + k) * d..(i * hc + k + 1) * d].copy_from_slice(&e);
             }
-            let p = ss.pos;
-            // window slots in ring order (oldest first), as pool rows of this slot; -1 = not written yet
-            let oldest = p % win + 1;
-            for (j, r) in (oldest..win).chain(0..oldest).enumerate() {
-                widx[i * win + j] = if r > p { -1 } else { (s * win + r) as i32 };
+            // the window's positions p - win + 1 ..= p, oldest first, as pool rows of this slot; -1 = before the start
+            for j in 0..win {
+                let q = (p + j + 1) as isize - win as isize;
+                widx[i * win + j] = if q < 0 { -1 } else { (s * wr + q as usize % wr) as i32 };
             }
         }
         self.g.htod_sync(self.w.h.ptr, &hbuf)?;
@@ -1394,6 +1426,18 @@ impl<'m> Shard<'m> {
         Ok(())
     }
 
+    /// each token's position: its session's position plus the session's earlier tokens in this step
+    fn tok_pos(&self, toks: &[(usize, u32)]) -> Vec<usize> {
+        let mut seen: HashMap<usize, usize> = HashMap::new();
+        toks.iter()
+            .map(|&(s, _)| {
+                let k = seen.entry(s).or_insert(0);
+                *k += 1;
+                self.sess[s].pos + *k - 1
+            })
+            .collect()
+    }
+
     /// every layer's per-token tables for this step, uploaded in one copy (pointers into w.tabs)
     fn plan(&mut self, toks: &[(usize, u32)]) -> Result<()> {
         let c = &self.m.cfg;
@@ -1407,8 +1451,11 @@ impl<'m> Shard<'m> {
             host.resize(host.len().div_ceil(32) * 32, 0);
             base + (off * 4) as u64
         };
-        let pos_p = push(toks.iter().map(|&(s, _)| self.sess[s].pos as i32).collect());
-        let wrow_p = push(toks.iter().map(|&(s, _)| (s * win + self.sess[s].pos % win) as i32).collect());
+        // each token's own position (a session may have several tokens, in order)
+        let pos = self.tok_pos(toks);
+        let wr = wring(win);
+        let pos_p = push(pos.iter().map(|&p| p as i32).collect());
+        let wrow_p = push(toks.iter().zip(&pos).map(|(&(s, _), &p)| (s * wr + p % wr) as i32).collect());
         let bucket = self.bucket;
         let mut lt = vec![];
         let (mut comp_src, mut idxk_src) = (usize::MAX, usize::MAX);
@@ -1418,22 +1465,33 @@ impl<'m> Shard<'m> {
             let mut x = LTab { pos: pos_p, wrow: wrow_p, ..Default::default() };
             if ratio > 0 {
                 let is_src = c.kv_sources.contains(&li);
-                // tokens closing a compression group this step (all of them at ratio 1); -1 = none
-                let lat: Vec<bool> = toks.iter().map(|&(s, _)| is_src && (self.sess[s].pos + 1) % ratio == 0).collect();
                 if is_src {
                     comp_src = li;
                     idxk_src = li;
                 }
                 let r = ratio.max(1);
-                x.srow = push(toks.iter().map(|&(s, _)| (s * r + self.sess[s].pos % r) as i32).collect());
-                x.lat_base = push(toks.iter().zip(&lat).map(|(&(s, _), &l)| if l { (s * r) as i32 } else { -1 }).collect());
-                x.lat_pos = push(toks.iter().map(|&(s, _)| (self.sess[s].pos + 1).saturating_sub(r) as i32).collect());
-                x.comp_rows = push(toks.iter().zip(&lat).map(|(&(s, _), &l)| if l { (s * self.cap[li] + self.sess[s].n_comp[li]) as i32 } else { -1 }).collect());
-                x.idx_rows = push(toks.iter().zip(&lat).map(|(&(s, _), &l)| if l { (s * self.cap[li] + self.sess[s].n_idx[li]) as i32 } else { -1 }).collect());
+                let sr = state_ring(r);
+                // tokens closing a compression group (all of them at ratio 1); rows counted in token order
+                let (mut lat_base, mut comp_rows, mut idx_rows) = (vec![], vec![], vec![]);
+                for (&(s, _), &p) in toks.iter().zip(&pos) {
+                    let closes = is_src && (p + 1) % ratio == 0;
+                    lat_base.push(if closes { (s * sr + (p + 1 - r) % sr) as i32 } else { -1 });
+                    comp_rows.push(if closes { (s * self.cap[li] + self.sess[s].n_comp[li]) as i32 } else { -1 });
+                    idx_rows.push(if closes { (s * self.cap[li] + self.sess[s].n_idx[li]) as i32 } else { -1 });
+                    if closes {
+                        self.sess[s].n_comp[li] += 1;
+                        self.sess[s].n_idx[li] += 1;
+                    }
+                }
+                x.srow = push(toks.iter().zip(&pos).map(|(&(s, _), &p)| (s * sr + p % sr) as i32).collect());
+                x.lat_base = push(lat_base);
+                x.lat_pos = push(pos.iter().map(|&p| (p + 1).saturating_sub(r) as i32).collect());
+                x.comp_rows = push(comp_rows);
+                x.idx_rows = push(idx_rows);
                 x.comp_src = comp_src;
                 x.idxk_src = idxk_src;
                 if c.index_sources.contains(&li) {
-                    x.ends = push(toks.iter().map(|&(s, _)| ((self.sess[s].pos + 1) / ratio) as i32).collect());
+                    x.ends = push(pos.iter().map(|&p| ((p + 1) / ratio) as i32).collect());
                     x.koff = push(toks.iter().map(|&(s, _)| (s * self.cap[idxk_src]) as i32).collect());
                     x.coff = push(toks.iter().map(|&(s, _)| (s * self.cap[comp_src]) as i32).collect());
                     // the bucketed width (power of two >= every token's visible rows), so the launch shape is stable
@@ -1441,13 +1499,6 @@ impl<'m> Shard<'m> {
                     kcomp = c.idx_topk;
                 }
                 x.kcomp = kcomp;
-                // the tables above used the counts before this step's latents; advance them
-                for (&(s, _), &l) in toks.iter().zip(&lat) {
-                    if l {
-                        self.sess[s].n_comp[li] += 1;
-                        self.sess[s].n_idx[li] += 1;
-                    }
-                }
             }
             lt.push(x);
         }
@@ -1466,11 +1517,11 @@ impl<'m> Shard<'m> {
         let Some(tabs) = m.engram.as_ref() else { return Ok(()) };
         let (hd, per, t) = (c.engram_dim, (c.engram_ngram - 1) * c.engram_heads, toks.len());
         let ne = c.engram_layers.len();
+        // hashes from begin (eng_ids [token][engram layer]), each from the history up to its token
         let mut ids = vec![0u64; ne * t * per];
         for eidx in 0..ne {
-            for (i, &(s, _)) in toks.iter().enumerate() {
-                let h = m.engram_hashes_for(&self.sess[s].engram_hist, eidx);
-                ids[(eidx * t + i) * per..(eidx * t + i + 1) * per].copy_from_slice(&h);
+            for i in 0..t {
+                ids[(eidx * t + i) * per..(eidx * t + i + 1) * per].copy_from_slice(&self.eng_ids[i * ne + eidx]);
             }
         }
         let layers: Vec<_> = (0..ne).map(|e| tabs.layer(e, hd)).collect::<Result<_>>()?;
@@ -2160,7 +2211,7 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
     sh.seq += c.n_layers as u32;
     sh.g.htod_sync(sh.w.seqd.ptr, &[base])?;
     // context bucket: power of two >= the longest of this GPU's sessions after this token, at least 64
-    let longest = toks.iter().map(|&(s, _)| sh.sess[s].pos + 1).max().unwrap_or(1);
+    let longest = sh.tok_pos(toks).iter().map(|&p| p + 1).max().unwrap_or(1);
     sh.bucket = longest.next_power_of_two().max(64).min(sh.cap[0]);
     if t > 0 {
         sh.begin(toks)?;

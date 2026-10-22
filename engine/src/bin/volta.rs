@@ -50,6 +50,9 @@ enum Cmd {
         topk: usize,
         #[arg(long, default_value_t = 8)]
         gpus: usize,
+        /// tokens per sequence per step (a chunk of the sequence at once, as prefill does); 1 = token by token
+        #[arg(long, default_value_t = 1)]
+        chunk: usize,
     },
     /// expert path self-test: convert + pack + GPU kernels vs the CPU reference, for (layer:expert) pairs
     Experts {
@@ -165,7 +168,7 @@ fn main() -> Result<()> {
             }
             println!("mean KL {:.4}, top-1 agreement {agree}/{n}", kl_sum / n as f64);
         }
-        Cmd::Eval { model, engram, eval, seqs, len, topk, gpus } => {
+        Cmd::Eval { model, engram, eval, seqs, len, topk, gpus, chunk } => {
             let rd = |f: &str| std::fs::read(eval.join(f));
             let toks: Vec<u32> = rd("heldout.i32")?.chunks(4).map(|b| i32::from_le_bytes(b.try_into().unwrap()) as u32).collect();
             let tidx: Vec<i32> = rd("teacher_idx.i32")?.chunks(4).map(|b| i32::from_le_bytes(b.try_into().unwrap())).collect();
@@ -177,14 +180,19 @@ fn main() -> Result<()> {
             let t0 = Instant::now();
             // full eval length (1024) uses the teacher rows as laid out: row = seq * 1023 + pos
             let full = 1024;
-            for p in 0..len - 1 {
+            for p0 in (0..len - 1).step_by(chunk) {
+                let p1 = (p0 + chunk).min(len - 1);
                 let mut plan = vec![vec![]; gpus];
                 for sq in 0..seqs {
-                    plan[sq % gpus].push((sq / gpus, toks[sq * full + p]));
+                    for p in p0..p1 {
+                        plan[sq % gpus].push((sq / gpus, toks[sq * full + p]));
+                    }
                 }
                 let out = e.step(plan.clone())?;
-                for sq in 0..seqs {
-                    let (g, row_in) = (sq % gpus, plan[sq % gpus].iter().position(|x| x.0 == sq / gpus).unwrap());
+                for (sq, p) in (0..seqs).flat_map(|sq| (p0..p1).map(move |p| (sq, p))) {
+                    // row of (sequence, position) in its GPU's plan: that GPU's earlier sequences, then the offset
+                    let g = sq % gpus;
+                    let row_in = (0..sq).filter(|&o| o % gpus == g).count() * (p1 - p0) + (p - p0);
                     let l = &out[g][row_in * e.vocab..(row_in + 1) * e.vocab];
                     let lp = lsm(l);
                     nll -= lp[toks[sq * full + p + 1] as usize];
@@ -194,7 +202,8 @@ fn main() -> Result<()> {
                     agree += (argmax(l) as i32 == ti[0]) as usize;
                     cnt += 1;
                 }
-                if (p + 1) % 128 == 0 {
+                if p1 % 128 < chunk {
+                    let p = p1 - 1;
                     eprintln!("pos {}: running ppl {:.3} kl {:.4} top1 {:.4} ({:.0} s)", p + 1, (nll / cnt as f64).exp(), kl / cnt as f64, agree as f64 / cnt as f64, t0.elapsed().as_secs_f64());
                 }
             }

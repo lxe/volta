@@ -22,7 +22,8 @@ int main() {
     CK(cudaMemcpy(wk, w.data(), w.size() * sizeof(VWork), cudaMemcpyHostToDevice));
     double bytes = (double)s.parts * s.n * s.k * (0.5 + 2.0 / 16), floor_us = bytes / 868e3;
     double best = 1e9; int bR = 0, bKC = 0;
-    for (int R : {4, 1}) for (int KC : {128, 256, 512, 1024}) {
+    for (int R : {4, 1}) for (int KC : {128, 256, 320, 512, 640, 1024, 1280}) {
+      if (s.k % KC) continue;
       if (KC > s.k) continue;
       dim3 g((s.n + 256 * R - 1) / (256 * R), s.parts, (s.k + KC - 1) / KC);
       size_t sm = 8 * (KC + 8) * 2;
