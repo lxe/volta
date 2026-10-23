@@ -52,7 +52,7 @@ extern "C" __global__ void __launch_bounds__(256, 1) volta_mega(const MkOp *ops,
       const VB vb{v % gx, (v / gx) % gy, v / (gx * gy), gx, gy, (int)o.gz};
       switch (o.code) {
         case MK_PP1: vhc_pp1_b(vb, MP(0, float *), MP(1, const float *), MP(2, const float *), MP(3, float *), MP(4, float *), MI(5)); break;
-        case MK_PP2: vhc_pp2_b(vb, MP(0, float *), MP(1, const float *), MP(2, const float *), MI(3), MF(4)); break;
+        case MK_PP2: vhc_pp2_b(vb, MP(0, float *), MP(1, const float *), MP(2, const float *), MI(3), MF(4), MP(5, half *), MI(6), MP(7, float *), MI(8)); break;
         case MK_MIX:
           vhc_mix_b(vb, MP(0, const float *), MP(1, const float *), MP(2, float *), MI(3), MI(4), MI(5), MP(6, float *), MF(7), MP(8, const float *),
                     MP(9, const float *), MF(10), MI(11), MP(12, int *));

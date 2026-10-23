@@ -112,7 +112,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "volta_mega", "vmoe_b4_pf", "vattn2", "vmerge2", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -1457,7 +1457,7 @@ impl<'m> Shard<'m> {
     /// mm whose bits match on every GPU (head-parallel: anything that feeds the replicated residual stream)
     fn mm_det(&self, w: &Lin, x: u64, y: u64, t: usize) -> Result<()> {
         match w {
-            Lin::V(v) if self.hp => self.vmm_z(v, x, v.cols, y, t, true, false),
+            Lin::V(v) if self.hp => self.vmm_z(v, x, v.cols, y, t, true, false, false),
             _ => self.mm(w, x, y, t),
         }
     }
@@ -1465,13 +1465,14 @@ impl<'m> Shard<'m> {
     /// vmoe 4-bit, every partition in one launch: x [t][parts * cols] f32 (row stride ldx), y [t][rows] f32 where
     /// partition p of token t reads x[t][p*cols..] and writes y[t][p*prows..]
     fn vmm(&self, v: &VMat, x: u64, ldx: usize, y: u64, t: usize) -> Result<()> {
-        self.vmm_z(v, x, ldx, y, t, false, false)
+        self.vmm_z(v, x, ldx, y, t, false, false, false)
     }
 
     /// vmm; det: the same sums in a fixed order (K chunks into zpart, then vsum_z), so every GPU gets identical bits;
     /// bf16_in: x is rounded to bf16 first (as round_bf16 would)
     #[allow(clippy::too_many_arguments)]
-    fn vmm_z(&self, v: &VMat, x: u64, ldx: usize, y_out: u64, t: usize, det: bool, bf16_in: bool) -> Result<()> {
+    /// prepped: the kernel that produced x already wrote xh and zeroed y (vxh_put), so no vprep here
+    fn vmm_z(&self, v: &VMat, x: u64, ldx: usize, y_out: u64, t: usize, det: bool, bf16_in: bool, prepped: bool) -> Result<()> {
         ensure!(t >= 1 && t <= TMAX, "vmm over {t} tokens");
         let (n, k, parts) = (v.rows / v.parts, v.cols, v.parts);
         let w = &self.w;
@@ -1481,7 +1482,10 @@ impl<'m> Shard<'m> {
         let ny = n * parts;
         ensure!(!det || parts == 1, "a fixed-order vmm over one partition");
         let y = if det { w.zpart.ptr } else { y_out };
-        self.g.launch(self.k["vprep"], ((kx.max(ny) as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(w.xh.ptr), Arg::I(kx as i32), Arg::I(v.act_fp8 as i32 | (bf16_in as i32) << 1), Arg::P(y_out), Arg::I(ny as i32)])?;
+        ensure!(!(prepped && det), "a fixed-order vmm preps itself");
+        if !prepped {
+            self.g.launch(self.k["vprep"], ((kx.max(ny) as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(w.xh.ptr), Arg::I(kx as i32), Arg::I(v.act_fp8 as i32 | (bf16_in as i32) << 1), Arg::P(y_out), Arg::I(ny as i32)])?;
+        }
         let nb = if t <= 8 { 1usize } else if t <= 16 { 2 } else { 4 };
         // one row group per warp, and the longest K chunk that still gives >= 3 blocks per SM (tests/dense_test.cu:
         // 145 us per layer at 8 tokens, against 250 with four row groups per warp and ~2 blocks per SM)
@@ -1818,12 +1822,20 @@ impl<'m> Shard<'m> {
         let l = &self.layers[li];
         // megakernel dependencies: the kv store reads only qkv; the attention reads q and the stored kv
         let mut qkv_op: Option<usize> = None;
+        let mut q_prepped = false;
         // q latent and kv from one launch when fused: rows [t][q_lora + hd], the q latent normalized out to qr
         let (kvp, kvld) = if let Some(f) = &l.qkv_a {
             let ld = c.q_lora + hd;
-            self.vmm(f, w.x.ptr, f.cols, w.qkv.ptr, t)?;
+            // the hc step before the attention wrote x's fp16 copy and zeroed qkv (attn_prep)
+            self.vmm_z(f, w.x.ptr, f.cols, w.qkv.ptr, t, false, false, true)?;
             qkv_op = self.g.mega_mark().checked_sub(1);
-            self.g.launch(self.k["rmsnorm"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.qkv.ptr), Arg::P(l.q_a_norm.ptr), Arg::P(w.qr.ptr), Arg::I(c.q_lora as i32), Arg::I(ld as i32), Arg::I(c.q_lora as i32), Arg::F(c.eps), Arg::I(1)])?;
+            if let Lin::V(qb) = &l.q_b {
+                // the q latent's norm also writes q_b's fp16 input and zeroes q
+                self.g.launch(self.k["vrms_xh"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.qkv.ptr), Arg::P(l.q_a_norm.ptr), Arg::P(w.qr.ptr), Arg::I(c.q_lora as i32), Arg::I(ld as i32), Arg::I(c.q_lora as i32), Arg::F(c.eps), Arg::P(w.xh.ptr), Arg::I(qb.act_fp8 as i32), Arg::P(w.q.ptr), Arg::I((t * nh * hd) as i32)])?;
+                q_prepped = true;
+            } else {
+                self.g.launch(self.k["rmsnorm"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.qkv.ptr), Arg::P(l.q_a_norm.ptr), Arg::P(w.qr.ptr), Arg::I(c.q_lora as i32), Arg::I(ld as i32), Arg::I(c.q_lora as i32), Arg::F(c.eps), Arg::I(1)])?;
+            }
             (w.qkv.ptr + (c.q_lora * 4) as u64, ld)
         } else {
             self.mm(l.q_a.as_ref().unwrap(), w.x.ptr, w.qr.ptr, t)?;
@@ -1831,7 +1843,10 @@ impl<'m> Shard<'m> {
             self.mm(l.kv.as_ref().unwrap(), w.x.ptr, w.kvv.ptr, t)?;
             (w.kvv.ptr, hd)
         };
-        self.mm(&l.q_b, w.qr.ptr, w.q.ptr, t)?;
+        match &l.q_b {
+            Lin::V(v) if q_prepped => self.vmm_z(v, w.qr.ptr, v.cols, w.q.ptr, t, false, false, true)?,
+            qb => self.mm(qb, w.qr.ptr, w.q.ptr, t)?,
+        }
         let f = if compressed { &self.freqs.1 } else { &self.freqs.0 };
         // the tensor-core attention ropes q as it converts it to fp16 (vq16_rope)
         let qrope = attn_mma().then_some((f.ptr, x.pos));
@@ -1887,15 +1902,22 @@ impl<'m> Shard<'m> {
         let merge = if s >= 10 && !self.g.mega_on() { "vmerge2" } else { "vattn_merge_rope" };
         self.g.launch(self.k[merge], (t as u32, nh as u32, 1), (hd / 2) as u32, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f.ptr), Arg::P(x.pos)])?;
         // an FP8-input o_a rounds o to FP8 in its own prep (the same blocks of 32): fake_fp8 here would repeat it
-        if !matches!(&l.o_a, Lin::V(v) if v.act_fp8) {
-            self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?;
-        }
         // grouped low-rank output projection: group gi of token i reads o[i][gi*gsz..]
         let groups = if self.hp { 1 } else { c.o_groups };
         let gsz = nh * hd / groups;
         let rows = groups * c.o_lora;
+        let mut o_prepped = false;
         match &l.o_a {
-            Lin::V(v) => self.vmm(v, w.o.ptr, nh * hd, w.r.ptr, t)?,
+            // the FP8 rounding writes o_a's fp16 input and zeroes r
+            Lin::V(v) if !v.act_fp8 => {
+                self.g.launch(self.k["vfp8_xh"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32), Arg::P(w.xh.ptr), Arg::P(w.r.ptr), Arg::I((t * rows) as i32)])?;
+                o_prepped = true;
+            }
+            Lin::V(_) => {}
+            _ => self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?,
+        }
+        match &l.o_a {
+            Lin::V(v) => self.vmm_z(v, w.o.ptr, nh * hd, w.r.ptr, t, false, false, o_prepped)?,
             Lin::D(oa) if oa.q6.is_some() && oa.ty != GType::Q5K && c.o_lora % 16 == 0 => {
                 // 6-bit planes: every group and every token in one launch (group gi of token i reads o[i][gi*gsz..])
                 let ([lo, hi, sc, d], _, _) = oa.planes(0);
@@ -1918,7 +1940,7 @@ impl<'m> Shard<'m> {
         let out = if self.hp { self.hp_block() } else { w.a.ptr };
         match &l.o_b {
             // o_b's prep rounds r to bf16 (round_bf16 folded in)
-            Lin::V(v) => self.vmm_z(v, w.r.ptr, v.cols, out, t, false, true)?,
+            Lin::V(v) => self.vmm_z(v, w.r.ptr, v.cols, out, t, false, true, false)?,
             ob => {
                 self.g.launch(self.k["round_bf16"], (((t * rows) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.r.ptr), Arg::I((t * rows) as i32)])?;
                 self.mm(ob, w.r.ptr, out, t)?;
@@ -2855,10 +2877,18 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
         Ok(())
     };
     // post-mix + the next pre-mix + its norm (vhc_pp1, vhc_pp2); a = 0: pre-mix + norm only
-    let hc_step = |sh: &Shard, a: u64, mix: u64, norm: &Buf| -> Result<()> {
+    // attn: the step before layer attn's attention: with a fused q / kv projection, also its vprep (x's fp16 copy,
+    // qkv zeroed)
+    let hc_step = |sh: &Shard, a: u64, mix: u64, norm: &Buf, attn: Option<usize>| -> Result<()> {
         let (w, grid) = (&sh.w, ((d as u32).div_ceil(256), t as u32, 1));
         sh.g.launch(sh.k["vhc_pp1"], grid, 256, 0, &[Arg::P(w.h.ptr), Arg::P(a), Arg::P(mix), Arg::P(w.x.ptr), Arg::P(w.ss.ptr), Arg::I(d as i32)])?;
-        sh.g.launch(sh.k["vhc_pp2"], grid, 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.ss.ptr), Arg::P(norm.ptr), Arg::I(d as i32), Arg::F(c.eps)])
+        let prep = attn.and_then(|li| sh.layers[li].qkv_a.as_ref().map(|f| (f.act_fp8, t * (c.q_lora + c.head_dim))));
+        let mut args = vec![Arg::P(w.x.ptr), Arg::P(w.ss.ptr), Arg::P(norm.ptr), Arg::I(d as i32), Arg::F(c.eps)];
+        match prep {
+            Some((fp8, zn)) => args.extend([Arg::P(w.xh.ptr), Arg::I(fp8 as i32), Arg::P(w.qkv.ptr), Arg::I(zn as i32)]),
+            None => args.extend([Arg::P(0), Arg::I(0), Arg::P(0), Arg::I(0)]),
+        }
+        sh.g.launch(sh.k["vhc_pp2"], grid, 256, 0, &args)
     };
     // the previous layer's end already left this layer's normalized x (no Engram between them)
     let mut x_ready = false;
@@ -2871,7 +2901,7 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             mark(sh, 0)?;
             sh.g.mega_begin();
             if !x_ready {
-                hc_step(sh, 0, sh.w.mix_f.ptr, &sh.layers[li].attn_norm)?;
+                hc_step(sh, 0, sh.w.mix_f.ptr, &sh.layers[li].attn_norm, Some(li))?;
             }
             sh.attention(toks, li, &mut st)?;
             // the attention's mixes are read only by the post step after it, and nothing in between writes h: last,
@@ -2881,7 +2911,7 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             sh.hc_mixes_rows(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t)?;
             sh.g.mega_end()?;
             mark(sh, 1)?;
-            hc_step(sh, sh.w.a.ptr, sh.w.mix_a.ptr, &sh.layers[li].ffn_norm)?;
+            hc_step(sh, sh.w.a.ptr, sh.w.mix_a.ptr, &sh.layers[li].ffn_norm, None)?;
             let w = &sh.w;
             if sh.gi == 0 && std::env::var_os("DSX_DUMP").is_some() {
                 let h: Vec<f32> = sh.g.download(w.h.ptr, hc * d)?;
@@ -2903,7 +2933,7 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             sh.moe_combine(t)?;
             x_ready = li + 1 < c.n_layers && !c.engram_layers.contains(&(li + 1));
             if x_ready {
-                hc_step(sh, sh.w.a.ptr, sh.w.mix_f.ptr, &sh.layers[li + 1].attn_norm)?;
+                hc_step(sh, sh.w.a.ptr, sh.w.mix_f.ptr, &sh.layers[li + 1].attn_norm, Some(li + 1))?;
             } else {
                 let w = &sh.w;
                 sh.g.launch(sh.k["vhc_post"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.a.ptr), Arg::P(w.mix_f.ptr), Arg::I(d as i32)])?;

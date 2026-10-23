@@ -1198,6 +1198,21 @@ extern "C" __global__ void vhc_pre(const float *h, const float *mixes, int moff,
   const float *ht = h + (size_t)t * 4 * d;
   y[(size_t)t * d + i] = bf16r(m[0] * ht[i] + m[1] * ht[d + i] + m[2] * ht[2 * d + i] + m[3] * ht[3 * d + i]);
 }
+// vprep's work done by the kernel that produces x, so the next matmul needs no vprep: xh[i] = fp16(x[i]), after
+// the FP8 block-32 rounding when fp8 (whole warps over 32 consecutive i); and the matmul's output zeroed (z, zn
+// floats, every block of the grid a share)
+__device__ __forceinline__ void vxh_put(half *xh, size_t i, float v, int fp8) {
+  if (fp8) {
+    const float s = pow2_ceil(fmaxf(warp_max(fabsf(v)), 1e-4f) / 448.f);
+    v = e4m3_round(fminf(fmaxf(v / s, -448.f), 448.f)) * s;
+  }
+  xh[i] = __float2half(v);
+}
+__device__ __forceinline__ void vzero_share(float *z, int zn, int b, int nb) {
+  if (z)
+    for (int q = b * blockDim.x + threadIdx.x; q < zn; q += nb * blockDim.x) z[q] = 0.f;
+}
+
 // vhc_post (when a is set) + vhc_pre + rmsnorm(round) over 256-element slices, 2 launches: (1) h = post(h, a, mixes),
 // y = bf16(pre(h, mixes)), and the slice's sum of squares into ss[t][blockIdx.x]; (2) y = bf16(w * rms(y)) with the
 // slices' sums added in order (the same bits on every GPU). A token in one block was issue-bound on one SM
@@ -1232,14 +1247,21 @@ __device__ __forceinline__ void vhc_pp1_b(VB vb, float *__restrict__ h, const fl
 }
 extern "C" __global__ void __launch_bounds__(256) vhc_pp1(float *__restrict__ h, const float *__restrict__ a, const float *__restrict__ mixes,
                                                           float *__restrict__ y, float *__restrict__ ss, int d) { vhc_pp1_b(VB_HW, h, a, mixes, y, ss, d); }
-__device__ __forceinline__ void vhc_pp2_b(VB vb, float *__restrict__ y, const float *__restrict__ ss, const float *__restrict__ w, int d, float eps) {
+__device__ __forceinline__ void vhc_pp2_b(VB vb, float *__restrict__ y, const float *__restrict__ ss, const float *__restrict__ w, int d, float eps,
+                                          half *__restrict__ xh = nullptr, int fp8 = 0, float *__restrict__ z = nullptr, int zn = 0) {
   const int t = vb.y, i = vb.x * 256 + threadIdx.x;
   float s = 0.f;
   for (int b = 0; b < (int)vb.gx; b++) s += ss[t * vb.gx + b];
   const float rs = rsqrtf(s / d + eps);
-  if (i < d) y[(size_t)t * d + i] = bf16r(__ldg(w + i) * (y[(size_t)t * d + i] * rs));
+  if (i < d) {
+    const float v = bf16r(__ldg(w + i) * (y[(size_t)t * d + i] * rs));
+    y[(size_t)t * d + i] = v;
+    if (xh) vxh_put(xh, (size_t)t * d + i, v, fp8);
+  }
+  vzero_share(z, zn, vb.y * vb.gx + vb.x, vb.gx * vb.gy);
 }
-extern "C" __global__ void __launch_bounds__(256) vhc_pp2(float *__restrict__ y, const float *__restrict__ ss, const float *__restrict__ w, int d, float eps) { vhc_pp2_b(VB_HW, y, ss, w, d, eps); }
+extern "C" __global__ void __launch_bounds__(256) vhc_pp2(float *__restrict__ y, const float *__restrict__ ss, const float *__restrict__ w, int d, float eps,
+                                                          half *xh, int fp8, float *z, int zn) { vhc_pp2_b(VB_HW, y, ss, w, d, eps, xh, fp8, z, zn); }
 extern "C" __global__ void vhc_post(float *h, const float *x, const float *mixes, int d) {
   const int t = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= d) return;
@@ -2169,5 +2191,37 @@ extern "C" __global__ void vthrash(float *o) {
 #pragma unroll
   for (int i = 0; i < 12000; i++) asm volatile("fma.rn.f32 %0, %0, 0f3F800347, 0f3F000000;" : "+f"(a));
   if (a == 1234.5f) o[0] = a;
+}
+
+// rmsnorm(round) with the next matmul's vprep done here (vxh_put; xh rows of n) and its output zeroed. grid T
+extern "C" __global__ void __launch_bounds__(1024) vrms_xh(const float *x, const float *w, float *out, int n, int ld_in, int ld_out, float eps,
+                                                           half *xh, int fp8, float *z, int zn) {
+  __shared__ float sh[32];
+  const float *xr = x + (size_t)blockIdx.x * ld_in;
+  float *o = out + (size_t)blockIdx.x * ld_out;
+  float s = 0.f;
+  for (int i = threadIdx.x; i < n; i += blockDim.x) s += xr[i] * xr[i];
+  s = block_sum(s, sh);
+  const float r = rsqrtf(s / n + eps);
+  // n % 32 == 0: whole warps per 32 values
+  for (int i = threadIdx.x; i < n; i += blockDim.x) {
+    const float v = bf16r(w[i] * (xr[i] * r));
+    o[i] = v;
+    vxh_put(xh, (size_t)blockIdx.x * n + i, v, fp8);
+  }
+  vzero_share(z, zn, blockIdx.x, gridDim.x);
+}
+// fake_fp8 with the next matmul's (non-FP8) vprep done here: xh = fp16 of the rounded values, its output zeroed
+extern "C" __global__ void vfp8_xh(float *x, int n, half *xh, float *z, int zn) {
+  int b = blockIdx.x * (blockDim.x >> 5) + (threadIdx.x >> 5), lane = threadIdx.x & 31;
+  if (b * 32 < n) {
+    float v = x[b * 32 + lane];
+    float amax = fmaxf(warp_max(fabsf(v)), 1e-4f);
+    float sc = pow2_ceil(amax / 448.f);
+    v = e4m3_round(fminf(fmaxf(v / sc, -448.f), 448.f)) * sc;
+    x[b * 32 + lane] = v;
+    xh[b * 32 + lane] = __float2half(v);
+  }
+  vzero_share(z, zn, blockIdx.x, gridDim.x);
 }
 
