@@ -422,15 +422,32 @@ extern "C" __global__ void __launch_bounds__(1024) vroute_all(const int *selg, c
 }
 
 // one exchange row per token: [x fp16 (d) | picks i32 (k) | weights f32 (k)], rb bytes apart; grid T, block 256
-// vto_f16 + vpack_x: the row's x from f32 (layers without the expert rotation)
-extern "C" __global__ void vpack_xf(const float *x, const int *sel, const float *wts, unsigned char *dst, int d, int k, int rb) {
+// vto_f16 + vpack_x: the row's x from f32 (layers without the expert rotation); 4 values per thread per load, every
+// load before any store. grid T, block 256, d % 4 == 0, d <= 4 * 4 * 256
+extern "C" __global__ void vpack_xf(const float *__restrict__ x, const int *__restrict__ sel, const float *__restrict__ wts, unsigned char *__restrict__ dst,
+                                    int d, int k, int rb) {
+  constexpr int J = 5;
   int t = blockIdx.x;
   unsigned char *row = dst + (size_t)t * rb;
-  half *out = reinterpret_cast<half *>(row);
-  for (int i = threadIdx.x; i < d; i += blockDim.x) out[i] = __float2half(x[(size_t)t * d + i]);
+  const float4 *x4 = reinterpret_cast<const float4 *>(x + (size_t)t * d);
+  float4 v[J];
+#pragma unroll
+  for (int j = 0; j < J; j++) {
+    const int i = threadIdx.x + j * blockDim.x;
+    if (i < d / 4) v[j] = x4[i];
+  }
+  int sv = 0;
+  float wv = 0.f;
+  if (threadIdx.x < k) { sv = sel[t * k + threadIdx.x]; wv = wts[t * k + threadIdx.x]; }
+  half2 *out = reinterpret_cast<half2 *>(row);
+#pragma unroll
+  for (int j = 0; j < J; j++) {
+    const int i = threadIdx.x + j * blockDim.x;
+    if (i < d / 4) { out[2 * i] = __floats2half2_rn(v[j].x, v[j].y); out[2 * i + 1] = __floats2half2_rn(v[j].z, v[j].w); }
+  }
   if (threadIdx.x < k) {
-    reinterpret_cast<int *>(row + d * 2)[threadIdx.x] = sel[t * k + threadIdx.x];
-    reinterpret_cast<float *>(row + d * 2 + k * 4)[threadIdx.x] = wts[t * k + threadIdx.x];
+    reinterpret_cast<int *>(row + d * 2)[threadIdx.x] = sv;
+    reinterpret_cast<float *>(row + d * 2 + k * 4)[threadIdx.x] = wv;
   }
 }
 extern "C" __global__ void vpack_x(const half *x16, const int *sel, const float *wts, unsigned char *dst, int d, int k, int rb) {
@@ -1055,40 +1072,44 @@ extern "C" __global__ void vhc_pre(const float *h, const float *mixes, int moff,
   const float *ht = h + (size_t)t * 4 * d;
   y[(size_t)t * d + i] = bf16r(m[0] * ht[i] + m[1] * ht[d + i] + m[2] * ht[2 * d + i] + m[3] * ht[3 * d + i]);
 }
-// vhc_post (when a is set) + vhc_pre + rmsnorm(round) in one launch, one block per token: h = post(h, a, mixes),
-// then y = bf16(w * rms(bf16(pre(h, mixes)))). The same arithmetic and sum order as the three kernels.
-// grid T, block 1024, d <= 8192
-extern "C" __global__ void __launch_bounds__(1024) vhc_post_pre_rms(float *h, const float *a, const float *mixes, float *y, const float *w, int d, float eps) {
-  __shared__ float sh[32];
-  const int t = blockIdx.x;
-  const float *m = mixes + t * 24;
+// vhc_post (when a is set) + vhc_pre + rmsnorm(round) over 256-element slices, 2 launches: (1) h = post(h, a, mixes),
+// y = bf16(pre(h, mixes)), and the slice's sum of squares into ss[t][blockIdx.x]; (2) y = bf16(w * rms(y)) with the
+// slices' sums added in order (the same bits on every GPU). A token in one block was issue-bound on one SM
+// (~11 us for 5120 elements); 20 blocks spread it. grid (d / 256, T), block 256
+extern "C" __global__ void __launch_bounds__(256) vhc_pp1(float *__restrict__ h, const float *__restrict__ a, const float *__restrict__ mixes,
+                                                          float *__restrict__ y, float *__restrict__ ss, int d) {
+  __shared__ float sh[32], m[24];
+  const int t = blockIdx.y, i = blockIdx.x * 256 + threadIdx.x;
+  if (threadIdx.x < 24) m[threadIdx.x] = __ldg(mixes + t * 24 + threadIdx.x);
   float *ht = h + (size_t)t * 4 * d;
-  float v[8], s = 0.f;
+  float r[4], av = 0.f;
+  if (i < d) {
 #pragma unroll
-  for (int j = 0; j < 8; j++) {
-    const int i = threadIdx.x + j * 1024;
-    if (i >= d) break;
-    float r0 = ht[i], r1 = ht[d + i], r2 = ht[2 * d + i], r3 = ht[3 * d + i];
+    for (int k = 0; k < 4; k++) r[k] = ht[k * d + i];
+    if (a) av = a[(size_t)t * d + i];
+  }
+  __syncthreads();
+  float v = 0.f;
+  if (i < d) {
     if (a) {
-      const float xv = a[(size_t)t * d + i];
       float n[4];
 #pragma unroll
-      for (int k = 0; k < 4; k++) n[k] = bf16r(m[4 + k] * xv + m[8 + k] * r0 + m[8 + 4 + k] * r1 + m[8 + 8 + k] * r2 + m[8 + 12 + k] * r3);
+      for (int k = 0; k < 4; k++) n[k] = bf16r(m[4 + k] * av + m[8 + k] * r[0] + m[8 + 4 + k] * r[1] + m[8 + 8 + k] * r[2] + m[8 + 12 + k] * r[3]);
 #pragma unroll
-      for (int k = 0; k < 4; k++) ht[k * d + i] = n[k];
-      r0 = n[0]; r1 = n[1]; r2 = n[2]; r3 = n[3];
+      for (int k = 0; k < 4; k++) ht[k * d + i] = r[k] = n[k];
     }
-    v[j] = bf16r(m[0] * r0 + m[1] * r1 + m[2] * r2 + m[3] * r3);
-    s += v[j] * v[j];
+    v = bf16r(m[0] * r[0] + m[1] * r[1] + m[2] * r[2] + m[3] * r[3]);
+    y[(size_t)t * d + i] = v;
   }
-  s = block_sum(s, sh);
-  const float r = rsqrtf(s / d + eps);
-#pragma unroll
-  for (int j = 0; j < 8; j++) {
-    const int i = threadIdx.x + j * 1024;
-    if (i >= d) break;
-    y[(size_t)t * d + i] = bf16r(w[i] * (v[j] * r));
-  }
+  const float s = block_sum(v * v, sh);
+  if (threadIdx.x == 0) ss[t * gridDim.x + blockIdx.x] = s;
+}
+extern "C" __global__ void __launch_bounds__(256) vhc_pp2(float *__restrict__ y, const float *__restrict__ ss, const float *__restrict__ w, int d, float eps) {
+  const int t = blockIdx.y, i = blockIdx.x * 256 + threadIdx.x;
+  float s = 0.f;
+  for (int b = 0; b < (int)gridDim.x; b++) s += ss[t * gridDim.x + b];
+  const float rs = rsqrtf(s / d + eps);
+  if (i < d) y[(size_t)t * d + i] = bf16r(__ldg(w + i) * (y[(size_t)t * d + i] * rs));
 }
 extern "C" __global__ void vhc_post(float *h, const float *x, const float *mixes, int d) {
   const int t = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;

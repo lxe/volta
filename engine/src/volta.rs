@@ -81,7 +81,7 @@ pub struct Opts {
 const KERNELS: &[&str] = &[
     "gemv_q8_0", "gemv_q8r", "gemv_q8r_sk", "gemv_f16", "gemv_f16_sk", "gemv_bf16", "gemv_bf16_sk", "gemv_f32", "gemv_f32_sk",
     "gemv_fp8b32", "gemv_q2_0", "gemv_ptq1_0", "gemv_q3_k", "gemv_q8g", "gemv_q6p", "gemv_q6g4", "gemv_q6s8", "gemv_q5p", "gemv_q5p4",
-    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_post_pre_rms", "vhc_dots", "vhc_mix", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows", "vq16", "vattn_mma", "vstore_fp4_rows", "vindexer_score4", "vindexer_mma",
+    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_pp1", "vhc_pp2", "vhc_dots", "vhc_mix", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows", "vq16", "vattn_mma", "vstore_fp4_rows", "vindexer_score4", "vindexer_mma",
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
@@ -1007,6 +1007,8 @@ struct Work {
     ypart16: Buf, // ypart as fp16, what the all-to-all sends
     /// tickets of the fused kernels whose last block finishes the work (each resets its own)
     tick: Buf,
+    /// vhc_pp1's per-slice sums of squares [TMAX][dim / 256]
+    ss: Buf,
     /// vhc_dots partials [TMAX][25][HC_S]
     hcp: Buf,
     cnt: Buf,
@@ -1293,6 +1295,7 @@ impl<'m> Shard<'m> {
             ypart16: g.alloc_zeroed(tg * d * 2)?,
             hcp: fz(TMAX * 25 * HC_S)?,
             tick: g.alloc_zeroed(64)?,
+            ss: fz(t * d.div_ceil(256))?,
             cnt: g.alloc_zeroed((3 * lmax + 1) * 4)?, // cnt [lmax] | off [lmax + 1] | cur [lmax]
             hot: g.alloc_zeroed(3 * MAX_LISTS * lmax * 32)?,
             nhot: g.alloc_zeroed(3 * MAX_LISTS * 4)?,
@@ -1962,6 +1965,7 @@ impl<'m> Shard<'m> {
         let rb = xrow_bytes(c);
         let xo = (me * TMAX * rb) as u64;
         if !c.expert_rot.get(li).copied().unwrap_or(false) {
+            ensure!(d % 4 == 0 && d <= 5 * 4 * 256, "vpack_xf: dim {d}");
             return self.g.launch(self.k["vpack_xf"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::P(w.xg.ptr + xo), Arg::I(d as i32), Arg::I(kk as i32), Arg::I(rb as i32)]);
         }
         self.g.launch(self.k["vto_f16"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.x16.ptr), Arg::I((t * d) as i32)])?;
@@ -2717,10 +2721,11 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
         }
         Ok(())
     };
-    // post-mix + the next pre-mix + its norm, one launch (vhc_post_pre_rms); a = 0: pre-mix + norm only
+    // post-mix + the next pre-mix + its norm (vhc_pp1, vhc_pp2); a = 0: pre-mix + norm only
     let hc_step = |sh: &Shard, a: u64, mix: u64, norm: &Buf| -> Result<()> {
-        let w = &sh.w;
-        sh.g.launch(sh.k["vhc_post_pre_rms"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.h.ptr), Arg::P(a), Arg::P(mix), Arg::P(w.x.ptr), Arg::P(norm.ptr), Arg::I(d as i32), Arg::F(c.eps)])
+        let (w, grid) = (&sh.w, ((d as u32).div_ceil(256), t as u32, 1));
+        sh.g.launch(sh.k["vhc_pp1"], grid, 256, 0, &[Arg::P(w.h.ptr), Arg::P(a), Arg::P(mix), Arg::P(w.x.ptr), Arg::P(w.ss.ptr), Arg::I(d as i32)])?;
+        sh.g.launch(sh.k["vhc_pp2"], grid, 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.ss.ptr), Arg::P(norm.ptr), Arg::I(d as i32), Arg::F(c.eps)])
     };
     // the previous layer's end already left this layer's normalized x (no Engram between them)
     let mut x_ready = false;
