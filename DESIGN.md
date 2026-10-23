@@ -407,3 +407,49 @@ own GPU's attention, 64 tokens per step, so one 128K prompt alone takes minutes;
 memory the step buffers do not have yet. Next on that path: prefill steps that keep only the last row's logits,
 and the 32-token expert and dense kernels, which now take most of a prefill step.
 
+### 2026-10-22: one session at a time
+
+A single session's step was 29.4 ms: almost all fixed cost, since one token reads only ~20 MB of weights per GPU
+per layer (~25 us). Each change below was predicted from a per-kernel floor and checked end to end, by the
+steady-state median step (`volta spec` now reports it; the mean counted each context size's first steps, which run
+without a CUDA graph and capture one).
+
+Fixed costs measured on the box (`fixed.cu`-style lab, CUDA graphs):
+
+| | |
+|---|---|
+| graph node, empty 1-block kernel | 0.9 us |
+| empty kernel of 640 / 5,000 blocks | 1.8 / 7.9 us |
+| dependent load, L2 / DRAM | 145 / 285 ns |
+| NVLink flag, one way (quad-mates and twin / the far quad, routed) | 1.0 / 1.26 us |
+| streaming read of 7.2 MB, 90-1,440 blocks | 10.4 us (690 GB/s) |
+
+What changed, one session:
+
+| Change | Why it was slow | Step |
+|---|---|---|
+| attention rows per block 32-160 by token count; expert lists bucketed once per layer | 16 attention blocks; ~5,700 mostly idle expert blocks | 29.4 -> 23.0 ms |
+| MoE rows bounded by the real token counts | fp16 conversion and zeroing of all 512 exchange rows | 23.0 -> 21.2 ms |
+| head-parallel mode | dense attention weights read whole by one GPU while 7 wait | 20.9 -> 18.1 ms |
+| ~13 fewer launches per layer (fused hc, router top-k, routing chain, ropes) | | 18.1 -> 17.2 ms |
+| hc step over 20 blocks; loads before stores | one block per token is issue-bound on one SM (probes: 3 us loads, 5 us math); stores between loads serialized them (SASS) | 16.6 -> 16.0 ms |
+| LL-word exchanges for small head-parallel steps | flags and fences: 13.9 us for 20 KB against 7.2 in LL words (lab) | 15.9 -> 15.0 ms |
+| router weights in bf16, top-k scores across the block | the router read runs at the streaming rate; 12 transcendental scores per lane in sequence | 15.0 -> 14.4 ms |
+
+Tried and dropped (measured no better): a deeper weight prefetch ring in the expert kernel and smaller K chunks (the
+1-token expert pass is bound by 4-byte loads at low parallelism: a plain stream of the same bytes takes 14.4 us at
+90 blocks with 4-byte loads, 10.5 with 16-byte ones); dense matmuls with more K chunks; folding vprep into the
+dense matmuls (every row tile converted x again in its prologue, which sits on each block's critical path: +0.3 ms
+head-parallel, +0.9 ms DP).
+
+Where a head-parallel layer goes now (~360 us, GPU0 trace), against its floor:
+
+| Part | us | Floor | Note |
+|---|---|---|---|
+| graph-node gaps (~48 kernels) | ~45 | - | fewer kernels or a persistent kernel |
+| routed experts (gate/up, down) | 41 | ~16 | 16-byte loads (staged through shared memory) and a shorter per-block prologue |
+| dense matmuls + their vprep | 52 | ~26 | same load pattern; vprep cannot move into the tiles (above) |
+| hc mixes (dots + Sinkhorn) x 2 | 35 | ~12 | the Sinkhorn is one warp's 20-step chain |
+| attention + merge | 28 | ~6 | one 32-row sub-tile per block is a ~12 us chain |
+| exchanges (LL) | ~13 | ~5 | |
+

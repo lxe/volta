@@ -17,8 +17,8 @@ Volta has no FP8, FP4 or bf16 math, and the official checkpoint is larger than i
 still read 6.9 TB/s. volta is an engine in Rust and CUDA, written for this one model on this one class of machine,
 that turns that bandwidth into throughput for many sessions at once.
 
-- **Fast:** 2,400 tokens/s across 256 sessions and 3,070 across 512; ~20 tokens/s per session with 64 at once, and
-  38 tokens/s for a single stream.
+- **Fast:** 2,400 tokens/s across 256 sessions and 3,070 across 512; ~21 tokens/s per session with 64 at once. A
+  single session decodes 53 tokens/s, and 70 with `--head-parallel` (~200 on code with the draft).
 - **Close to the original:** the same next token as the FP8 model 84% of the time on the Lucebox eval (KL 0.127).
 - **Faster with the draft model:** the checkpoint's DSpark draft runs on the GPUs. With 64 sessions writing code, each
   gets 27 tokens/s instead of 20, and sampled outputs keep the model's own distribution (speculative sampling).
@@ -47,13 +47,22 @@ All on one 8x V100-SXM2-32GB machine. Engine benchmark (`volta bench`, real text
 
 | Sessions | Step | Total |
 |---|---|---|
-| 64 | 50.9 ms | 1,258 tok/s |
+| 64 | 47.4 ms | 1,349 tok/s |
 | 128 | 69 ms | 1,850 tok/s |
 | 256 | 105 ms | 2,440 tok/s |
 | 512 | 167 ms | 3,070 tok/s |
 
-With the DSpark draft (`volta spec --adaptive`, greedy, 64 sessions): 27.2 tok/s per session on code and 18.2 on
+With the DSpark draft (`volta spec --adaptive`, greedy, 64 sessions): 28.4 tok/s per session on code and 18.2 on
 prose. With 8 sessions on code: 81 tok/s each.
+
+One session (`volta spec`, greedy, steady-state step):
+
+| Mode | Step | Per session | With the draft, on code |
+|---|---|---|---|
+| default (attention on the session's GPU) | 19.0 ms | 53 tok/s | 174 tok/s |
+| `--head-parallel` (every GPU, 8 heads each) | 14.4 ms | 70 tok/s | ~200 tok/s |
+
+With `--head-parallel`, 4 sessions with the draft on code get 95 tok/s each.
 
 Through the server (`volta-server`, sampling at temperature 1 with drafts, 300-token answers):
 
@@ -90,6 +99,11 @@ VOLTA_PACK=volta-weights/pack-27.5gb-8xv100 ./target/release/volta-server \
 
 That serves 32 sessions of 8,192 tokens. For agents with long conversations, trade sessions for context:
 `--slots 2 --ctx 131072` serves 16 sessions of 128K, and `--slots 1 --ctx 262144` 8 sessions of 256K.
+
+For the fastest single sessions, add `--head-parallel`: every GPU runs every session with 8 of the 64 attention
+heads, so the machine holds `--slots` sessions in total instead of `--slots` per GPU, each at up to ~70 tok/s
+without the draft. Every GPU keeps a copy of each session's KV cache, so `--slots` and `--ctx` share memory as
+they do without the flag.
 
 Loading takes ~2 minutes (the first start also maps the 196 GB Engram tables into RAM). Open `http://localhost:8090/`
 for the web UI, or point any OpenAI client at `http://localhost:8090/v1` (Anthropic clients at
@@ -202,7 +216,8 @@ Other machines need other kernels and collectives; [DESIGN.md](DESIGN.md) lists 
 | `--host`, `--port` | listen address (default `127.0.0.1:8090`) |
 | `--api-key` | require this key (`Authorization: Bearer <key>` or `x-api-key`; env `DSX_API_KEY`) |
 | `--model-name` | model id reported by `/v1/models` (default `deepseek-v4.1-flash`) |
-| `--slots` | concurrent sessions per GPU (default 4) |
+| `--slots` | concurrent sessions per GPU (default 4); with `--head-parallel`, in total |
+| `--head-parallel` | every GPU runs every session with 8 of the 64 attention heads and a copy of its KV cache: the fastest single sessions, for fewer of them |
 | `--ctx` | context window per session, prompt + generated tokens (default 8192); slots and context share the GPUs' spare memory: 2 x 131072 fits |
 | `--max-tokens` | generation cap when a request sets none (default 4096) |
 | `--chunk` | prompt tokens per session per step while reading a prompt (default 32) |
@@ -244,7 +259,12 @@ attention, and two Engram lookups. Every step runs all sessions' tokens together
 - **Attention per GPU, experts across all of them:** each GPU keeps its own sessions' KV cache and runs their attention
   and dense layers. Per layer, one NVLink all-gather sends every token's hidden state to every GPU, and one
   all-to-all brings the partial sums home. Both are single kernels that write into peer memory and signal with
-  flags (~20-30 µs each).
+  flags (~13-17 µs each).
+- **Head-parallel for few sessions:** with `--head-parallel` each GPU runs 8 of the 64 heads (one of the model's 8
+  output groups) of every session, so a token's dense attention weights are read once across the GPUs instead of
+  whole on one. The attention output and the MoE partials are summed on every GPU in a fixed order, so all eight
+  hold the same bits and route to the same experts; small exchanges use NCCL-style LL words (data and sequence
+  number in one 8-byte store), 5-8 µs.
 - **Attention on the tensor cores:** one KV row serves all 64 query heads, so a token's attention is a matrix product,
   run with `mma.m8n8k4` in fp16. The indexer that picks each token's 512 compressed rows scores them on the tensor
   cores too.
