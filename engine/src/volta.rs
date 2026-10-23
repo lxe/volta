@@ -1127,7 +1127,10 @@ struct Shard<'m> {
     /// fork / join of the hc mixes on the side stream (layers)
     mevs: [crate::gpu::Event; 4],
     /// the attention's side branch: q latent ready (main -> side), the indexer's / compressor's side work done (side -> main)
-    aevs: [crate::gpu::Event; 2],
+    aevs: [crate::gpu::Event; 3],
+    /// head-parallel, <= 8 tokens: this layer's shared-expert slice already ran on the side stream beside the router
+    /// (moe_shared_side; aevs[2] marks its end), so moe_experts skips it and ypart's zeroing
+    shared_early: bool,
     m: &'m Model,
     g: Gpu,
     k: HashMap<&'static str, Kernel>,
@@ -1429,7 +1432,8 @@ impl<'m> Shard<'m> {
             spark_ids: g.alloc_zeroed(2 * TMAX * 4)?,
             evs: [g.event()?, g.event()?, g.event()?, g.event()?],
             mevs: [g.event()?, g.event()?, g.event()?, g.event()?],
-            aevs: [g.event()?, g.event()?],
+            aevs: [g.event()?, g.event()?, g.event()?],
+            shared_early: false,
             m,
             // VOLTA_HEAD=q6 keeps the head in dsx's 6-bit planes (two GEMV passes per 16 tokens)
             head: if std::env::var("VOLTA_HEAD").is_ok_and(|v| v == "q6") || !v4_ok(&m.head) { Lin::D(up(&m.head)?) } else { Lin::V(upload_v4(&g, &m.head, 1)?) },
@@ -2183,7 +2187,8 @@ impl<'m> Shard<'m> {
         let rgrid = ((ne / 32) as u32, (d / 256) as u32, 1);
         if t <= 8 {
             // the last router block picks the experts
-            self.g.launch(self.k["vrouter_topk"], rgrid, 256, 0, &[Arg::P(l.gate_w.ptr), Arg::I(l.gate_bf as i32), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(w.router.ptr), Arg::P(w.tick.ptr + 4)])?;
+            let smem = ((t * 256).max(2 * t * ne) * 4) as u32;
+            self.g.launch(self.k["vrouter_topk"], rgrid, 256, smem, &[Arg::P(l.gate_w.ptr), Arg::I(l.gate_bf as i32), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(w.router.ptr), Arg::P(w.tick.ptr + 4)])?;
         } else {
             self.g.launch(self.k["vrouter"], rgrid, 256, 0, &[Arg::P(l.gate_w.ptr), Arg::I(l.gate_bf as i32), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32)])?;
             if self.hp {
@@ -2215,6 +2220,23 @@ impl<'m> Shard<'m> {
         // rotated layers store W R: the routed experts take R x (the shared expert takes x)
         self.g.launch(self.k["fwht_rows_f16"], ((d / 128) as u32, t as u32, 1), 128, 0, &[Arg::P(w.x16.ptr), Arg::I(d as i32)])?;
         self.g.launch(self.k["vpack_x"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.x16.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::P(w.xg.ptr + xo), Arg::I(d as i32), Arg::I(kk as i32), Arg::I(rb as i32)])
+    }
+
+    /// head-parallel, t <= 8: this GPU's shared-expert slice on the side stream, beside the router (it reads only x):
+    /// ypart's rows zeroed, then gate/up, swiglu and down into them; aevs[2] marks the end (Volta Scout's rs lab:
+    /// -6 us per layer with vrouter_topk's dynamic shared memory)
+    fn moe_shared_side(&self, t: usize, li: usize) -> Result<()> {
+        let (c, w) = (&self.m.cfg, &self.w);
+        let d = c.dim;
+        let (sgu, sdn) = self.layers[li].sh_slice.as_ref().unwrap();
+        let sl = sdn.cols;
+        self.g.launch_side(self.k["vto_f16"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.shx.ptr), Arg::I((t * d) as i32)])?;
+        self.src_rows(w.ypart.ptr, 0, d, true)?;
+        self.src_rows(w.shgu.ptr, 0, 2 * sl, true)?;
+        self.vmm_h(sgu, w.shx.ptr, d, w.shgu.ptr, 2 * sl, t, true)?;
+        self.lx(true, self.k["vswiglu"], (((t * sl) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.shgu.ptr), Arg::P(0), Arg::P(w.shh.ptr), Arg::I(t as i32), Arg::I(sl as i32), Arg::F(c.swiglu_limit)])?;
+        self.vmm_h(sdn, w.shh.ptr, sl, w.ypart.ptr, d, t, true)?;
+        self.g.record(self.aevs[2], true)
     }
 
     /// cube all-gather of every GPU's exchange rows (vx_allgather)
@@ -2272,7 +2294,11 @@ impl<'m> Shard<'m> {
         let pmax = (tg * kk).min(nl * tg); // pair rows: at most every pick of the step
         let (cnt, off, cur) = (w.cnt.ptr, w.cnt.ptr + (nl * 4) as u64, w.cnt.ptr + ((2 * nl + 1) * 4) as u64);
         let total = off + (nl * 4) as u64;
-        self.src_rows(w.ypart.ptr, 0, d, false)?;
+        // consumed here: the draft's MoE runs moe_experts too, outside the layer that set it
+        let early = std::mem::take(&mut self.shared_early);
+        if !early {
+            self.src_rows(w.ypart.ptr, 0, d, false)?;
+        }
         let gr = ((tg * kk) as u32).div_ceil(256);
         let rb = xrow_bytes(c);
         let (selp, wtp, lds) = (w.xg.ptr + (d * 2) as u64, w.xg.ptr + (d * 2 + kk * 4) as u64, rb / 4);
@@ -2296,7 +2322,7 @@ impl<'m> Shard<'m> {
             self.g.record(ev[0], false)?;
             self.g.wait(ev[0], true)?;
         }
-        if let Some((sgu, sdn)) = &self.layers[li].sh_slice {
+        if let Some((sgu, sdn)) = self.layers[li].sh_slice.as_ref().filter(|_| !early) {
             // this GPU's slice of the shared expert over every exchange row (rows past a GPU's count are unused)
             let sl = sdn.cols;
             self.src_rows(w.shgu.ptr, 0, 2 * sl, ov)?;
@@ -2325,7 +2351,10 @@ impl<'m> Shard<'m> {
         if c.expert_rot.get(li).copied().unwrap_or(false) {
             self.g.launch(self.k["vfwht_c"], ((inter / 128) as u32, prow, 1), 128, 0, &[Arg::P(w.hm.ptr), Arg::I(inter as i32), Arg::P(total)])?;
         }
-        // down: X = hm rows (pairs), Y = ypart rows (tokens)
+        // down: X = hm rows (pairs), Y = ypart rows (tokens), which the early shared slice zeroed and wrote
+        if early {
+            self.g.wait(self.aevs[2], false)?;
+        }
         if ov {
             self.g.record(ev[2], false)?;
             self.g.wait(ev[2], true)?;
@@ -3127,9 +3156,14 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             }
             // the FFN's mixes (read h after the post step; only the step after the MoE reads them): alongside the MoE
             let l = &sh.layers[li];
+            sh.shared_early = side_mix && sh.hp && t <= 8 && l.sh_slice.is_some() && std::env::var("VOLTA_SHARED_EARLY").is_ok_and(|v| v == "1");
             if side_mix {
                 sh.g.record(me[2], false)?;
                 sh.g.wait(me[2], true)?;
+                if sh.shared_early {
+                    sh.moe_shared_side(t, li)?;
+                }
+                let (w, l) = (&sh.w, &sh.layers[li]);
                 sh.hc_mixes_on(&l.hc_ffn, w.h.ptr, w.mix_f.ptr, t, true)?;
                 sh.g.record(me[3], true)?;
             } else {

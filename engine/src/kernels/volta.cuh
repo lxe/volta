@@ -1433,7 +1433,9 @@ extern "C" __global__ void __launch_bounds__(256) vrouter(const void *W, int wbf
 extern "C" __global__ void __launch_bounds__(256) vrouter_topk(const void *W, int wbf, const float *x, float *y, int E, int K, int T, int zst,
                                                                const float *bias, int *out_idx, float *out_w, int k, float route_scale,
                                                                float *logits, int *tick) {
-  __shared__ __align__(16) float xs[32 * 256];
+  // dynamic: max(T * 256, 2 * T * E) floats (Volta Scout's rs lab: 3 KB at one token instead of 32 KB static, so the
+  // shared slice's blocks fit beside it on the side stream)
+  extern __shared__ __align__(16) float xs[];
   __shared__ int last;
   vrouter_body(W, wbf, x, y, E, K, T, zst, xs);
   __threadfence();
@@ -1451,7 +1453,7 @@ extern "C" __global__ void __launch_bounds__(256) vrouter_topk(const void *W, in
   __syncthreads();
   const float *lgs = zst ? logits : y;
   // every token's scores and keys across the block first (T * E <= 8 * 512), then one warp per token selects
-  float *scs = xs, *keys = xs + 8 * 512;
+  float *scs = xs, *keys = xs + T * E;
   for (int i = threadIdx.x; i < T * E; i += blockDim.x) {
     const float xv = __ldcg(lgs + i);
     const float sp = xv > 20.f ? xv : log1pf(expf(xv));
