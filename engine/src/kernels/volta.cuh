@@ -1264,15 +1264,26 @@ extern "C" __global__ void vprep(const float *x, int ldx, half *xh, int kx, int 
 // router logits y[t][e] += W[e] . x[t] in fp32 over K chunks of 256 (y zeroed first): block = 32 experts (4 per warp)
 // x one chunk, held in registers; the chunk of 32 tokens at a time in shared memory. grid (E / 32, K / 256), block 256
 // zst > 0: chunk blockIdx.y stores its sums at y + blockIdx.y * zst instead of adding (summed in order by vsum_z)
-__device__ __forceinline__ void vrouter_body(const float *W, const float *x, float *y, int E, int K, int T, int zst, float *xs) {
+// W: f32 rows, or bf16 rows when wbf (the checkpoint's router is bf16: the same values in half the bytes; the read
+// runs at the streaming rate, so it halves the time)
+__device__ __forceinline__ void vrouter_body(const void *W, int wbf, const float *x, float *y, int E, int K, int T, int zst, float *xs) {
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, k0 = blockIdx.y * 256;
   // this lane's 8 weights of each of its warp's 4 rows: k0 + lane * 4 + {0..3} and + 128
   float w[4][8];
 #pragma unroll
   for (int r = 0; r < 4; r++) {
-    const float *row = W + (size_t)(blockIdx.x * 32 + warp * 4 + r) * K + k0 + lane * 4;
-    float4 a = __ldg(reinterpret_cast<const float4 *>(row)), b = __ldg(reinterpret_cast<const float4 *>(row + 128));
-    w[r][0] = a.x; w[r][1] = a.y; w[r][2] = a.z; w[r][3] = a.w; w[r][4] = b.x; w[r][5] = b.y; w[r][6] = b.z; w[r][7] = b.w;
+    const size_t o = (size_t)(blockIdx.x * 32 + warp * 4 + r) * K + k0 + lane * 4;
+    if (wbf) {
+      const unsigned short *row = reinterpret_cast<const unsigned short *>(W) + o;
+      const uint2 a = __ldg(reinterpret_cast<const uint2 *>(row)), b = __ldg(reinterpret_cast<const uint2 *>(row + 128));
+      const unsigned v[4] = {a.x, a.y, b.x, b.y};
+#pragma unroll
+      for (int q = 0; q < 4; q++) { w[r][2 * q] = __uint_as_float(v[q] << 16); w[r][2 * q + 1] = __uint_as_float(v[q] & 0xffff0000u); }
+    } else {
+      const float *row = reinterpret_cast<const float *>(W) + o;
+      float4 a = __ldg(reinterpret_cast<const float4 *>(row)), b = __ldg(reinterpret_cast<const float4 *>(row + 128));
+      w[r][0] = a.x; w[r][1] = a.y; w[r][2] = a.z; w[r][3] = a.w; w[r][4] = b.x; w[r][5] = b.y; w[r][6] = b.z; w[r][7] = b.w;
+    }
   }
   for (int t0 = 0; t0 < T; t0 += 32) {
     const int tn = min(32, T - t0);
@@ -1297,19 +1308,19 @@ __device__ __forceinline__ void vrouter_body(const float *W, const float *x, flo
     }
   }
 }
-extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const float *x, float *y, int E, int K, int T, int zst) {
+extern "C" __global__ void __launch_bounds__(256) vrouter(const void *W, int wbf, const float *x, float *y, int E, int K, int T, int zst) {
   __shared__ __align__(16) float xs[32 * 256];
-  vrouter_body(W, x, y, E, K, T, zst, xs);
+  vrouter_body(W, wbf, x, y, E, K, T, zst, xs);
 }
 
 // vrouter + router_topk in one launch (T <= 8): the last block (ticket in *tick) adds the chunk sums in order when zst
 // (head-parallel), then picks each token's experts, one warp per token (router_topk's arithmetic and tie order)
-extern "C" __global__ void __launch_bounds__(256) vrouter_topk(const float *W, const float *x, float *y, int E, int K, int T, int zst,
+extern "C" __global__ void __launch_bounds__(256) vrouter_topk(const void *W, int wbf, const float *x, float *y, int E, int K, int T, int zst,
                                                                const float *bias, int *out_idx, float *out_w, int k, float route_scale,
                                                                float *logits, int *tick) {
   __shared__ __align__(16) float xs[32 * 256];
   __shared__ int last;
-  vrouter_body(W, x, y, E, K, T, zst, xs);
+  vrouter_body(W, wbf, x, y, E, K, T, zst, xs);
   __threadfence();
   __syncthreads();
   if (threadIdx.x == 0) last = atomicAdd(tick, 1) == (int)(gridDim.x * gridDim.y) - 1;
@@ -1324,23 +1335,25 @@ extern "C" __global__ void __launch_bounds__(256) vrouter_topk(const float *W, c
     }
   __syncthreads();
   const float *lgs = zst ? logits : y;
+  // every token's scores and keys across the block first (T * E <= 8 * 512), then one warp per token selects
+  float *scs = xs, *keys = xs + 8 * 512;
+  for (int i = threadIdx.x; i < T * E; i += blockDim.x) {
+    const float xv = __ldcg(lgs + i);
+    const float sp = xv > 20.f ? xv : log1pf(expf(xv));
+    const float sv = sqrtf(sp);
+    const float kk = sv + bias[i % E];
+    keys[i] = isnan(kk) ? -INFINITY : kk;
+    scs[i] = isnan(sv) ? 0.f : sv;
+  }
+  __syncthreads();
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
-  float *sc = xs + warp * 512;  // the x tile is free now: 512 scores per warp
   for (int t = warp; t < T; t += blockDim.x >> 5) {
-    const float *lg = lgs + (size_t)t * E;
+    const float *sc = scs + t * E;
     float key[16];
 #pragma unroll
     for (int j = 0; j < 16; j++) {
-      int e = lane + 32 * j;
-      key[j] = -INFINITY;
-      if (e < E) {
-        float xv = __ldcg(lg + e);
-        float sp = xv > 20.f ? xv : log1pf(expf(xv));
-        float sv = sqrtf(sp);
-        float kk = sv + bias[e];
-        key[j] = isnan(kk) ? -INFINITY : kk;
-        sc[e] = isnan(sv) ? 0.f : sv;
-      }
+      const int e = lane + 32 * j;
+      key[j] = e < E ? keys[t * E + e] : -INFINITY;
     }
     __syncwarp();
     float wsum = 0.f;

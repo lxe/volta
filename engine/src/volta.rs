@@ -872,6 +872,21 @@ fn upload_v4_sub(g: &Gpu, m: &Mat, r0: usize, n: usize, c0: usize, k: usize) -> 
     upload_v4_f32(g, n, k, &x, m.act_fp8)
 }
 
+/// every value of v is a bf16 (its low 16 bits zero): the router can be stored as bf16 exactly
+pub(crate) fn router_buf_bf(v: &[f32]) -> bool {
+    v.iter().all(|x| x.to_bits() & 0xffff == 0)
+}
+
+/// the router weights as bf16 bits when that is exact (router_buf_bf), else f32
+pub(crate) fn router_buf(g: &Gpu, v: &[f32]) -> Result<(Buf, bool)> {
+    if router_buf_bf(v) {
+        let b: Vec<u16> = v.iter().map(|x| (x.to_bits() >> 16) as u16).collect();
+        Ok((g.upload(&b)?, true))
+    } else {
+        Ok((f32buf(g, v)?, false))
+    }
+}
+
 fn v4_ok(m: &Mat) -> bool {
     m.rows % 128 == 0 && m.cols % 32 == 0
 }
@@ -923,7 +938,9 @@ struct VLayer {
     idx_k_norm: Option<Buf>,
     hc_attn: (Buf, Buf, Buf),
     hc_ffn: (Buf, Buf, Buf),
-    gate_w: Buf, // f32 [E][d]: Volta has no bf16 GEMM; f32 is exact for the bf16 router weights
+    /// the router [E][d]: bf16 when every weight is a bf16 value (the checkpoint's), else f32 (gate_bf false)
+    gate_w: Buf,
+    gate_bf: bool,
     gate_bias: Buf,
     /// routed experts and picks per token (the draft layers have their own)
     n_exp: usize,
@@ -1200,7 +1217,8 @@ impl<'m> Shard<'m> {
                 idx_k_norm: upv(&l.idx_k_norm)?,
                 hc_attn: (f32buf(&g, &l.hc_attn_fn)?, f32buf(&g, &l.hc_attn_scale)?, f32buf(&g, &l.hc_attn_base)?),
                 hc_ffn: (f32buf(&g, &l.hc_ffn_fn)?, f32buf(&g, &l.hc_ffn_scale)?, f32buf(&g, &l.hc_ffn_base)?),
-                gate_w: f32buf(&g, &l.gate_w)?,
+                gate_w: router_buf(&g, &l.gate_w)?.0,
+                gate_bf: router_buf_bf(&l.gate_w),
                 gate_bias: f32buf(&g, &l.gate_bias)?,
                 n_exp: c.n_experts,
                 top_k: c.top_k,
@@ -1966,9 +1984,9 @@ impl<'m> Shard<'m> {
         let rgrid = ((ne / 32) as u32, (d / 256) as u32, 1);
         if t <= 8 {
             // the last router block picks the experts
-            self.g.launch(self.k["vrouter_topk"], rgrid, 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(w.router.ptr), Arg::P(w.tick.ptr + 4)])?;
+            self.g.launch(self.k["vrouter_topk"], rgrid, 256, 0, &[Arg::P(l.gate_w.ptr), Arg::I(l.gate_bf as i32), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(w.router.ptr), Arg::P(w.tick.ptr + 4)])?;
         } else {
-            self.g.launch(self.k["vrouter"], rgrid, 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32)])?;
+            self.g.launch(self.k["vrouter"], rgrid, 256, 0, &[Arg::P(l.gate_w.ptr), Arg::I(l.gate_bf as i32), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32)])?;
             if self.hp {
                 self.g.launch(self.k["vsum_z"], (((t * ne) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.rpart.ptr), Arg::P(w.router.ptr), Arg::I((d / 256) as i32), Arg::I((t * ne) as i32)])?;
             }
