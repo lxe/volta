@@ -2117,7 +2117,7 @@ impl<'m> Shard<'m> {
         let gr = ((tg * kk) as u32).div_ceil(256);
         let rb = xrow_bytes(c);
         let (selp, wtp, lds) = (w.xg.ptr + (d * 2) as u64, w.xg.ptr + (d * 2 + kk * 4) as u64, rb / 4);
-        if nl <= 2048 && ll.lists.len() <= 16 {
+        if nl <= 2048 && ll.lists.len() <= 16 && tg * kk <= 3 * 1024 {
             // counts, scan, pair lists and buckets in one block
             self.g.launch(self.k["vroute_all"], (1, 1, 1), 1024, 0, &[Arg::P(selp), Arg::P(wtp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::I(nl as i32), Arg::P(cnt), Arg::P(off), Arg::P(w.tok.ptr), Arg::P(w.wt.ptr), Arg::P(ll.desc.ptr), Arg::I(ll.lists.len() as i32), Arg::P(w.hot.ptr), Arg::P(w.nhot.ptr), Arg::I(self.lmax as i32)])?;
         } else {

@@ -63,6 +63,9 @@ pub struct Gpu {
     blas: Cell<cb::cublasHandle_t>,
     /// the megakernel recorder (kernels/mega.cuh)
     mk: Mega,
+    /// VOLTA_REPLAY=<kernel>: after each eager launch of that kernel, time 20 more with the same arguments (debug:
+    /// the kernel in the engine's own memory and data, back to back; the extra launches change its outputs)
+    replay: RefCell<Option<(usize, String)>>,
 }
 
 /// Records launches of the kernels the megakernel can run (main stream, between mega_begin and mega_end) into an op
@@ -136,7 +139,7 @@ impl Gpu {
             };
             let mut module = std::ptr::null_mut();
             check(cu::cuModuleLoadData(&mut module, image.as_ptr() as *const c_void), "cuModuleLoadData")?;
-            Ok(Gpu { ordinal, name, sms, arch: (major * 10 + minor) as u32, ctx, stream, side, module, blas: Cell::new(std::ptr::null_mut()), mk: Mega::default() })
+            Ok(Gpu { ordinal, name, sms, arch: (major * 10 + minor) as u32, ctx, stream, side, module, blas: Cell::new(std::ptr::null_mut()), mk: Mega::default(), replay: RefCell::new(None) })
         }
     }
 
@@ -378,6 +381,9 @@ impl Gpu {
         let c = CString::new(name)?;
         let mut f = std::ptr::null_mut();
         unsafe { check(cu::cuModuleGetFunction(&mut f, self.module, c.as_ptr()), name)? };
+        if self.ordinal == 0 && std::env::var("VOLTA_REPLAY").is_ok_and(|v| v == name) {
+            *self.replay.borrow_mut() = Some((f as usize, name.to_string()));
+        }
         Ok(Kernel(f))
     }
 
@@ -695,7 +701,31 @@ impl Gpu {
             }
         }
         self.mk_flush()?;
-        self.launch_raw(stream, k, grid, block, smem, args)
+        self.launch_raw(stream, k, grid, block, smem, args)?;
+        let rp = self.replay.borrow().clone();
+        if let Some((f, name)) = rp {
+            if f == k.0 as usize && !self.mk.capturing.get() {
+                // VOLTA_THRASH: each timed launch after vthrash (cold instruction caches), timed alone
+                let thrash = std::env::var_os("VOLTA_THRASH").is_some();
+                let tk = self.kernel("vthrash")?;
+                let scratch = self.alloc(64)?;
+                let (a, b) = (self.timed_event()?, self.timed_event()?);
+                self.sync()?;
+                let mut tot = 0f32;
+                for _ in 0..20 {
+                    if thrash {
+                        self.launch_raw(stream, tk, (self.sms as u32, 1, 1), 32, 0, &[Arg::P(scratch.ptr)])?;
+                    }
+                    unsafe { check(cu::cuEventRecord(a.0, stream), "cuEventRecord")? };
+                    self.launch_raw(stream, k, grid, block, smem, args)?;
+                    unsafe { check(cu::cuEventRecord(b.0, stream), "cuEventRecord")? };
+                    self.sync()?;
+                    tot += self.elapsed_ms(a, b)?;
+                }
+                eprintln!("replay {name} grid {grid:?} x{block}{}: {:.2} us per launch", if thrash { " after vthrash" } else { "" }, tot * 1e3 / 20.0);
+            }
+        }
+        Ok(())
     }
 
     fn launch_raw(&self, stream: cu::CUstream, k: Kernel, grid: (u32, u32, u32), block: u32, smem: u32, args: &[Arg]) -> Result<()> {

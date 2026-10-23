@@ -424,17 +424,30 @@ extern "C" __global__ void vroute_fill(const int *selg, const float *wtg, int ld
 extern "C" __global__ void __launch_bounds__(1024) vroute_all(const int *selg, const float *wtg, int lds, const int *ntok, int tmax, int ngpu,
                                                               int k, const int *lidx, int L, int *cnt, int *off, int *tok, float *wt,
                                                               const unsigned long long *desc, int nlists, unsigned *out, int *nout, int lmax) {
-  __shared__ int sc[2048], so[2048], cur[2048], ws[32], kb[3 * 16];
+  // one block, so every phase is a chain of dependent loads: each pick is loaded once (into registers, its selg
+  // and weight loads together, then its lidx), and every list's entries are bucketed in one pass, not list by list
+  constexpr int NP = 3;  // picks per thread: ngpu * tmax * k <= 1024 * NP
+  __shared__ int sc[2048], so[2048], cur[2048], ws[32], kb[3 * 16], lpre[17], lstr[16];
+  __shared__ const unsigned *lwork[16];
   const int tid = threadIdx.x, n = ngpu * tmax * k;
+  if (tid < nlists) { lwork[tid] = reinterpret_cast<const unsigned *>(desc[2 * tid]); lstr[tid] = (int)(desc[2 * tid + 1] >> 32); lpre[tid + 1] = (int)(desc[2 * tid + 1] & 0xffffffffu); }
   for (int j = tid; j < L; j += blockDim.x) { sc[j] = 0; cur[j] = 0; }
   if (tid < 3 * 16) kb[tid] = 0;
-  __syncthreads();
-  for (int i = tid; i < n; i += blockDim.x) {
-    const int t = i / k, g = t / tmax;
-    if (t - g * tmax >= ntok[g]) continue;
-    const int j = lidx[selg[t * lds + i % k]];
-    if (j >= 0) atomicAdd(&sc[j], 1);
+  int ps[NP], pj[NP], pt[NP];
+  float pw[NP];
+#pragma unroll
+  for (int q = 0; q < NP; q++) {
+    const int i = tid + q * (int)blockDim.x, t = i / k, g = t / tmax;
+    pt[q] = t;
+    ps[q] = -1;
+    if (i < n && t - g * tmax < ntok[g]) { ps[q] = selg[t * lds + i % k]; pw[q] = wtg[t * lds + i % k]; }
   }
+#pragma unroll
+  for (int q = 0; q < NP; q++) pj[q] = ps[q] >= 0 ? lidx[ps[q]] : -1;
+  __syncthreads();
+  if (tid == 0) { lpre[0] = 0; for (int b = 0; b < nlists; b++) lpre[b + 1] += lpre[b]; }
+#pragma unroll
+  for (int q = 0; q < NP; q++) if (pj[q] >= 0) atomicAdd(&sc[pj[q]], 1);
   __syncthreads();
   // exclusive scan of sc (vroute_scan's scheme)
   const int per = (L + blockDim.x - 1) / blockDim.x, j0 = tid * per, lane = tid & 31, w = tid >> 5;
@@ -454,25 +467,39 @@ extern "C" __global__ void __launch_bounds__(1024) vroute_all(const int *selg, c
   for (int j = j0; j < min(j0 + per, L); j++) { so[j] = b; off[j] = b; cnt[j] = sc[j]; b += sc[j]; }
   if (tid == blockDim.x - 1) off[L] = b;
   __syncthreads();
-  for (int i = tid; i < n; i += blockDim.x) {
-    const int t = i / k, g = t / tmax;
-    if (t - g * tmax >= ntok[g]) continue;
-    const int j = lidx[selg[t * lds + i % k]];
-    if (j < 0) continue;
-    const int p = so[j] + atomicAdd(&cur[j], 1);
-    tok[p] = t;
-    wt[p] = wtg[t * lds + i % k];
+#pragma unroll
+  for (int q = 0; q < NP; q++) {
+    if (pj[q] < 0) continue;
+    const int p = so[pj[q]] + atomicAdd(&cur[pj[q]], 1);
+    tok[p] = pt[q];
+    wt[p] = pw[q];
   }
-  // buckets (vbuckets), every list
-  for (int bl = 0; bl < nlists; bl++) {
-    const unsigned *work = reinterpret_cast<const unsigned *>(desc[2 * bl]);
-    const int ne = (int)(desc[2 * bl + 1] & 0xffffffffu), stride = (int)(desc[2 * bl + 1] >> 32);
-    for (int i = tid; i < ne; i += blockDim.x) {
-      const int c = sc[work[i * stride + 3]];
+  // buckets (vbuckets) of every list in one pass over all their entries: each entry's expert index first, then its
+  // count, then its copy
+  const int total = lpre[nlists];
+  for (int e0 = tid; e0 < total; e0 += 2 * blockDim.x) {
+    int bl[2], ei[2], nt[2];
+#pragma unroll
+    for (int r = 0; r < 2; r++) {
+      const int e = e0 + r * (int)blockDim.x;
+      bl[r] = -1;
+      if (e < total) {
+        int q = 0;
+        while (lpre[q + 1] <= e) q++;
+        bl[r] = q;
+        ei[r] = e - lpre[q];
+        nt[r] = lwork[q][ei[r] * lstr[q] + 3];
+      }
+    }
+#pragma unroll
+    for (int r = 0; r < 2; r++) {
+      if (bl[r] < 0) continue;
+      const int c = sc[nt[r]];
       if (c == 0) continue;
-      const int jb = c <= 8 ? 0 : c <= 16 ? 1 : 2;
-      unsigned *o = out + (size_t)(3 * bl + jb) * lmax * 8 + (size_t)atomicAdd(&kb[3 * bl + jb], 1) * stride;
-      for (int q = 0; q < stride; q++) o[q] = work[i * stride + q];
+      const int q = bl[r], stride = lstr[q], jb = c <= 8 ? 0 : c <= 16 ? 1 : 2;
+      unsigned *o = out + (size_t)(3 * q + jb) * lmax * 8 + (size_t)atomicAdd(&kb[3 * q + jb], 1) * stride;
+      const unsigned *src = lwork[q] + (size_t)ei[r] * stride;
+      for (int u = 0; u < stride; u += 4) *reinterpret_cast<uint4 *>(o + u) = *reinterpret_cast<const uint4 *>(src + u);
     }
   }
   __syncthreads();
@@ -2134,3 +2161,13 @@ extern "C" __global__ void __launch_bounds__(256) vindexer_mma(const float *q, c
   __syncthreads();
   if (tid < 128 && s0 + tid < n_max) score[(size_t)t * n_max + s0 + tid] = s0 + tid < nv ? part[0][tid] + part[1][tid] : -INFINITY;
 }
+
+// debug (VOLTA_REPLAY with VOLTA_THRASH): runs ~192 KB of straight-line code on every SM, so the next kernel starts with
+// cold instruction caches (as in a graph of ~45 different kernels per layer)
+extern "C" __global__ void vthrash(float *o) {
+  float a = threadIdx.x;
+#pragma unroll
+  for (int i = 0; i < 12000; i++) asm volatile("fma.rn.f32 %0, %0, 0f3F800347, 0f3F000000;" : "+f"(a));
+  if (a == 1234.5f) o[0] = a;
+}
+
