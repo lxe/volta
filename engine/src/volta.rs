@@ -112,7 +112,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vmarkov_part", "vx_llargmax", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -1037,6 +1037,8 @@ struct Work {
     /// the MoE partials (fp16 pairs), [2 parities][8 sources][TMAX * dim (/ 2)] 8-byte words; ll_t: their 16 pointers
     ll_a: Buf,
     ll_m: Buf,
+    /// the draft's Markov argmax pairs (vx_llargmax), [2][8][2 TMAX] words; ll_t: all 24 pointers
+    ll_x: Buf,
     ll_t: Buf,
     sel: Buf,
     wts: Buf,
@@ -1162,6 +1164,7 @@ struct PeerBufs {
     vx_fb: u64,
     ll_a: u64,
     ll_m: u64,
+    ll_x: u64,
 }
 
 impl<'m> Shard<'m> {
@@ -1335,7 +1338,8 @@ impl<'m> Shard<'m> {
             router: fz(t * c.n_experts)?,
             ll_a: g.alloc_zeroed(if o.heads { 16 * TMAX * d * 8 } else { 8 })?,
             ll_m: g.alloc_zeroed(if o.heads { 16 * TMAX * d / 2 * 8 } else { 8 })?,
-            ll_t: g.alloc_zeroed(16 * 8)?,
+            ll_t: g.alloc_zeroed(24 * 8)?,
+            ll_x: g.alloc_zeroed(if o.heads { 16 * 2 * TMAX * 8 } else { 8 })?,
             rpart: fz(if o.heads { (d / 256) * t * c.n_experts } else { 1 })?,
             zpart: fz(if o.heads {
                 m.layers.iter().filter_map(|l| l.engram_kv.as_ref()).map(|w| w.rows * (w.cols / even_kc(w.cols, 1, 0)) * t).max().unwrap_or(1)
@@ -1387,7 +1391,7 @@ impl<'m> Shard<'m> {
         // the draft layers go after the main ones (VOLTA_SPARK)
         let spark = match ds {
             Some(ds) => {
-                let (dl, dlocal, sp) = spark::build(&g, m, ds, gi, o.ngpu, etp, o.slots, luts.ptr)?;
+                let (dl, dlocal, sp) = spark::build(&g, m, ds, gi, o.ngpu, etp, o.slots, luts.ptr, o.heads)?;
                 layers.extend(dl);
                 local.extend(dlocal);
                 Some(sp)
@@ -1444,7 +1448,7 @@ impl<'m> Shard<'m> {
 
     fn peer_bufs(&self) -> PeerBufs {
         let w = &self.w;
-        PeerBufs { xg: w.xg.ptr, selg: w.selg.ptr, wtg: w.wtg.ptr, parts: w.parts.ptr, flags: w.flags.ptr, relay: w.relay.ptr, vx_fa: w.vx_fa.ptr, vx_fb: w.vx_fb.ptr, ll_a: w.ll_a.ptr, ll_m: w.ll_m.ptr }
+        PeerBufs { xg: w.xg.ptr, selg: w.selg.ptr, wtg: w.wtg.ptr, parts: w.parts.ptr, flags: w.flags.ptr, relay: w.relay.ptr, vx_fa: w.vx_fa.ptr, vx_fb: w.vx_fb.ptr, ll_a: w.ll_a.ptr, ll_m: w.ll_m.ptr, ll_x: w.ll_x.ptr }
     }
 
     // ------------------------------------------------------------ kernel helpers (dsx's GEMV dispatch, t <= 8)
@@ -2612,7 +2616,7 @@ impl Engine {
                     let tb: Vec<u64> = all.iter().map(|p| p.parts).chain(all.iter().map(|p| p.relay)).chain(all.iter().map(|p| p.vx_fb)).collect();
                     sh.g.htod_sync(sh.w.vx_pa.ptr, &ta)?;
                     sh.g.htod_sync(sh.w.vx_pb.ptr, &tb)?;
-                    let tl: Vec<u64> = all.iter().map(|p| p.ll_a).chain(all.iter().map(|p| p.ll_m)).collect();
+                    let tl: Vec<u64> = all.iter().map(|p| p.ll_a).chain(all.iter().map(|p| p.ll_m)).chain(all.iter().map(|p| p.ll_x)).collect();
                     sh.g.htod_sync(sh.w.ll_t.ptr, &tl)?;
                     ready.wait();
                     rtx.send((gi, Ok(vec![]))).ok();

@@ -1562,6 +1562,74 @@ extern "C" __global__ void vmarkov_argmax(const float *logits, const float *bias
     if (lane == 0) { out[s * B + i] = arg; prev[s] = arg; }
   }
 }
+// head-parallel draft: the Markov step over this GPU's slice of the vocabulary (vs entries from id base): per session
+// its best (logit + bias, id) as the word pair (value bits, id) at pair[2 s]. grid sessions, block 1024
+extern "C" __global__ void vmarkov_part(const float *logits, const float *bias, int vs, int B, int i, int base, unsigned *pair) {
+  __shared__ float bv[32];
+  __shared__ int bi[32];
+  const int s = blockIdx.x, lane = threadIdx.x & 31, w = threadIdx.x >> 5;
+  const float *lg = logits + (size_t)(s * B + i) * vs, *bs = bias + (size_t)s * vs;
+  float best = -INFINITY;
+  int arg = 0x7fffffff;
+  for (int v = threadIdx.x; v < vs; v += blockDim.x) {
+    const float x = lg[v] + bs[v];
+    if (x > best) { best = x; arg = v; }
+  }
+  for (int o = 16; o; o >>= 1) {
+    const float ob = __shfl_xor_sync(0xffffffffu, best, o);
+    const int oa = __shfl_xor_sync(0xffffffffu, arg, o);
+    if (ob > best || (ob == best && oa < arg)) { best = ob; arg = oa; }
+  }
+  if (lane == 0) { bv[w] = best; bi[w] = arg; }
+  __syncthreads();
+  if (w == 0) {
+    best = lane < (int)(blockDim.x >> 5) ? bv[lane] : -INFINITY;
+    arg = lane < (int)(blockDim.x >> 5) ? bi[lane] : 0x7fffffff;
+    for (int o = 16; o; o >>= 1) {
+      const float ob = __shfl_xor_sync(0xffffffffu, best, o);
+      const int oa = __shfl_xor_sync(0xffffffffu, arg, o);
+      if (ob > best || (ob == best && oa < arg)) { best = ob; arg = oa; }
+    }
+    if (lane == 0) { pair[2 * s] = __float_as_uint(best); pair[2 * s + 1] = (unsigned)(arg + base); }
+  }
+}
+// ... then every GPU's pairs over the cube in LL words (as vx_llreduce), and each session's best of the 8 in GPU order,
+// ties to the lower id (the same choice on every GPU): prev[s] = out[s * B + i] = its id. grid 1, block 256
+extern "C" __global__ void __launch_bounds__(256) vx_llargmax(uint2 *const *rx, int me, const unsigned *src, int words, int maxw, int *prev, int *out,
+                                                              int B, int i, const unsigned *seqp, unsigned li) {
+  const unsigned seq = *seqp + li;
+  const int par = seq & 1, q = me & ~3, tw = me ^ 4, tid = threadIdx.x;
+  const size_t blk = (size_t)maxw;
+  for (int j = tid; j < words; j += blockDim.x) {
+    const uint2 w = make_uint2(src[j], seq);
+    for (int k = 0; k < 4; k++) { const int d = q + k; if (d != me) vx_st2(rx[d] + (par * 8 + me) * blk + j, w); }
+    vx_st2(rx[tw] + (par * 8 + me) * blk + j, w);
+  }
+  const uint2 *mine = rx[me] + par * 8 * blk;
+  for (int j = tid; j < words; j += blockDim.x) {
+    uint2 w;
+    do { w = vx_ld2(mine + tw * blk + j); } while (w.y != seq);
+    for (int k = 0; k < 4; k++) { const int d = q + k; if (d != me) vx_st2(rx[d] + (par * 8 + tw) * blk + j, w); }
+  }
+  for (int s = tid; s < words / 2; s += blockDim.x) {
+    float best = -INFINITY;
+    unsigned id = 0xffffffffu;
+    for (int g = 0; g < 8; g++) {
+      unsigned v, a;
+      if (g == me) { v = src[2 * s]; a = src[2 * s + 1]; }
+      else {
+        uint2 w0, w1;
+        do { w0 = vx_ld2(mine + g * blk + 2 * s); } while (w0.y != seq);
+        do { w1 = vx_ld2(mine + g * blk + 2 * s + 1); } while (w1.y != seq);
+        v = w0.x; a = w1.x;
+      }
+      const float fv = __uint_as_float(v);
+      if (fv > best || (fv == best && a < id)) { best = fv; id = a; }
+    }
+    prev[s] = (int)id;
+    out[s * B + i] = (int)id;
+  }
+}
 // greedy ids: out[r] = argmax of logits row r (lowest index on ties); grid R, block 1024
 // outv (optional): each row's max value too (head-parallel: the GPUs' slice maxima are compared on the host)
 extern "C" __global__ void vargmax_rows(const float *logits, int vocab, int *out, float *outv) {

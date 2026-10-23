@@ -20,6 +20,8 @@ pub(super) struct Spark {
     /// fp16 [vocab][rank]
     markov_embed: Buf,
     markov_head: Lin,
+    /// head-parallel: this GPU's rows of the Markov head (its slice of the vocabulary, as Shard::head_hp)
+    markov_head_hp: Option<super::VMat>,
     rank: usize,
     /// the main model's hidden-state means at the target layers, for the last main step's tokens: [TMAX][nt * d]
     pub mh: Buf,
@@ -32,6 +34,9 @@ pub(super) struct Spark {
     tab: Buf,
     prev: Buf,
     out: Buf,
+    /// VOLTA_DRAFT_VERIFY: the whole-vocabulary chain's prev / out next to the split one's
+    prev2: Buf,
+    out2: Buf,
     emb: Buf,
     bias: Buf,
     /// one CUDA graph per draft-token count (observed rows are always padded to TMAX)
@@ -66,7 +71,9 @@ fn shared_slice(g: &Gpu, gate: &Mat, up: &Mat, down: &Mat, inter: usize, d: usiz
 
 /// the draft layers (appended to the main ones), their expert lists, and the rest of the draft
 #[allow(clippy::too_many_arguments)]
-pub(super) fn build(g: &Gpu, m: &Model, ds: &Dspark, gi: usize, ngpu: usize, etp: usize, slots: usize, luts: u64) -> Result<(Vec<VLayer>, Vec<LocalLayer>, Spark)> {
+/// heads: head-parallel (the Markov head split by vocabulary, as the main head)
+#[allow(clippy::too_many_arguments)]
+pub(super) fn build(g: &Gpu, m: &Model, ds: &Dspark, gi: usize, ngpu: usize, etp: usize, slots: usize, luts: u64, heads: bool) -> Result<(Vec<VLayer>, Vec<LocalLayer>, Spark)> {
     let c = &m.cfg;
     ensure!(etp == ngpu, "the draft's experts are split over every GPU: VOLTA_EXPERT_TP must be {ngpu}");
     ensure!(ds.layers.iter().all(|l| l.experts.len() % 32 == 0), "draft experts per layer must be a multiple of 32");
@@ -155,6 +162,12 @@ pub(super) fn build(g: &Gpu, m: &Model, ds: &Dspark, gi: usize, ngpu: usize, etp
         norm: f32buf(g, &ds.norm)?,
         markov_embed: g.upload(&emb)?,
         markov_head: lin(&ds.markov_head)?,
+        markov_head_hp: if heads && m.cfg.vocab % (32 * ngpu) == 0 && super::v4_ok(&ds.markov_head) {
+            let vs = m.cfg.vocab / ngpu;
+            Some(super::upload_v4_sub(g, &ds.markov_head, gi * vs, vs, 0, ds.markov_head.cols)?)
+        } else {
+            None
+        },
         rank,
         mh: g.alloc_zeroed(TMAX * nt * d * 4)?,
         targets: ds.targets.clone(),
@@ -164,6 +177,8 @@ pub(super) fn build(g: &Gpu, m: &Model, ds: &Dspark, gi: usize, ngpu: usize, etp
         tab: g.alloc_zeroed(6 * TMAX * 4)?,
         prev: g.alloc_zeroed(TMAX * 4)?,
         out: g.alloc_zeroed(TMAX * 4)?,
+        prev2: g.alloc_zeroed(TMAX * 4)?,
+        out2: g.alloc_zeroed(TMAX * 4)?,
         emb: g.alloc_zeroed(TMAX * rank * 4)?,
         bias: g.alloc_zeroed((TMAX / ds.block + 1) * c.vocab * 4)?, // one row per drafting session
         graphs: HashMap::new(),
@@ -199,7 +214,8 @@ impl Shard<'_> {
         // exchange counts and sequence numbers, as a main step does
         self.exchange_counts(counts)?;
         let sbase = self.seq + 1;
-        self.seq += nd as u32;
+        // the draft layers' exchanges, then (head-parallel) one per Markov position
+        self.seq += (nd + b) as u32;
         self.g.htod_sync(self.w.seqd.ptr, &[sbase])?;
         let sp = self.spark.as_ref().unwrap();
         let (tab, widx_p) = (sp.tab.ptr, sp.widx.ptr);
@@ -293,6 +309,14 @@ impl Shard<'_> {
         }
         let sp = self.spark.as_ref().unwrap();
         let out: Vec<i32> = self.g.download(sp.out.ptr, t)?;
+        if std::env::var_os("VOLTA_DRAFT_CHECK").is_some() {
+            // debugging: every GPU's drafts (head-parallel: they must agree)
+            eprintln!("GPU{} drafts {:?}", self.gi, &out);
+        }
+        if std::env::var_os("VOLTA_DRAFT_VERIFY").is_some() && self.gi == 0 {
+            let out2: Vec<i32> = self.g.download(sp.out2.ptr, t)?;
+            eprintln!("draft verify split {:?} whole {:?}", &out, &out2);
+        }
         Ok(out.into_iter().map(|x| x as u32).collect())
     }
 
@@ -339,7 +363,9 @@ impl Shard<'_> {
                 self.moe_dispatch(t, li)?;
             }
             self.vx_gather(j)?;
-            self.moe_experts(&[], li)?;
+            // every GPU's draft token count (head-parallel: this one's, which picks the 1-token shared-slice kernel)
+            let counts = vec![t; self.ngpu];
+            self.moe_experts(&counts, li)?;
             self.vx_scatter(j, t)?;
             if t > 0 {
                 self.moe_combine(t)?;
@@ -355,6 +381,30 @@ impl Shard<'_> {
         let w = &self.w;
         self.g.launch(self.k["vhc_pre"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.mix_f.ptr), Arg::I(0), Arg::P(w.x.ptr), Arg::I(d as i32)])?;
         self.rms_rows(w.x.ptr, &sp.norm, w.x.ptr, d, t, false)?;
+        let split = std::env::var("VOLTA_DRAFT_SPLIT").map_or(true, |v| v != "0");
+        if let (true, Some(hh), Some(mh)) = (split, &self.head_hp, &sp.markov_head_hp) {
+            // head-parallel: this GPU's slice of the vocabulary for the head and the Markov bias; each position's
+            // best per GPU, then the best of the 8 on every GPU (vx_llargmax), which the next position embeds
+            let (vs, pair) = (hh.rows, self.spark_ids.ptr);
+            if std::env::var_os("VOLTA_DRAFT_VERIFY").is_some() {
+                // debugging (eager): the whole-vocabulary chain from the same prev into prev2 / out2 first
+                self.g.dtod(sp.prev2.ptr, sp.prev.ptr, ns * 4)?;
+                self.mm(&self.head, w.x.ptr, w.logits.ptr, t)?;
+                for i in 0..b {
+                    self.g.launch(self.k["vmarkov_embed"], (ns as u32, 1, 1), 256, 0, &[Arg::P(sp.markov_embed.ptr), Arg::P(sp.prev2.ptr), Arg::P(sp.emb.ptr), Arg::I(rank as i32)])?;
+                    self.mm(&sp.markov_head, sp.emb.ptr, sp.bias.ptr, ns)?;
+                    self.g.launch(self.k["vmarkov_argmax"], (ns as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::P(sp.bias.ptr), Arg::I(c.vocab as i32), Arg::I(b as i32), Arg::I(i as i32), Arg::P(sp.prev2.ptr), Arg::P(sp.out2.ptr)])?;
+                }
+            }
+            self.vmm(hh, w.x.ptr, d, w.logits.ptr, t)?;
+            for i in 0..b {
+                self.g.launch(self.k["vmarkov_embed"], (ns as u32, 1, 1), 256, 0, &[Arg::P(sp.markov_embed.ptr), Arg::P(sp.prev.ptr), Arg::P(sp.emb.ptr), Arg::I(rank as i32)])?;
+                self.vmm(mh, sp.emb.ptr, rank, sp.bias.ptr, ns)?;
+                self.g.launch(self.k["vmarkov_part"], (ns as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::P(sp.bias.ptr), Arg::I(vs as i32), Arg::I(b as i32), Arg::I(i as i32), Arg::I((self.gi * vs) as i32), Arg::P(pair)])?;
+                self.g.launch(self.k["vx_llargmax"], (1, 1, 1), 256, 0, &[Arg::P(w.ll_t.ptr + 128), Arg::I(self.gi as i32), Arg::P(pair), Arg::I((2 * ns) as i32), Arg::I((2 * TMAX) as i32), Arg::P(sp.prev.ptr), Arg::P(sp.out.ptr), Arg::I(b as i32), Arg::I(i as i32), Arg::P(w.seqd.ptr), Arg::I((nd + i) as i32)])?;
+            }
+            return Ok(());
+        }
         self.mm(&self.head, w.x.ptr, w.logits.ptr, t)?;
         for i in 0..b {
             self.g.launch(self.k["vmarkov_embed"], (ns as u32, 1, 1), 256, 0, &[Arg::P(sp.markov_embed.ptr), Arg::P(sp.prev.ptr), Arg::P(sp.emb.ptr), Arg::I(rank as i32)])?;
