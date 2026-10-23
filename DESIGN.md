@@ -453,3 +453,43 @@ Where a head-parallel layer goes now (~360 us, GPU0 trace), against its floor:
 | attention + merge | 28 | ~6 | one 32-row sub-tile per block is a ~12 us chain |
 | exchanges (LL) | ~13 | ~5 | |
 
+### 2026-10-22: megakernel plan
+
+The one-session step is ~14.4 ms of which weight reads are ~1.2 ms: the rest is ~48 kernel boundaries per layer,
+each kernel's launch ramp and tail, and serial chains that leave most SMs idle. Prior work: Hazy Research's Llama-1B
+megakernel (on-SM instruction interpreter, counters for dependencies, the next op's weights loaded while the current
+one runs; 1.5-2.5x over vLLM/SGLang at batch 1) and Mirage MPK (1.0-1.7x). Volta has no cp.async, TMA or
+programmatic dependent launch, so loads go through registers and dependencies through counters in global memory.
+
+Primitives measured on the box (bench/v100-persistent.cu):
+
+| | |
+|---|---|
+| grid barrier, 80 resident blocks (1 per SM) | 0.66 us |
+| grid barrier, 160 blocks | 1.0 us |
+| counter handoff between two blocks, one way | 0.42 us |
+| one kernel boundary in a CUDA graph (empty 80-block kernels) | 1.16 us |
+
+Design:
+
+- **One persistent kernel per GPU per step segment**, 80 blocks of 256 threads (1 per SM), executing a static op
+  table built on the host per step shape (like the CUDA graphs now; the kernel itself is one graph node). An op is
+  an existing kernel body as a `__device__` function over virtual blocks: physical block b runs virtual blocks
+  b, b + 80, ...; bodies read `vb.x / vb.y / vb.z` and `vg` instead of blockIdx / gridDim.
+- **Dependencies**: first a grid barrier between dependent ops (0.66 us instead of 1.16 plus ramp and tail);
+  independent neighbours share a phase. Then counters per op (or per output tile) so a consumer's blocks start as
+  soon as the tiles they read are done.
+- **Idle SMs prefetch**: while an op runs on few blocks (Sinkhorn, top-k, routing, the norm), the other blocks touch
+  the next dense ops' weights into L2 (6 MB): those matmuls then read at L2 latency (145 ns, not 285) and bandwidth.
+- **Bodies at 256 threads**: kernels written for 1024 (rmsnorm, kv store, routing) get 256-thread versions; bodies
+  must not return early before a `__syncthreads` (they become functions inside a loop); dynamic shared memory sized
+  for the largest op (attention 43 KB).
+
+Stages, each measured against the graph path and checked for the same outputs:
+
+1. Executor + the attention segment of a head-parallel layer for t <= 8 (vhc_pp2 through o_b and its LL exchange,
+   ~18 kernels). Prediction: ~20 us per layer, ~0.8 ms per step (barriers alone ~9 us; the rest kernel ramps).
+2. The MoE segment (router, routing, shared slice, experts, LL exchange, hc).
+3. Whole layers in one kernel, then several layers; L2 prefetch of the next ops' dense weights by idle blocks.
+4. Counters instead of barriers; DP mode and larger t.
+
