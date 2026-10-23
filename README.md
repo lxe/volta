@@ -59,10 +59,10 @@ One session (`volta spec`, greedy, steady-state step):
 
 | Mode | Step | Per session | With the draft, on code |
 |---|---|---|---|
-| default (attention on the session's GPU) | 19.0 ms | 53 tok/s | 174 tok/s |
-| `--head-parallel` (every GPU, 8 heads each) | 13.1 ms | 76 tok/s | 233 tok/s |
+| default (attention on the session's GPU) | 17.9 ms | 56 tok/s | 200 tok/s |
+| `--head-parallel` (every GPU, 8 heads each) | 11.3 ms | 89 tok/s | 267 tok/s |
 
-With `--head-parallel`, 4 sessions with the draft on code get 99 tok/s each.
+With `--head-parallel`, 4 sessions with the draft on code get 110 tok/s each.
 
 Through the server (`volta-server`, sampling at temperature 1 with drafts, 300-token answers):
 
@@ -101,7 +101,7 @@ That serves 32 sessions of 8,192 tokens. For agents with long conversations, tra
 `--slots 2 --ctx 131072` serves 16 sessions of 128K, and `--slots 1 --ctx 262144` 8 sessions of 256K.
 
 For the fastest single sessions, add `--head-parallel`: every GPU runs every session with 8 of the 64 attention
-heads, so the machine holds `--slots` sessions in total instead of `--slots` per GPU, each at up to ~76 tok/s
+heads, so the machine holds `--slots` sessions in total instead of `--slots` per GPU, each at up to ~89 tok/s
 without the draft. Every GPU keeps a copy of each session's KV cache, so `--slots` and `--ctx` share memory as
 they do without the flag.
 
