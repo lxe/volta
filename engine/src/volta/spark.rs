@@ -339,7 +339,7 @@ impl Shard<'_> {
             }
             self.vx_gather(j)?;
             self.moe_experts(&[], li)?;
-            self.vx_scatter(j)?;
+            self.vx_scatter(j, t)?;
             if t > 0 {
                 self.moe_combine(t)?;
                 let w = &self.w;

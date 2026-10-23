@@ -63,6 +63,11 @@ fn xrow_bytes(c: &crate::model::Config) -> usize {
 const VX_BLOCKS: usize = 8;
 
 /// most 32-row tiles of the small-T attention (window 128 + top-512 = 20)
+/// head-parallel exchanges of at most this many bytes per GPU use the LL words (vx_llreduce); larger ones the flag
+/// exchanges, since LL doubles the bytes (lab, 8 GPUs: LL 5.6 / 7.7 / 11.3 us at 10 / 20 / 40 KB against 10.9 /
+/// 12.3 us for vx_allgather at 20 / 40 KB; 19.4 against 16.6 at 80 KB)
+const LL_MAX: usize = 48 * 1024;
+
 /// a layer's expert lists at most: (gate/up, down) x 5 formats
 const MAX_LISTS: usize = 10;
 const ATTN_SPLITS: usize = 4; // 160 rows per split: window + idx_topk = 640 rows
@@ -85,7 +90,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -989,6 +994,11 @@ struct Work {
     /// head-parallel: the router's per-chunk sums, and the fixed-order vmm's per-chunk products (vmm_z)
     rpart: Buf,
     zpart: Buf,
+    /// head-parallel LL exchanges (vx_llreduce): every GPU's receive areas for the attention output (f32 words) and
+    /// the MoE partials (fp16 pairs), [2 parities][8 sources][TMAX * dim (/ 2)] 8-byte words; ll_t: their 16 pointers
+    ll_a: Buf,
+    ll_m: Buf,
+    ll_t: Buf,
     sel: Buf,
     wts: Buf,
     topk_scratch: Buf,
@@ -1106,6 +1116,8 @@ struct PeerBufs {
     relay: u64,
     vx_fa: u64,
     vx_fb: u64,
+    ll_a: u64,
+    ll_m: u64,
 }
 
 impl<'m> Shard<'m> {
@@ -1271,6 +1283,9 @@ impl<'m> Shard<'m> {
             srcwork: g.upload(&(0..o.ngpu as u32).flat_map(|i| [0u32, 0, 0, i]).collect::<Vec<u32>>())?,
             srcoff: g.upload(&(0..o.ngpu as i32).map(|i| i * TMAX as i32).collect::<Vec<i32>>())?,
             router: fz(t * c.n_experts)?,
+            ll_a: g.alloc_zeroed(if o.heads { 16 * TMAX * d * 8 } else { 8 })?,
+            ll_m: g.alloc_zeroed(if o.heads { 16 * TMAX * d / 2 * 8 } else { 8 })?,
+            ll_t: g.alloc_zeroed(16 * 8)?,
             rpart: fz(if o.heads { (d / 256) * t * c.n_experts } else { 1 })?,
             zpart: fz(if o.heads {
                 m.layers.iter().filter_map(|l| l.engram_kv.as_ref()).map(|w| w.rows * (w.cols / even_kc(w.cols, 1, 0)) * t).max().unwrap_or(1)
@@ -1372,7 +1387,7 @@ impl<'m> Shard<'m> {
 
     fn peer_bufs(&self) -> PeerBufs {
         let w = &self.w;
-        PeerBufs { xg: w.xg.ptr, selg: w.selg.ptr, wtg: w.wtg.ptr, parts: w.parts.ptr, flags: w.flags.ptr, relay: w.relay.ptr, vx_fa: w.vx_fa.ptr, vx_fb: w.vx_fb.ptr }
+        PeerBufs { xg: w.xg.ptr, selg: w.selg.ptr, wtg: w.wtg.ptr, parts: w.parts.ptr, flags: w.flags.ptr, relay: w.relay.ptr, vx_fa: w.vx_fa.ptr, vx_fb: w.vx_fb.ptr, ll_a: w.ll_a.ptr, ll_m: w.ll_m.ptr }
     }
 
     // ------------------------------------------------------------ kernel helpers (dsx's GEMV dispatch, t <= 8)
@@ -1870,8 +1885,19 @@ impl<'m> Shard<'m> {
     /// block), the same bits on every GPU: the cube all-gather of the f32 blocks, then a fixed-order sum
     fn hp_reduce(&self, li: usize, t: usize) -> Result<()> {
         let (d, w, slot) = (self.m.cfg.dim, &self.w, self.hp_slot());
+        if t * d * 4 <= LL_MAX {
+            return self.ll_reduce(self.hp_block(), t * d, TMAX * d, w.a.ptr, 0, li);
+        }
         self.g.launch(self.k["vx_allgather"], (VX_BLOCKS as u32, 1, 1), 256, 0, &[Arg::P(w.vx_pa.ptr), Arg::I(self.gi as i32), Arg::P(slot as u64), Arg::P(w.vx_bytes.ptr), Arg::P(w.seqd.ptr), Arg::I(li as i32)])?;
         self.g.launch(self.k["vsum_parts_f"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.a.ptr), Arg::P(w.xg.ptr), Arg::I(self.ngpu as i32), Arg::I((slot / 4) as i32), Arg::I((t * d) as i32)])
+    }
+
+    /// vx_llreduce: `words` 4-byte words from src, maxw the receive areas' block, mode 0 (f32) or 1 (fp16 pairs)
+    fn ll_reduce(&self, src: u64, words: usize, maxw: usize, a: u64, mode: i32, li: usize) -> Result<()> {
+        let w = &self.w;
+        let table = w.ll_t.ptr + if mode == 0 { 0 } else { 64 };
+        let blocks = (words as u32).div_ceil(256).clamp(20, 80);
+        self.g.launch(self.k["vx_llreduce"], (blocks, 1, 1), 256, 0, &[Arg::P(table), Arg::I(self.gi as i32), Arg::P(src), Arg::I(words as i32), Arg::I(maxw as i32), Arg::P(a), Arg::I(mode), Arg::P(w.seqd.ptr), Arg::I(li as i32)])
     }
 
     fn indexer(&mut self, li: usize, t: usize, x: &LTab, st: &mut StepState) -> Result<()> {
@@ -1984,10 +2010,14 @@ impl<'m> Shard<'m> {
     }
 
     /// cube all-to-all of the partial sums: ypart rows of GPU d's tokens -> d's parts[me] (vx_alltoall)
-    fn vx_scatter(&self, li: usize) -> Result<()> {
+    fn vx_scatter(&self, li: usize, t: usize) -> Result<()> {
         let d = self.m.cfg.dim;
         let w = &self.w;
         self.src_rows(w.ypart.ptr, w.ypart16.ptr, d, false)?;
+        if self.hp && t * d * 2 <= LL_MAX {
+            // every GPU's partials of the same t tokens, added in GPU order into a (moe_combine's sum)
+            return self.ll_reduce(w.ypart16.ptr, t * d / 2, TMAX * d / 2, w.a.ptr, 1, li);
+        }
         let slot = (TMAX * d * 2) as u64;
         // head-parallel: every GPU gets our partials of source 0's rows (the all-to-all with one source block)
         let stride = if self.hp { 0 } else { slot };
@@ -2247,6 +2277,9 @@ impl<'m> Shard<'m> {
 
     /// a = bf16(shared + sum of every GPU's partials) for this GPU's tokens
     fn moe_combine(&mut self, t: usize) -> Result<()> {
+        if self.hp && t * self.m.cfg.dim * 2 <= LL_MAX {
+            return Ok(()); // vx_scatter added the partials
+        }
         let d = self.m.cfg.dim;
         let w = &self.w;
         self.g.launch(self.k["vsum_parts_h"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.a.ptr), Arg::P(w.parts.ptr), Arg::I(self.ngpu as i32), Arg::I((TMAX * d) as i32), Arg::I((t * d) as i32)])
@@ -2426,6 +2459,8 @@ impl Engine {
                     let tb: Vec<u64> = all.iter().map(|p| p.parts).chain(all.iter().map(|p| p.relay)).chain(all.iter().map(|p| p.vx_fb)).collect();
                     sh.g.htod_sync(sh.w.vx_pa.ptr, &ta)?;
                     sh.g.htod_sync(sh.w.vx_pb.ptr, &tb)?;
+                    let tl: Vec<u64> = all.iter().map(|p| p.ll_a).chain(all.iter().map(|p| p.ll_m)).collect();
+                    sh.g.htod_sync(sh.w.ll_t.ptr, &tl)?;
                     ready.wait();
                     rtx.send((gi, Ok(vec![]))).ok();
                     while let Ok(cmd) = crx.recv() {
@@ -2759,7 +2794,7 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
         mark(sh, 3)?;
         sh.moe_experts(counts, li)?;
         mark(sh, 4)?;
-        sh.vx_scatter(li)?;
+        sh.vx_scatter(li, t)?;
         mark(sh, 5)?;
         if t > 0 {
             sh.moe_combine(t)?;

@@ -629,6 +629,45 @@ extern "C" __global__ void __launch_bounds__(256) vx_alltoall(const VxPeers *Pp,
   for (int i = 0; i < 4; i++) { int s = fq + i; if (s != tw) vx_wait(VXF(me, 1, s), seq); }
 }
 
+// Head-parallel all-reduce over the cube in LL words (NCCL's LL protocol: 4 bytes of data and the exchange's sequence
+// number in one 8-byte store, so a receiver polls the words themselves; no fence and no separate flag). Stage 1: our
+// words to the 3 quad-mates and the twin; the twin's words are forwarded to our quad-mates as they land; then every
+// GPU adds the 8 blocks in GPU order, so all GPUs hold the same bits. mode 0: a = sum (f32 words); mode 1: a =
+// bf16(a + sum) over fp16 pairs (vsum_parts_h). rx[g]: GPU g's receive area [2 parities][8 sources][maxw] words.
+// lab (8 GPUs, in-kernel loop): 20 KB in 7.2 us, 10 KB in 5.2 us, against 13.9 / 10.1 for vx_allgather
+__device__ __forceinline__ void vx_st2(uint2 *p, uint2 v) { asm volatile("st.volatile.global.v2.u32 [%0], {%1, %2};" ::"l"(p), "r"(v.x), "r"(v.y) : "memory"); }
+__device__ __forceinline__ uint2 vx_ld2(const uint2 *p) { uint2 v; asm volatile("ld.volatile.global.v2.u32 {%0, %1}, [%2];" : "=r"(v.x), "=r"(v.y) : "l"(p) : "memory"); return v; }
+extern "C" __global__ void __launch_bounds__(256) vx_llreduce(uint2 *const *rx, int me, const unsigned *src, int words, int maxw, float *a, int mode,
+                                                              const unsigned *seqp, unsigned li) {
+  const unsigned seq = *seqp + li;
+  const int par = seq & 1, q = me & ~3, tw = me ^ 4;
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x, nt = gridDim.x * blockDim.x;
+  const size_t blk = (size_t)maxw;
+  for (int i = tid; i < words; i += nt) {
+    const uint2 w = make_uint2(src[i], seq);
+    for (int k = 0; k < 4; k++) { const int d = q + k; if (d != me) vx_st2(rx[d] + (par * 8 + me) * blk + i, w); }
+    vx_st2(rx[tw] + (par * 8 + me) * blk + i, w);
+  }
+  const uint2 *mine = rx[me] + par * 8 * blk;
+  for (int i = tid; i < words; i += nt) {
+    uint2 w;
+    do { w = vx_ld2(mine + tw * blk + i); } while (w.y != seq);
+    for (int k = 0; k < 4; k++) { const int d = q + k; if (d != me) vx_st2(rx[d] + (par * 8 + tw) * blk + i, w); }
+  }
+  for (int i = tid; i < words; i += nt) {
+    float s0 = mode == 0 ? 0.f : a[2 * i], s1 = mode == 0 ? 0.f : a[2 * i + 1];
+    for (int g = 0; g < 8; g++) {
+      unsigned v;
+      if (g == me) v = src[i];
+      else { uint2 w; do { w = vx_ld2(mine + g * blk + i); } while (w.y != seq); v = w.x; }
+      if (mode == 0) s0 += __uint_as_float(v);
+      else { const half2 h = *reinterpret_cast<const half2 *>(&v); s0 += __low2float(h); s1 += __high2float(h); }
+    }
+    if (mode == 0) a[i] = s0;
+    else { a[2 * i] = bf16r(s0); a[2 * i + 1] = bf16r(s1); }
+  }
+}
+
 // a[i] = sum_s parts[s * stride + i] over S sources of f32 partials, in order (the head-parallel attention output)
 extern "C" __global__ void vsum_parts_f(float *a, const float *parts, int S, int stride, int n) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
