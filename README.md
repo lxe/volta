@@ -17,8 +17,8 @@ Volta has no FP8, FP4 or bf16 math, and the official checkpoint is larger than i
 still read 6.9 TB/s. volta is an engine in Rust and CUDA, written for this one model on this one class of machine,
 that turns that bandwidth into throughput for many sessions at once.
 
-- **Fast:** 2,400 tokens/s across 256 sessions and 3,070 across 512; ~21 tokens/s per session with 64 at once. A
-  single session decodes 53 tokens/s, and 70 with `--head-parallel` (~200 on code with the draft).
+- **Fast:** 2,400 tokens/s across 256 sessions and 3,070 across 512; 24 tokens/s per session with 64 at once. A
+  single session decodes 53 tokens/s, and 76 with `--head-parallel` (~230 on code with the draft).
 - **Close to the original:** the same next token as the FP8 model 84% of the time on the Lucebox eval (KL 0.127).
 - **Faster with the draft model:** the checkpoint's DSpark draft runs on the GPUs. With 64 sessions writing code, each
   gets 27 tokens/s instead of 20, and sampled outputs keep the model's own distribution (speculative sampling).
@@ -47,7 +47,7 @@ All on one 8x V100-SXM2-32GB machine. Engine benchmark (`volta bench`, real text
 
 | Sessions | Step | Total |
 |---|---|---|
-| 64 | 47.4 ms | 1,349 tok/s |
+| 64 | 41.7 ms | 1,536 tok/s |
 | 128 | 69 ms | 1,850 tok/s |
 | 256 | 105 ms | 2,440 tok/s |
 | 512 | 167 ms | 3,070 tok/s |
@@ -60,9 +60,9 @@ One session (`volta spec`, greedy, steady-state step):
 | Mode | Step | Per session | With the draft, on code |
 |---|---|---|---|
 | default (attention on the session's GPU) | 19.0 ms | 53 tok/s | 174 tok/s |
-| `--head-parallel` (every GPU, 8 heads each) | 14.4 ms | 70 tok/s | ~200 tok/s |
+| `--head-parallel` (every GPU, 8 heads each) | 13.1 ms | 76 tok/s | 233 tok/s |
 
-With `--head-parallel`, 4 sessions with the draft on code get 95 tok/s each.
+With `--head-parallel`, 4 sessions with the draft on code get 99 tok/s each.
 
 Through the server (`volta-server`, sampling at temperature 1 with drafts, 300-token answers):
 
@@ -101,7 +101,7 @@ That serves 32 sessions of 8,192 tokens. For agents with long conversations, tra
 `--slots 2 --ctx 131072` serves 16 sessions of 128K, and `--slots 1 --ctx 262144` 8 sessions of 256K.
 
 For the fastest single sessions, add `--head-parallel`: every GPU runs every session with 8 of the 64 attention
-heads, so the machine holds `--slots` sessions in total instead of `--slots` per GPU, each at up to ~70 tok/s
+heads, so the machine holds `--slots` sessions in total instead of `--slots` per GPU, each at up to ~76 tok/s
 without the draft. Every GPU keeps a copy of each session's KV cache, so `--slots` and `--ctx` share memory as
 they do without the flag.
 
