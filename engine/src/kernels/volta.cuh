@@ -1563,7 +1563,8 @@ extern "C" __global__ void vmarkov_argmax(const float *logits, const float *bias
   }
 }
 // greedy ids: out[r] = argmax of logits row r (lowest index on ties); grid R, block 1024
-extern "C" __global__ void vargmax_rows(const float *logits, int vocab, int *out) {
+// outv (optional): each row's max value too (head-parallel: the GPUs' slice maxima are compared on the host)
+extern "C" __global__ void vargmax_rows(const float *logits, int vocab, int *out, float *outv) {
   __shared__ float bv[32];
   __shared__ int bi[32];
   const int r = blockIdx.x, lane = threadIdx.x & 31, w = threadIdx.x >> 5;
@@ -1587,7 +1588,10 @@ extern "C" __global__ void vargmax_rows(const float *logits, int vocab, int *out
       const int oa = __shfl_xor_sync(0xffffffffu, arg, o);
       if (ob > best || (ob == best && oa < arg)) { best = ob; arg = oa; }
     }
-    if (lane == 0) out[r] = arg;
+    if (lane == 0) {
+      out[r] = arg;
+      if (outv) outv[r] = best;
+    }
   }
 }
 

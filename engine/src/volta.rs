@@ -1116,6 +1116,9 @@ struct Shard<'m> {
     k: HashMap<&'static str, Kernel>,
     layers: Vec<VLayer>,
     head: Lin,
+    /// head-parallel: this GPU's 1/ngpu of the vocabulary (rows gi * vocab / ngpu ..) for the main step's logits;
+    /// the draft keeps the whole head
+    head_hp: Option<VMat>,
     out_norm: Buf,
     freqs: (Buf, Buf),
     topk: crate::topk::TopK,
@@ -1401,12 +1404,18 @@ impl<'m> Shard<'m> {
             overlap: std::env::var("VOLTA_OVERLAP").map_or(true, |v| v != "0"),
             spark,
             greedy: false,
-            spark_ids: g.alloc_zeroed(TMAX * 4)?,
+            spark_ids: g.alloc_zeroed(2 * TMAX * 4)?,
             evs: [g.event()?, g.event()?, g.event()?, g.event()?],
             mevs: [g.event()?, g.event()?, g.event()?, g.event()?],
             m,
             // VOLTA_HEAD=q6 keeps the head in dsx's 6-bit planes (two GEMV passes per 16 tokens)
             head: if std::env::var("VOLTA_HEAD").is_ok_and(|v| v == "q6") || !v4_ok(&m.head) { Lin::D(up(&m.head)?) } else { Lin::V(upload_v4(&g, &m.head, 1)?) },
+            head_hp: if o.heads && m.cfg.vocab % (32 * o.ngpu) == 0 && v4_ok(&m.head) {
+                let vs = m.cfg.vocab / o.ngpu;
+                Some(upload_v4_sub(&g, &m.head, gi * vs, vs, 0, m.head.cols)?)
+            } else {
+                None
+            },
             out_norm: f32buf(&g, &m.out_norm)?,
             freqs: (f32buf(&g, &m.ropes.0.freqs)?, f32buf(&g, &m.ropes.1.freqs)?),
             topk: crate::topk::TopK::new(&g)?,
@@ -2420,14 +2429,28 @@ impl<'m> Shard<'m> {
         let w = &self.w;
         self.g.launch(self.k["vhc_pre"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.mix_f.ptr), Arg::I(0), Arg::P(w.x.ptr), Arg::I(d as i32)])?;
         self.rms_rows(w.x.ptr, &self.out_norm, w.x.ptr, d, t, false)?;
-        self.mm(&self.head, w.x.ptr, w.logits.ptr, t)?;
         for &(s, _) in toks {
             self.sess[s].pos += 1;
         }
         let _ = hc;
+        if let Some(hs) = &self.head_hp {
+            // head-parallel: this GPU's slice of the vocabulary (Engine::step / step_greedy put the GPUs' together)
+            let vs = hs.rows;
+            self.vmm(hs, w.x.ptr, d, w.logits.ptr, t)?;
+            if self.greedy {
+                // per token: (global id as f32 bits, its logit)
+                self.g.launch(self.k["vargmax_rows"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::I(vs as i32), Arg::P(self.spark_ids.ptr), Arg::P(self.spark_ids.ptr + (TMAX * 4) as u64)])?;
+                let ids: Vec<u32> = self.g.download(self.spark_ids.ptr, t)?;
+                let vals: Vec<f32> = self.g.download(self.spark_ids.ptr + (TMAX * 4) as u64, t)?;
+                let base = (self.gi * vs) as u32;
+                return Ok(ids.iter().zip(&vals).flat_map(|(&i, &v)| [f32::from_bits(i + base), v]).collect());
+            }
+            return self.g.download(w.logits.ptr, t * vs);
+        }
+        self.mm(&self.head, w.x.ptr, w.logits.ptr, t)?;
         if self.greedy {
             // greedy ids only (as f32 bit patterns on the result channel), not t x vocab logits
-            self.g.launch(self.k["vargmax_rows"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::I(c.vocab as i32), Arg::P(self.spark_ids.ptr)])?;
+            self.g.launch(self.k["vargmax_rows"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::I(c.vocab as i32), Arg::P(self.spark_ids.ptr), Arg::P(0)])?;
             let ids: Vec<u32> = self.g.download(self.spark_ids.ptr, t)?;
             return Ok(ids.into_iter().map(f32::from_bits).collect());
         }
@@ -2487,6 +2510,8 @@ pub struct SparkPlan {
 
 pub struct Engine {
     spark_block: Option<usize>,
+    /// head-parallel with the head split by vocabulary (Shard::head_hp): results come back in slices
+    split_head: bool,
     tx: Vec<mpsc::Sender<Cmd>>,
     rx: mpsc::Receiver<(usize, Result<Vec<f32>>)>,
     pub opts: Opts,
@@ -2629,7 +2654,8 @@ impl Engine {
                 }
             }));
         }
-        let e = Engine { spark_block: ds.map(|d| d.block), tx, rx, opts: o, vocab: m.cfg.vocab, joins };
+        let split_head = o.heads && m.cfg.vocab % (32 * o.ngpu) == 0 && v4_ok(&m.head);
+        let e = Engine { spark_block: ds.map(|d| d.block), split_head, tx, rx, opts: o, vocab: m.cfg.vocab, joins };
         let _ = populate.join();
         for _ in 0..n {
             let (gi, r) = e.rx.recv()?;
@@ -2659,6 +2685,18 @@ impl Engine {
                 std::process::exit(1);
             }
             out[gi] = r.with_context(|| format!("GPU{gi} step"))?;
+        }
+        if self.split_head && !out[0].is_empty() {
+            // each GPU's logits cover its slice of the vocabulary: token by token, slice after slice
+            let vs = self.vocab / self.opts.ngpu;
+            let t = out[0].len() / vs;
+            let mut all = vec![0f32; t * self.vocab];
+            for (g, o) in out.iter().enumerate() {
+                for i in 0..t {
+                    all[i * self.vocab + g * vs..i * self.vocab + (g + 1) * vs].copy_from_slice(&o[i * vs..(i + 1) * vs]);
+                }
+            }
+            return Ok(vec![all]);
         }
         Ok(self.first(out))
     }
@@ -2726,6 +2764,23 @@ impl Engine {
                 std::process::exit(1);
             }
             out[gi] = r.with_context(|| format!("GPU{gi} step"))?.into_iter().map(f32::to_bits).collect();
+        }
+        if self.split_head && !out[0].is_empty() {
+            // each GPU returned (id, logit) per token for its slice of the vocabulary: the best, ties to the lower id
+            let t = out[0].len() / 2;
+            let ids = (0..t)
+                .map(|i| {
+                    let mut best = (f32::NEG_INFINITY, u32::MAX);
+                    for o in &out {
+                        let (id, v) = (o[2 * i], f32::from_bits(o[2 * i + 1]));
+                        if v > best.0 || (v == best.0 && id < best.1) {
+                            best = (v, id);
+                        }
+                    }
+                    best.1
+                })
+                .collect();
+            return Ok(vec![ids]);
         }
         Ok(self.first(out))
     }
