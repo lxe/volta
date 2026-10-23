@@ -296,6 +296,8 @@ fn main() -> Result<()> {
                 (1..=k).take_while(|&j| p.powi(j as i32) >= theta).last().unwrap_or(1)
             };
             let mut verified = 0usize;
+            // each pass's wall time (draft + verify + rewind), for the steady-state median
+            let mut passes: Vec<f64> = vec![];
             let (mut t_draft, mut t_main) = (0f64, 0f64);
             let t0 = Instant::now();
             let trace_at = std::env::var("VOLTA_TRACE_STEP").ok().and_then(|v| v.parse::<usize>().ok());
@@ -364,6 +366,7 @@ fn main() -> Result<()> {
                     }
                 }
                 e.rewind(rw)?;
+                passes.push(td.elapsed().as_secs_f64());
                 if trace_at == Some(it) {
                     dsx::volta::profiler(false)?;
                 }
@@ -373,6 +376,10 @@ fn main() -> Result<()> {
             }
             let wall = t0.elapsed().as_secs_f64();
             let per = made as f64 / ns as f64;
+            // the first passes of a context size run without a CUDA graph (and capture one): the median skips them
+            passes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let med = passes.get(passes.len() / 2).copied().unwrap_or(0.0);
+            println!("steady state: median pass {:.2} ms, {:.1} tok/s per session ({:.2} tokens per pass)", med * 1e3, per / steps as f64 / med, per / steps as f64);
             println!("{ns} sessions, k {k}{}: {:.2} tokens per pass ({:?}), {:.2} verified per session-pass, draft {:.1} ms + verify {:.1} ms per pass, {:.1} tok/s per session, {:.0} tok/s aggregate",
                 if adaptive { " adaptive" } else { "" }, per / steps as f64, hist, verified as f64 / (ns * steps) as f64, t_draft / steps as f64 * 1e3, t_main / steps as f64 * 1e3, per / wall, made as f64 / wall);
         }
