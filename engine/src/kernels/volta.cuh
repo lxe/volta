@@ -2200,6 +2200,96 @@ extern "C" __global__ void vmerge2(const float *part, int S, const float *sinks,
   else vmerge2_b<32>(part, S, sinks, o, H, hd, rd, freqs, pos);
 }
 
+// ---------------------------------------------------------------- the head-parallel attention chain in two nodes (Volta Scout's ac lab)
+// vac_pro + vattn2t replace vkv_store, vq16_rope, vattn2, vmerge2 and vfp8_xh, bit for bit (window row, q16, o, xh, r).
+// prologue: blocks 0..t-1 = vkv_store_b (block size 1024 as the engine launches it: block_sum's order depends on it),
+// blocks t.. = vq16_rope_b over 1024 elements each (elementwise: the block size doesn't matter)
+extern "C" __global__ void __launch_bounds__(1024) vac_pro(float *kv, const float *kvw, int hd, float eps, const float *freqs, int rd, const int *pos,
+                                                          __nv_bfloat16 *pool, const int *wrow, int kvld, int T,
+                                                          const float *q, half *q16, float scale, int n, int H) {
+  if ((int)blockIdx.x < T) vkv_store_b(VB{(int)blockIdx.x, 0, 0, T, 1, 1}, kv, kvw, hd, eps, freqs, rd, pos, pool, wrow, kvld);
+  else vq16_rope_b(VB{(int)blockIdx.x - T, 0, 0, (int)gridDim.x - T, 1, 1}, q, q16, scale, n, H, hd, rd, freqs, pos);
+}
+
+// one head's merge (vmerge2_b with t, h as arguments and __ldcg: the partials come from other blocks of this
+// launch), then vfp8_xh's rounding on the 32-value blocks (16 threads x 2 values each)
+template <int SMAX>
+__device__ __forceinline__ void vac_merge_head(const float *part, int S, const float *sinks, float *o, half *xh, int t, int h, int H, int hd, int rd,
+                                               const float *freqs, const int *pos) {
+  const int tid = threadIdx.x;
+  const float *p0 = part + ((size_t)t * S * H + h) * (hd + 2);
+  const size_t zs = (size_t)H * (hd + 2);
+  float mz[SMAX], lz[SMAX];
+#pragma unroll
+  for (int z = 0; z < SMAX; z++) { mz[z] = z < S ? __ldcg(p0 + z * zs + hd) : -1e30f; lz[z] = z < S ? __ldcg(p0 + z * zs + hd + 1) : 0.f; }
+  float M = -1e30f;
+#pragma unroll
+  for (int z = 0; z < SMAX; z++) if (z < S) M = fmaxf(M, mz[z]);
+  float2 v[SMAX];
+#pragma unroll
+  for (int z = 0; z < SMAX; z++) v[z] = z < S ? __ldcg(reinterpret_cast<const float2 *>(p0 + z * zs + 2 * tid)) : make_float2(0.f, 0.f);
+  float L = 0.f, a0 = 0.f, a1 = 0.f;
+#pragma unroll
+  for (int z = 0; z < SMAX; z++) {
+    if (z >= S) break;
+    float f = expf(mz[z] - M);
+    L += lz[z] * f;
+    a0 += v[z].x * f;
+    a1 += v[z].y * f;
+  }
+  L += expf(sinks[h] - M);
+  const size_t ob = ((size_t)t * H + h) * hd;
+  float a = bf16r(a0 / L), b = bf16r(a1 / L);
+  const int qd = tid - (hd - rd) / 2;
+  if (qd >= 0) {
+    float s, c;
+    sincosf((float)pos[t] * freqs[qd], &s, &c);
+    s = -s;
+    const float x = a * c - b * s, y = a * s + b * c;
+    a = x;
+    b = y;
+  }
+  // vfp8_xh: one 32-value block = these 16 threads' pairs (dims 32k .. 32k + 31)
+  float am = fmaxf(fabsf(a), fabsf(b));
+#pragma unroll
+  for (int o2 = 8; o2; o2 >>= 1) am = fmaxf(am, __shfl_xor_sync(0xffffffffu, am, o2));
+  am = fmaxf(am, 1e-4f);
+  const float sc = pow2_ceil(am / 448.f);
+  a = e4m3_round(fminf(fmaxf(a / sc, -448.f), 448.f)) * sc;
+  b = e4m3_round(fminf(fmaxf(b / sc, -448.f), 448.f)) * sc;
+  o[ob + 2 * tid] = a;
+  o[ob + 2 * tid + 1] = b;
+  xh[ob + 2 * tid] = __float2half(a);
+  xh[ob + 2 * tid + 1] = __float2half(b);
+}
+extern "C" __global__ void __launch_bounds__(256, 2) vattn2t(const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W, const void *comp, const int *comp_idx,
+                                                            int K, float *part, int H, int hd, int comp_fp4, int NSUB,
+                                                            int *cnt, const float *sinks, float *o, half *xh, float *r, int zn, int rd, const float *freqs, const int *pos) {
+  vattn2_b(VB_HW, q16, win, win_idx, W, comp, comp_idx, K, part, H, hd, comp_fp4, NSUB);
+  __shared__ int ticket;
+  const int t = blockIdx.y, S = gridDim.z, total = gridDim.x * gridDim.z;
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    __threadfence();
+    ticket = atomicAdd(&cnt[2 * t], 1);
+    if (ticket >= total - H) {
+      while (*reinterpret_cast<volatile int *>(&cnt[2 * t]) < total) {}
+      __threadfence();
+    }
+  }
+  __syncthreads();
+  const int k = ticket - (total - H);
+  if (k < 0) return;
+  if (S <= 8) vac_merge_head<8>(part, S, sinks, o, xh, t, k, H, hd, rd, freqs, pos);
+  else if (S <= 20) vac_merge_head<20>(part, S, sinks, o, xh, t, k, H, hd, rd, freqs, pos);
+  else vac_merge_head<32>(part, S, sinks, o, xh, t, k, H, hd, rd, freqs, pos);
+  // r: this token's mergers zero it (t * zn split over tokens x H heads)
+  const int per = (zn + H - 1) / H;
+  for (int i = k * per + threadIdx.x; i < min(zn, (k + 1) * per); i += blockDim.x) r[(size_t)t * zn + i] = 0.f;
+  __syncthreads();
+  if (threadIdx.x == 0 && atomicAdd(&cnt[2 * t + 1], 1) == H - 1) { cnt[2 * t] = 0; cnt[2 * t + 1] = 0; }
+}
+
 // rows src[t][n] (f32, not yet rounded) -> FP4 rows of `pool` at dst_row[t] (-1 = skip), rounded as fake_fp4(block,
 // e4m3s) does. grid T, block n (n <= 1024, block 16 or 32)
 extern "C" __global__ void vstore_fp4_rows(const float *src, unsigned char *pool, const int *dst_row, int n, int block, int e4m3s) {

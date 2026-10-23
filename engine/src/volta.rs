@@ -112,7 +112,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vmarkov_part", "vmarkov_argmax2", "vx_llargmax", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vmarkov_part", "vmarkov_argmax2", "vx_llargmax", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vac_pro", "vattn2t", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -1022,6 +1022,8 @@ struct Work {
     tabs: Buf, // every layer's per-token tables of the step (Shard::plan)
     xh: Buf,   // fp16 activations for the vmoe dense projections [TMAX][max(heads * head_dim, 8192)]
     xh2: Buf,  // the same for projections on the side stream (Gpu::set_side), which run alongside the main stream's
+    shx: Buf,  // fp16 x for the shared-expert slice beside the router [TMAX][dim]
+    acnt: Buf, // vattn2t's per-token tickets [TMAX][2] (zero between launches: the last merger resets them)
     xq: Buf,   // FP8-rounded f32 copy of x for FP8-input projections
     shgu: Buf, // shared-expert slice: gate+up rows [TG][2 * inter / ngpu] f32
     shh: Buf,  // its SwiGLU output [TG][inter / ngpu] fp16
@@ -1094,6 +1096,16 @@ struct LocalLayer {
     /// vbuckets' table: (entries pointer, count | stride << 32) per list
     desc: Buf,
     n_local: usize,
+}
+
+/// the head-parallel attention chain in two nodes (vac_pro, vattn2t): what vkv_store and the o_a prep would have read
+struct AttnFuse {
+    kv: u64,
+    kvw: u64,
+    kvld: usize,
+    wrow: u64,
+    sinks: u64,
+    zn: usize,
 }
 
 struct Shard<'m> {
@@ -1332,6 +1344,8 @@ impl<'m> Shard<'m> {
             tabs: g.alloc_zeroed(c.n_layers * 12 * TMAX * 4 * 2 + 4096)?,
             xh: g.alloc_zeroed(TMAX * (c.n_heads * c.head_dim).max(8192) * 2)?,
             xh2: g.alloc_zeroed(TMAX * (c.n_heads * c.head_dim).max(8192) * 2)?,
+            shx: g.alloc_zeroed(TMAX * c.dim * 2)?,
+            acnt: g.alloc_zeroed(TMAX * 2 * 4)?,
             xq: fz(TMAX * (c.n_heads * c.head_dim).max(8192))?,
             shgu: fz(tg * 2 * c.inter / o.ngpu)?,
             shh: g.alloc_zeroed(tg * c.inter / o.ngpu * 2)?,
@@ -1917,7 +1931,12 @@ impl<'m> Shard<'m> {
             self.g.mega_dep(&[o]);
         }
         let kv_op = self.g.mega_mark();
-        self.g.launch(self.k["vkv_store"], (t as u32, 1, 1), 1024, 0, &[Arg::P(kvp), Arg::P(l.kv_norm.ptr), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(f.ptr), Arg::I(c.rope_dim as i32), Arg::P(x.pos), Arg::P(l.window.ptr), Arg::P(x.wrow), Arg::I(kvld as i32)])?;
+        // head-parallel, <= 8 tokens: the attention chain in two nodes where its merge would be vmerge2's (>= 10 splits)
+        let fuse = (self.hp && t <= 8 && qrope.is_some() && !self.g.mega_on() && matches!(&l.o_a, Lin::V(v) if !v.act_fp8) && self.attn_split(t, nh, win + x.kcomp).1 >= 10 && std::env::var("VOLTA_ATTN_FUSE").map_or(true, |v| v != "0"))
+            .then(|| AttnFuse { kv: kvp, kvw: l.kv_norm.ptr, kvld, wrow: x.wrow, sinks: l.sinks.ptr, zn: c.o_lora * if self.hp { 1 } else { c.o_groups } });
+        if fuse.is_none() {
+            self.g.launch(self.k["vkv_store"], (t as u32, 1, 1), 1024, 0, &[Arg::P(kvp), Arg::P(l.kv_norm.ptr), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(f.ptr), Arg::I(c.rope_dim as i32), Arg::P(x.pos), Arg::P(l.window.ptr), Arg::P(x.wrow), Arg::I(kvld as i32)])?;
+        }
         if compressed {
             if !side {
                 if is_src {
@@ -1949,12 +1968,14 @@ impl<'m> Shard<'m> {
         let comp_ptr = if kcomp > 0 { self.layers[x.comp_src].comp_cache.as_ref().unwrap().ptr } else { 0 };
         let scale = 1.0 / (hd as f32).sqrt();
         // up to 160 rows per block (32-row sub-tiles, online softmax), one partial per block for the merge
-        let s = self.attn_tiles(t, nh, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale, qrope, Some(kv_op))?;
+        let s = self.attn_tiles(t, nh, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale, qrope, Some(kv_op), fuse.as_ref())?;
         // merge the splits and undo the rope of the output in one launch
         let f = if compressed { &self.freqs.1 } else { &self.freqs.0 };
         // vmerge2 loads every split at once: faster from 10 splits (one token), slower at 4-5 (lab)
         let merge = if s >= 10 && !self.g.mega_on() { "vmerge2" } else { "vattn_merge_rope" };
-        self.g.launch(self.k[merge], (t as u32, nh as u32, 1), (hd / 2) as u32, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f.ptr), Arg::P(x.pos)])?;
+        if fuse.is_none() {
+            self.g.launch(self.k[merge], (t as u32, nh as u32, 1), (hd / 2) as u32, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f.ptr), Arg::P(x.pos)])?;
+        }
         // an FP8-input o_a rounds o to FP8 in its own prep (the same blocks of 32): fake_fp8 here would repeat it
         // grouped low-rank output projection: group gi of token i reads o[i][gi*gsz..]
         let groups = if self.hp { 1 } else { c.o_groups };
@@ -1963,6 +1984,7 @@ impl<'m> Shard<'m> {
         let mut o_prepped = false;
         match &l.o_a {
             // the FP8 rounding writes o_a's fp16 input and zeroes r
+            Lin::V(v) if !v.act_fp8 && fuse.is_some() => o_prepped = true,
             Lin::V(v) if !v.act_fp8 => {
                 self.g.launch(self.k["vfp8_xh"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32), Arg::P(w.xh.ptr), Arg::P(w.r.ptr), Arg::I((t * rows) as i32)])?;
                 o_prepped = true;
@@ -2465,7 +2487,20 @@ impl<'m> Shard<'m> {
     #[allow(clippy::too_many_arguments)]
     /// qrope: (freqs, positions) to rope q while converting it (the caller skipped rope_rows; tensor-core path only)
     /// kv_op: the megakernel op that stored this step's kv rows (the attention reads them and q)
-    fn attn_tiles(&self, t: usize, nh: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32, qrope: Option<(u64, u64)>, kv_op: Option<usize>) -> Result<usize> {
+    /// 32-row sub-tiles per attention block and the splits per token: 5 sub-tiles (160 rows) while that gives >= 2
+    /// blocks per SM, fewer for a few tokens so a single token's rows still spread over the GPU (the partials buffer
+    /// holds TMAX * ATTN_SPLITS splits)
+    fn attn_split(&self, t: usize, nh: usize, rows: usize) -> (usize, usize) {
+        let splits = |nsub: usize| rows.div_ceil(32 * nsub);
+        let mut nsub = 5;
+        while nsub > 1 && nh.div_ceil(16) * t * splits(nsub) < 2 * self.g.sms && t * splits(nsub - 1) <= TMAX * ATTN_SPLITS {
+            nsub -= 1;
+        }
+        (nsub, splits(nsub))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn attn_tiles(&self, t: usize, nh: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32, qrope: Option<(u64, u64)>, kv_op: Option<usize>, fuse: Option<&AttnFuse>) -> Result<usize> {
         let c = &self.m.cfg;
         let (hd, w) = (c.head_dim, &self.w);
         let rows = nw + nk;
@@ -2478,16 +2513,20 @@ impl<'m> Shard<'m> {
             return Ok(s);
         }
         ensure!(hd == 512 && (nh % 16 == 0 || nh == 8), "vattn_mma: 512-dim heads in groups of 16 (or 8)");
-        // 32-row sub-tiles per block: 5 (160 rows) while that gives >= 2 blocks per SM, fewer for a few tokens so a
-        // single token's rows still spread over the GPU (the partials buffer holds TMAX * ATTN_SPLITS splits)
-        let splits = |nsub: usize| rows.div_ceil(32 * nsub);
-        let mut nsub = 5;
-        while nsub > 1 && nh.div_ceil(16) * t * splits(nsub) < 2 * self.g.sms && t * splits(nsub - 1) <= TMAX * ATTN_SPLITS {
-            nsub -= 1;
-        }
-        let s = splits(nsub);
+        let (nsub, s) = self.attn_split(t, nh, rows);
         ensure!(t * s <= TMAX * ATTN_SPLITS, "attention over {rows} rows");
         let n = t * nh * hd;
+        let smem = 32 * 520 * 2 + 4 * 32 * 17 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
+        if let Some(fz) = fuse {
+            // the kv rows (blocks 0..t-1) and q's rope + fp16 in one launch; attention whose last blocks merge each head,
+            // round o to FP8 with its fp16 copy for o_a and zero r
+            let (f, pos) = qrope.unwrap();
+            ensure!(s >= nh && nh == 8, "fused attention chain: {s} splits for {nh} heads");
+            self.g.launch(self.k["vac_pro"], ((t + n.div_ceil(1024)) as u32, 1, 1), 1024, 0, &[Arg::P(fz.kv), Arg::P(fz.kvw), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(f), Arg::I(c.rope_dim as i32), Arg::P(pos), Arg::P(win), Arg::P(fz.wrow), Arg::I(fz.kvld as i32), Arg::I(t as i32), Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32), Arg::I(nh as i32)])?;
+            self.g.set_smem(self.k["vattn2t"], smem)?;
+            self.g.launch(self.k["vattn2t"], (1, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32), Arg::I(nsub as i32), Arg::P(w.acnt.ptr), Arg::P(fz.sinks), Arg::P(w.o.ptr), Arg::P(w.xh.ptr), Arg::P(w.r.ptr), Arg::I(fz.zn as i32), Arg::I(c.rope_dim as i32), Arg::P(f), Arg::P(pos)])?;
+            return Ok(s);
+        }
         match qrope {
             Some((f, pos)) => self.g.launch(self.k["vq16_rope"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f), Arg::P(pos)])?,
             None => self.g.launch(self.k["vq16"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32)])?,
@@ -2495,7 +2534,7 @@ impl<'m> Shard<'m> {
         // vattn2 (the megakernel records vattn_mma, whose body it runs); VA2_SMEM / VAM_SMEM in volta.cuh
         let a2 = !self.g.mega_on();
         let kname = if a2 { "vattn2" } else { "vattn_mma" };
-        let smem = 32 * 520 * 2 + 4 * 32 * if a2 { 17 } else { 16 } * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
+        let smem = if a2 { smem } else { 32 * 520 * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16 };
         self.g.set_smem(self.k[kname], smem)?;
         if let Some(kv) = kv_op {
             let q = self.g.mega_mark().saturating_sub(1);

@@ -450,7 +450,7 @@ impl Shard<'_> {
         self.mm(l.kv.as_ref().unwrap(), w.x.ptr, w.kvv.ptr, t)?;
         self.g.launch(self.k["vkv_store"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.kvv.ptr), Arg::P(l.kv_norm.ptr), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(self.freqs.0.ptr), Arg::I(c.rope_dim as i32), Arg::P(pos), Arg::P(l.window.ptr), Arg::P(kvrow), Arg::I(hd as i32)])?;
         let scale = 1.0 / (hd as f32).sqrt();
-        let s = self.attn_tiles(t, nh, l.window.ptr, widx, rows, 0, 0, 0, scale, None, None)?;
+        let s = self.attn_tiles(t, nh, l.window.ptr, widx, rows, 0, 0, 0, scale, None, None, None)?;
         self.g.launch(self.k["sparse_attn_merge"], (t as u32, nh as u32, 1), 256, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32)])?;
         self.rope_rows(w.o.ptr, nh, hd, false, pos, t, true)?;
         self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?;
