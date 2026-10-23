@@ -414,7 +414,7 @@ per layer (~25 us). Each change below was predicted from a per-kernel floor and 
 steady-state median step (`volta spec` now reports it; the mean counted each context size's first steps, which run
 without a CUDA graph and capture one).
 
-Fixed costs measured on the box (`fixed.cu`-style lab, CUDA graphs):
+Fixed costs measured on the box (bench/v100-fixed-costs.cu, bench/v100-stream.cu; exchanges in bench/v100-ll-exchange.cu):
 
 | | |
 |---|---|
