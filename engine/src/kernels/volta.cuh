@@ -39,12 +39,23 @@ template <int BITS> __device__ __forceinline__ int v_perm(int j) { constexpr int
 // cnt != null: device-built token lists. Entry wk.nt is then the list's index: its tokens are cnt[wk.nt], its rows
 // start at wk.t0, and the launch takes the lists with lo < count <= hi, in tiles of 8 * NT tokens (grid.x =
 // row tiles x token tiles, row tiles = rtiles). in_rows / out_rows null = the row is the pair index itself.
-template <int BITS, int NT, int R>
+// wait until the counter at ctr reaches target (an earlier op of the megakernel is done on every block), then make
+// its writes visible to this block's ordinary loads
+__device__ __forceinline__ void vwait(const unsigned *ctr, unsigned target) {
+  if (threadIdx.x == 0)
+    while (*reinterpret_cast<const volatile unsigned *>(ctr) < target) {}
+  __syncthreads();
+  __threadfence();
+}
+
+// PFU > 0 (the megakernel, kernels/mega.cuh): every unit's weights and scales (units <= PFU) are loaded first, then
+// the block waits for wctr >= wtarget (the op producing X), so the loads overlap the producer
+template <int BITS, int NT, int R, int PFU = 0>
 __device__ __forceinline__ void vmoe_mm(VB vb, const uint4 *__restrict__ W, const half *__restrict__ S, const VWork *__restrict__ work,
                                         const int *__restrict__ in_rows, const int *__restrict__ out_rows, const float *__restrict__ tw,
                                         const half *__restrict__ X, float *__restrict__ Y, int N, int K, int KC, int ldy,
                                         const int *__restrict__ cnt, const int *__restrict__ off, int lo, int hi, int rtiles, int ldx, const int *__restrict__ nwork,
-                                        long long zst) {
+                                        long long zst, const unsigned *wctr = nullptr, unsigned wtarget = 0) {
   constexpr int WPU = 128 / BITS, F = 32 / BITS, WARPS = 8;
   // zst: K chunk z adds into its own copy of Y at Y + z * zst (each output once: a fixed-order sum after, vsum_z)
   Y += (size_t)vb.z * zst;
@@ -88,8 +99,24 @@ __device__ __forceinline__ void vmoe_mm(VB vb, const uint4 *__restrict__ W, cons
     sp[j] = S + wk.s_off + (rg * (K / (WPU / 2)) + k0 / (WPU / 2)) * 32 + lane;
   }
   uint4 qn[R];
+  constexpr int PA = PFU > 0 ? PFU : 1;
+  uint4 qa[PA][R];
+  half sa[PA][R][2];
+  if (PFU) {
 #pragma unroll
-  for (int j = 0; j < R; j++) qn[j] = j < rv ? __ldg(wp[j]) : make_uint4(0, 0, 0, 0);
+    for (int u = 0; u < PA; u++)
+#pragma unroll
+      for (int j = 0; j < R; j++) {
+        const bool ok = u < units && j < rv;
+        qa[u][j] = ok ? __ldg(wp[j] + (size_t)u * 32) : make_uint4(0, 0, 0, 0);
+#pragma unroll
+        for (int g = 0; g < 2; g++) sa[u][j][g] = ok ? __ldg(sp[j] + (size_t)(u * 2 + g) * 32) : __float2half(0.f);
+      }
+  } else {
+#pragma unroll
+    for (int j = 0; j < R; j++) qn[j] = j < rv ? __ldg(wp[j]) : make_uint4(0, 0, 0, 0);
+  }
+  if (wctr) vwait(wctr, wtarget);
   // x tile: NT*8 token rows x kc, k permuted per 32-bit word group to match the unpack order
   for (int i = threadIdx.x; i < NT * 8 * (kc / 8); i += WARPS * 32) {
     int t = i / (kc / 8), c8 = (i % (kc / 8)) * 8;
@@ -113,15 +140,8 @@ __device__ __forceinline__ void vmoe_mm(VB vb, const uint4 *__restrict__ W, cons
     for (int n = 0; n < NT; n++)
 #pragma unroll
       for (int e = 0; e < 8; e++) acc[j][n][e] = 0.f;
-  for (int u = 0; u < units; u++) {
-    uint4 qc[R];
-#pragma unroll
-    for (int j = 0; j < R; j++) { qc[j] = qn[j]; if (u + 1 < units && j < rv) qn[j] = __ldg(wp[j] + (size_t)(u + 1) * 32); }
-    half2 s2[R][2];
-#pragma unroll
-    for (int j = 0; j < R; j++)
-#pragma unroll
-      for (int g = 0; g < 2; g++) s2[j][g] = __half2half2(sp[j][(size_t)(u * 2 + g) * 32]);
+  // one unit: decode its words and accumulate (u: the unit's index in the chunk)
+  auto unit = [&](int u, const uint4 (&qc)[R], const half2 (&s2)[R][2]) {
 #pragma unroll
     for (int w = 0; w < 4; w++) {
       const int g = w >> 1;
@@ -140,6 +160,36 @@ __device__ __forceinline__ void vmoe_mm(VB vb, const uint4 *__restrict__ W, cons
         }
       }
     }
+  };
+  if (PFU) {
+    // every unit's weights are in registers: a constant trip count keeps qa / sa out of local memory
+#pragma unroll
+    for (int u = 0; u < PA; u++) {
+      if (u < units) {
+        uint4 qc[R];
+        half2 s2[R][2];
+#pragma unroll
+        for (int j = 0; j < R; j++) {
+          qc[j] = qa[u][j];
+#pragma unroll
+          for (int g = 0; g < 2; g++) s2[j][g] = __half2half2(sa[u][j][g]);
+        }
+        unit(u, qc, s2);
+      }
+    }
+  } else
+  for (int u = 0; u < units; u++) {
+    uint4 qc[R];
+    half2 s2[R][2];
+    {
+#pragma unroll
+      for (int j = 0; j < R; j++) { qc[j] = qn[j]; if (u + 1 < units && j < rv) qn[j] = __ldg(wp[j] + (size_t)(u + 1) * 32); }
+#pragma unroll
+      for (int j = 0; j < R; j++)
+#pragma unroll
+        for (int g = 0; g < 2; g++) s2[j][g] = __half2half2(sp[j][(size_t)(u * 2 + g) * 32]);
+    }
+    unit(u, qc, s2);
   }
   // accumulator e of lane L: row slot 8q + (L&1) + 2((e>>1)&1) + 4h, token 2((L>>1)&1) + (e&1) + 4(e>>2)
 #pragma unroll
@@ -183,6 +233,12 @@ VMOE(4, 4, 1)
   }
 VMOE1(4, 1)
 VMOE1(4, 2)
+// the megakernel's 1-token dense matmul (K chunks of <= 16 units, every unit's weights loaded before the wait)
+extern "C" __global__ void __launch_bounds__(256) vmoe_b4_pf(const uint4 *W, const half *S, const VWork *work, const int *in_rows, const int *out_rows,
+                                                            const float *tw, const half *X, float *Y, int N, int K, int KC, int ldy, const int *cnt,
+                                                            const int *off, int lo, int hi, int rtiles, int ldx, const int *nwork, long long zst) {
+  vmoe_mm<4, 1, 1, 16>(VB_HW, W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork, zst);
+}
 
 // gate/up rows [P][2*inter] (f32, gate first) -> h[P][inter] fp16 = silu(min(g, lim)) * clamp(u, +-lim) * wt[p]
 extern "C" __global__ void vswiglu(const float *gu, const float *wt, half *hout, int P, int inter, float lim) {

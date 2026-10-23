@@ -54,6 +54,7 @@ const MEGA_OPS: &[(&str, u32)] = &[
     ("vattn_merge_rope", 10),
     ("fake_fp8", 11),
     ("vx_llreduce", 12),
+    ("vmoe_b4_pf", 13),
 ];
 
 /// attention on the tensor cores (vattn_mma) unless VOLTA_ATTN=tile5
@@ -111,7 +112,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "volta_mega", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "volta_mega", "vmoe_b4_pf", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -1485,14 +1486,18 @@ impl<'m> Shard<'m> {
         // one row group per warp, and the longest K chunk that still gives >= 3 blocks per SM (tests/dense_test.cu:
         // 145 us per layer at 8 tokens, against 250 with four row groups per warp and ~2 blocks per SM)
         let rtiles = n.div_ceil(8 * 32);
+        // megakernel, one token: K chunks of <= 16 units, small enough for one chunk per SM where the shape allows, so
+        // each block holds its whole share of the weights while it waits for x (vmoe_b4_pf)
+        let pf = self.g.mega_on() && nb == 1 && !det;
+        let kc_pf = || [512usize, 384, 256, 128].into_iter().filter(|kc| k % kc == 0).rev().find(|&kc| rtiles * parts * k.div_ceil(kc) <= self.g.sms).unwrap_or(if k % 512 == 0 { 512 } else { 128 });
         // fixed order: the longest K chunks (fewest partial copies)
-        let kc = if det { even_kc(k, 1, 0) } else { even_kc(k, rtiles * parts, 3 * self.g.sms) };
+        let kc = if pf { kc_pf() } else if det { even_kc(k, 1, 0) } else { even_kc(k, rtiles * parts, 3 * self.g.sms) };
         let zst = if det { (t * n) as u64 } else { 0 };
         if det {
             ensure!(k.div_ceil(kc) * t * n * 4 <= w.zpart.bytes, "vmm: fixed-order partials overflow zpart");
             self.g.memset(y, k.div_ceil(kc) * t * n * 4)?;
         }
-        let kern = self.k[match nb { 1 => "vmoe_b4_n1_r1", 2 => "vmoe_b4_n2_r1", _ => "vmoe_b4_n4" }];
+        let kern = self.k[match nb { _ if pf => "vmoe_b4_pf", 1 => "vmoe_b4_n1_r1", 2 => "vmoe_b4_n2_r1", _ => "vmoe_b4_n4" }];
         let smem = nb * 8 * (kc + 8) * 2;
         if smem > 48 * 1024 {
             self.g.set_smem(kern, smem)?;
@@ -1811,10 +1816,13 @@ impl<'m> Shard<'m> {
         let x = std::mem::take(&mut self.lt[li]);
         let w = &self.w;
         let l = &self.layers[li];
+        // megakernel dependencies: the kv store reads only qkv; the attention reads q and the stored kv
+        let mut qkv_op: Option<usize> = None;
         // q latent and kv from one launch when fused: rows [t][q_lora + hd], the q latent normalized out to qr
         let (kvp, kvld) = if let Some(f) = &l.qkv_a {
             let ld = c.q_lora + hd;
             self.vmm(f, w.x.ptr, f.cols, w.qkv.ptr, t)?;
+            qkv_op = self.g.mega_mark().checked_sub(1);
             self.g.launch(self.k["rmsnorm"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.qkv.ptr), Arg::P(l.q_a_norm.ptr), Arg::P(w.qr.ptr), Arg::I(c.q_lora as i32), Arg::I(ld as i32), Arg::I(c.q_lora as i32), Arg::F(c.eps), Arg::I(1)])?;
             (w.qkv.ptr + (c.q_lora * 4) as u64, ld)
         } else {
@@ -1830,6 +1838,10 @@ impl<'m> Shard<'m> {
         if qrope.is_none() {
             self.rope_rows(w.q.ptr, nh, hd, compressed, x.pos, t, false)?;
         }
+        if let Some(o) = qkv_op {
+            self.g.mega_dep(&[o]);
+        }
+        let kv_op = self.g.mega_mark();
         self.g.launch(self.k["vkv_store"], (t as u32, 1, 1), 1024, 0, &[Arg::P(kvp), Arg::P(l.kv_norm.ptr), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(f.ptr), Arg::I(c.rope_dim as i32), Arg::P(x.pos), Arg::P(l.window.ptr), Arg::P(x.wrow), Arg::I(kvld as i32)])?;
         if compressed {
             let is_src = c.kv_sources.contains(&li);
@@ -1868,7 +1880,7 @@ impl<'m> Shard<'m> {
         let comp_ptr = if kcomp > 0 { self.layers[x.comp_src].comp_cache.as_ref().unwrap().ptr } else { 0 };
         let scale = 1.0 / (hd as f32).sqrt();
         // up to 160 rows per block (32-row sub-tiles, online softmax), one partial per block for the merge
-        let s = self.attn_tiles(t, nh, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale, qrope)?;
+        let s = self.attn_tiles(t, nh, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale, qrope, Some(kv_op))?;
         // merge the splits and undo the rope of the output in one launch
         let f = if compressed { &self.freqs.1 } else { &self.freqs.0 };
         self.g.launch(self.k["vattn_merge_rope"], (t as u32, nh as u32, 1), (hd / 2) as u32, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f.ptr), Arg::P(x.pos)])?;
@@ -2280,7 +2292,8 @@ impl<'m> Shard<'m> {
     /// per split: tensor cores (vattn_mma) unless VOLTA_ATTN=tile5
     #[allow(clippy::too_many_arguments)]
     /// qrope: (freqs, positions) to rope q while converting it (the caller skipped rope_rows; tensor-core path only)
-    fn attn_tiles(&self, t: usize, nh: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32, qrope: Option<(u64, u64)>) -> Result<usize> {
+    /// kv_op: the megakernel op that stored this step's kv rows (the attention reads them and q)
+    fn attn_tiles(&self, t: usize, nh: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32, qrope: Option<(u64, u64)>, kv_op: Option<usize>) -> Result<usize> {
         let c = &self.m.cfg;
         let (hd, w) = (c.head_dim, &self.w);
         let rows = nw + nk;
@@ -2310,6 +2323,10 @@ impl<'m> Shard<'m> {
         // VAM_SMEM in volta.cuh
         let smem = 32 * 520 * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
         self.g.set_smem(self.k["vattn_mma"], smem)?;
+        if let Some(kv) = kv_op {
+            let q = self.g.mega_mark().saturating_sub(1);
+            self.g.mega_dep(&[q, kv]);
+        }
         self.g.launch(self.k["vattn_mma"], (nh.div_ceil(16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32), Arg::I(nsub as i32)])?;
         Ok(s)
     }
@@ -2819,9 +2836,12 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             if !x_ready {
                 hc_step(sh, 0, sh.w.mix_f.ptr, &sh.layers[li].attn_norm)?;
             }
+            sh.attention(toks, li, &mut st)?;
+            // the attention's mixes are read only by the post step after it, and nothing in between writes h: last,
+            // so in the megakernel the Sinkhorn's one block overlaps the exchange instead of the first matmul
+            sh.g.mega_dep(&[]);
             let (w, l) = (&sh.w, &sh.layers[li]);
             sh.hc_mixes_rows(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t)?;
-            sh.attention(toks, li, &mut st)?;
             sh.g.mega_end()?;
             mark(sh, 1)?;
             hc_step(sh, sh.w.a.ptr, sh.w.mix_a.ptr, &sh.layers[li].ffn_norm)?;

@@ -78,11 +78,19 @@ struct Mega {
     n: Cell<usize>,
     smem: Cell<u32>,
     bar: RefCell<Option<Buf>>,
+    /// per-op done counters (cleared by each launch's end)
+    done: RefCell<Option<Buf>>,
+    /// ops recorded so far (all launches), and the first op of the current table
+    total: Cell<usize>,
+    base: Cell<usize>,
+    /// the next op's dependencies (mega_dep), else the previous op
+    pending: RefCell<Option<Vec<usize>>>,
     tables: RefCell<HashMap<Vec<u64>, Buf>>,
 }
 
-/// one op of the table: (code, gx), (gy, gz), (flags, 0), then 22 argument slots (MkOp in mega.cuh)
+/// one op of the table: (code, gx), (gy, gz), (dep2, dep), then 22 argument slots (MkOp in mega.cuh)
 const MK_WORDS: usize = 25;
+const MK_MAX_OPS: usize = 4096;
 
 #[derive(Clone, Copy)]
 pub struct Event(cu::CUevent);
@@ -569,6 +577,7 @@ impl Gpu {
         self.set_smem(kern, 64 * 1024)?; // the largest op (attention) needs ~43 KB; 96 KB with static smem is over the limit
         self.mk.kern.set(Some(kern));
         *self.mk.bar.borrow_mut() = Some(self.alloc_zeroed(64)?);
+        *self.mk.done.borrow_mut() = Some(self.alloc_zeroed(MK_MAX_OPS * 4)?);
         self.sync()?;
         let mut c = self.mk.codes.borrow_mut();
         for &(k, code) in ported {
@@ -580,6 +589,24 @@ impl Gpu {
     /// record the ported kernels' launches from here on (until mega_end)
     pub fn mega_begin(&self) {
         self.mk.on.set(self.mk.kern.get().is_some());
+    }
+
+    /// recording (a ported launch now becomes an op)
+    pub fn mega_on(&self) -> bool {
+        self.mk.on.get()
+    }
+
+    /// the index the next recorded op gets (for mega_dep)
+    pub fn mega_mark(&self) -> usize {
+        self.mk.total.get()
+    }
+
+    /// the next recorded op reads the outputs of these ops (mega_mark indices; at most 2) instead of the previous
+    /// one's; ops in an earlier launch are done already
+    pub fn mega_dep(&self, deps: &[usize]) {
+        if self.mk.on.get() {
+            *self.mk.pending.borrow_mut() = Some(deps.to_vec());
+        }
     }
 
     pub fn mega_end(&self) -> Result<()> {
@@ -596,6 +623,7 @@ impl Gpu {
         }
         let table = std::mem::take(&mut *self.mk.ops.borrow_mut());
         self.mk.n.set(0);
+        self.mk.base.set(self.mk.total.get());
         let smem = self.mk.smem.replace(0);
         let ptr = {
             let mut tabs = self.mk.tables.borrow_mut();
@@ -621,7 +649,8 @@ impl Gpu {
         let prof = std::env::var_os("VOLTA_MEGA_PROF").is_some() && !self.mk.capturing.get() && self.ordinal == 0;
         let pbuf = if prof { Some(self.alloc_zeroed((n + 1) * 8)?) } else { None };
         let kern = self.mk.kern.get().unwrap();
-        self.launch_raw(self.stream, kern, (self.sms as u32, 1, 1), 256, smem, &[Arg::P(ptr), Arg::I(n as i32), Arg::P(bar), Arg::P(pbuf.as_ref().map_or(0, |b| b.ptr))])?;
+        let done = self.mk.done.borrow().as_ref().unwrap().ptr;
+        self.launch_raw(self.stream, kern, (self.sms as u32, 1, 1), 256, smem, &[Arg::P(ptr), Arg::I(n as i32), Arg::P(bar), Arg::P(done), Arg::P(pbuf.as_ref().map_or(0, |b| b.ptr))])?;
         if let Some(b) = pbuf {
             self.bind();
             let mut t = vec![0u64; n + 1];
@@ -644,7 +673,14 @@ impl Gpu {
                 let mut op = [0u64; MK_WORDS];
                 op[0] = code as u64 | (grid.0 as u64) << 32;
                 op[1] = grid.1 as u64 | (grid.2 as u64) << 32;
-                op[2] = 1; // flags: barrier after
+                // the ops it reads: mega_dep's, else the previous one; as indices into this table (-1: none here)
+                let (total, base) = (self.mk.total.get(), self.mk.base.get());
+                let deps = self.mk.pending.borrow_mut().take().unwrap_or_else(|| if total > 0 { vec![total - 1] } else { vec![] });
+                anyhow::ensure!(deps.len() <= 2, "megakernel: {} dependencies", deps.len());
+                let local = |i: usize| deps.get(i).filter(|&&d| d >= base).map_or(-1i64, |&d| (d - base) as i64);
+                anyhow::ensure!(self.mk.n.get() < MK_MAX_OPS, "megakernel: more than {MK_MAX_OPS} ops");
+                op[2] = local(1) as u32 as u64 | (local(0) as u32 as u64) << 32;
+                self.mk.total.set(total + 1);
                 for (i, a) in args.iter().enumerate() {
                     op[3 + i] = match *a {
                         Arg::P(p) => p,
