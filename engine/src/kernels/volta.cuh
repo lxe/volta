@@ -360,7 +360,79 @@ extern "C" __global__ void vroute_fill(const int *selg, const float *wtg, int ld
   wt[p] = wtg[t * lds + i % k];
 }
 
+// vroute_count + vroute_scan + vroute_fill + vbuckets in one block (counts in shared memory, L <= 2048 local experts):
+// per-expert counts, their exclusive scan (off[L] = total), the pair lists (tok, wt) and every list's buckets.
+// grid 1, block 1024
+extern "C" __global__ void __launch_bounds__(1024) vroute_all(const int *selg, const float *wtg, int lds, const int *ntok, int tmax, int ngpu,
+                                                              int k, const int *lidx, int L, int *cnt, int *off, int *tok, float *wt,
+                                                              const unsigned long long *desc, int nlists, unsigned *out, int *nout, int lmax) {
+  __shared__ int sc[2048], so[2048], cur[2048], ws[32], kb[3 * 16];
+  const int tid = threadIdx.x, n = ngpu * tmax * k;
+  for (int j = tid; j < L; j += blockDim.x) { sc[j] = 0; cur[j] = 0; }
+  if (tid < 3 * 16) kb[tid] = 0;
+  __syncthreads();
+  for (int i = tid; i < n; i += blockDim.x) {
+    const int t = i / k, g = t / tmax;
+    if (t - g * tmax >= ntok[g]) continue;
+    const int j = lidx[selg[t * lds + i % k]];
+    if (j >= 0) atomicAdd(&sc[j], 1);
+  }
+  __syncthreads();
+  // exclusive scan of sc (vroute_scan's scheme)
+  const int per = (L + blockDim.x - 1) / blockDim.x, j0 = tid * per, lane = tid & 31, w = tid >> 5;
+  int a = 0;
+  for (int j = j0; j < min(j0 + per, L); j++) a += sc[j];
+  int x = a;
+  for (int o = 1; o < 32; o <<= 1) { int y = __shfl_up_sync(0xffffffffu, x, o); if (lane >= o) x += y; }
+  if (lane == 31) ws[w] = x;
+  __syncthreads();
+  if (w == 0) {
+    int v = lane < (int)(blockDim.x >> 5) ? ws[lane] : 0;
+    for (int o = 1; o < 32; o <<= 1) { int y = __shfl_up_sync(0xffffffffu, v, o); if (lane >= o) v += y; }
+    ws[lane] = v;
+  }
+  __syncthreads();
+  int b = x - a + (w ? ws[w - 1] : 0);
+  for (int j = j0; j < min(j0 + per, L); j++) { so[j] = b; off[j] = b; cnt[j] = sc[j]; b += sc[j]; }
+  if (tid == blockDim.x - 1) off[L] = b;
+  __syncthreads();
+  for (int i = tid; i < n; i += blockDim.x) {
+    const int t = i / k, g = t / tmax;
+    if (t - g * tmax >= ntok[g]) continue;
+    const int j = lidx[selg[t * lds + i % k]];
+    if (j < 0) continue;
+    const int p = so[j] + atomicAdd(&cur[j], 1);
+    tok[p] = t;
+    wt[p] = wtg[t * lds + i % k];
+  }
+  // buckets (vbuckets), every list
+  for (int bl = 0; bl < nlists; bl++) {
+    const unsigned *work = reinterpret_cast<const unsigned *>(desc[2 * bl]);
+    const int ne = (int)(desc[2 * bl + 1] & 0xffffffffu), stride = (int)(desc[2 * bl + 1] >> 32);
+    for (int i = tid; i < ne; i += blockDim.x) {
+      const int c = sc[work[i * stride + 3]];
+      if (c == 0) continue;
+      const int jb = c <= 8 ? 0 : c <= 16 ? 1 : 2;
+      unsigned *o = out + (size_t)(3 * bl + jb) * lmax * 8 + (size_t)atomicAdd(&kb[3 * bl + jb], 1) * stride;
+      for (int q = 0; q < stride; q++) o[q] = work[i * stride + q];
+    }
+  }
+  __syncthreads();
+  if (tid < 3 * nlists) nout[tid] = kb[tid];
+}
+
 // one exchange row per token: [x fp16 (d) | picks i32 (k) | weights f32 (k)], rb bytes apart; grid T, block 256
+// vto_f16 + vpack_x: the row's x from f32 (layers without the expert rotation)
+extern "C" __global__ void vpack_xf(const float *x, const int *sel, const float *wts, unsigned char *dst, int d, int k, int rb) {
+  int t = blockIdx.x;
+  unsigned char *row = dst + (size_t)t * rb;
+  half *out = reinterpret_cast<half *>(row);
+  for (int i = threadIdx.x; i < d; i += blockDim.x) out[i] = __float2half(x[(size_t)t * d + i]);
+  if (threadIdx.x < k) {
+    reinterpret_cast<int *>(row + d * 2)[threadIdx.x] = sel[t * k + threadIdx.x];
+    reinterpret_cast<float *>(row + d * 2 + k * 4)[threadIdx.x] = wts[t * k + threadIdx.x];
+  }
+}
 extern "C" __global__ void vpack_x(const half *x16, const int *sel, const float *wts, unsigned char *dst, int d, int k, int rb) {
   int t = blockIdx.x;
   unsigned char *row = dst + (size_t)t * rb;
@@ -983,6 +1055,41 @@ extern "C" __global__ void vhc_pre(const float *h, const float *mixes, int moff,
   const float *ht = h + (size_t)t * 4 * d;
   y[(size_t)t * d + i] = bf16r(m[0] * ht[i] + m[1] * ht[d + i] + m[2] * ht[2 * d + i] + m[3] * ht[3 * d + i]);
 }
+// vhc_post (when a is set) + vhc_pre + rmsnorm(round) in one launch, one block per token: h = post(h, a, mixes),
+// then y = bf16(w * rms(bf16(pre(h, mixes)))). The same arithmetic and sum order as the three kernels.
+// grid T, block 1024, d <= 8192
+extern "C" __global__ void __launch_bounds__(1024) vhc_post_pre_rms(float *h, const float *a, const float *mixes, float *y, const float *w, int d, float eps) {
+  __shared__ float sh[32];
+  const int t = blockIdx.x;
+  const float *m = mixes + t * 24;
+  float *ht = h + (size_t)t * 4 * d;
+  float v[8], s = 0.f;
+#pragma unroll
+  for (int j = 0; j < 8; j++) {
+    const int i = threadIdx.x + j * 1024;
+    if (i >= d) break;
+    float r0 = ht[i], r1 = ht[d + i], r2 = ht[2 * d + i], r3 = ht[3 * d + i];
+    if (a) {
+      const float xv = a[(size_t)t * d + i];
+      float n[4];
+#pragma unroll
+      for (int k = 0; k < 4; k++) n[k] = bf16r(m[4 + k] * xv + m[8 + k] * r0 + m[8 + 4 + k] * r1 + m[8 + 8 + k] * r2 + m[8 + 12 + k] * r3);
+#pragma unroll
+      for (int k = 0; k < 4; k++) ht[k * d + i] = n[k];
+      r0 = n[0]; r1 = n[1]; r2 = n[2]; r3 = n[3];
+    }
+    v[j] = bf16r(m[0] * r0 + m[1] * r1 + m[2] * r2 + m[3] * r3);
+    s += v[j] * v[j];
+  }
+  s = block_sum(s, sh);
+  const float r = rsqrtf(s / d + eps);
+#pragma unroll
+  for (int j = 0; j < 8; j++) {
+    const int i = threadIdx.x + j * 1024;
+    if (i >= d) break;
+    y[(size_t)t * d + i] = bf16r(w[i] * (v[j] * r));
+  }
+}
 extern "C" __global__ void vhc_post(float *h, const float *x, const float *mixes, int d) {
   const int t = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= d) return;
@@ -997,7 +1104,7 @@ extern "C" __global__ void vhc_post(float *h, const float *x, const float *mixes
 // mix dots split over S chunks of hcd (S <= 32, hcd / S a multiple of 128) and 6 groups of 4 fn rows: block (s, g)
 // gives each token a warp, which holds the token's chunk in registers and runs the 4 rows side by side.
 // part[t][25][S]: rows 0..23 the dots, row 24 the sum of squares (from the g = 0 blocks). grid (S, 6), block 256
-extern "C" __global__ void vhc_dots(const float *fn, const float *h, float *part, int hcd, int T, int S) {
+__device__ __forceinline__ void vhc_dots_body(const float *fn, const float *h, float *part, int hcd, int T, int S) {
   const int s = blockIdx.x, g = blockIdx.y, warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   const int len = hcd / S, j0 = s * len, per = len / 128;  // float4 per lane
   for (int t = warp; t < T; t += blockDim.x >> 5) {
@@ -1026,6 +1133,9 @@ extern "C" __global__ void vhc_dots(const float *fn, const float *h, float *part
     }
   }
 }
+extern "C" __global__ void vhc_dots(const float *fn, const float *h, float *part, int hcd, int T, int S) {
+  vhc_dots_body(fn, h, part, hcd, T, S);
+}
 // sum the chunks (lane s holds chunk s; all 25 loads issued before the sums), normalize, Sinkhorn: one warp per token
 extern "C" __global__ void vhc_finish(const float *part, float *mixes, int hcd, int S, float eps, const float *scale, const float *base,
                                       float hc_eps, int iters, int T) {
@@ -1045,13 +1155,44 @@ extern "C" __global__ void vhc_finish(const float *part, float *mixes, int hcd, 
   hc_finish_warp(mixes + t * 24, lane < 24 ? mine * rsqrtf(ss / hcd + eps) : 0.f, lane, scale, base, hc_eps, iters);
 }
 
+// vhc_dots + vhc_finish in one launch (T <= 8): the last block to finish its dots (a ticket in *tick, reset for the
+// next launch) sums every token's chunks and runs the Sinkhorn, one warp per token. grid (S, 6), block 256
+extern "C" __global__ void vhc_mix(const float *fn, const float *h, float *part, int hcd, int T, int S, float *mixes, float eps,
+                                   const float *scale, const float *base, float hc_eps, int iters, int *tick) {
+  __shared__ int last;
+  vhc_dots_body(fn, h, part, hcd, T, S);
+  __threadfence();
+  __syncthreads();
+  if (threadIdx.x == 0) last = atomicAdd(tick, 1) == (int)(gridDim.x * gridDim.y) - 1;
+  __syncthreads();
+  if (!last) return;
+  const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+  if (threadIdx.x == 0) *tick = 0;
+  for (int t = warp; t < T; t += blockDim.x >> 5) {
+    const float *p = part + (size_t)t * 25 * S;
+    float v[25];
+#pragma unroll
+    for (int i = 0; i < 25; i++) v[i] = lane < S ? __ldcg(p + i * S + lane) : 0.f;
+    float mine = 0.f;
+#pragma unroll
+    for (int i = 0; i < 25; i++) {
+      const float x = warp_sum(v[i]);
+      if (lane == i || (i == 24 && lane == 31)) mine = x;
+    }
+    const float ss = __shfl_sync(0xffffffffu, mine, 31);
+    hc_finish_warp(mixes + t * 24, lane < 24 ? mine * rsqrtf(ss / hcd + eps) : 0.f, lane, scale, base, hc_eps, iters);
+  }
+}
+
 // dense matmul prep in one launch: xh = fp16(x) (after the reference's FP8 block-32 rounding when fp8), y = 0.
 // grid (ceil(max(kx, ny) / 256), T), block 256; kx is a multiple of 32
+// fp8: bit 0 = the FP8 block-32 rounding, bit 1 = round x to bf16 first (round_bf16 folded in)
 extern "C" __global__ void vprep(const float *x, int ldx, half *xh, int kx, int fp8, float *y, int ny) {
   const int t = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
   if (blockIdx.x * blockDim.x < kx) {  // whole warps: kx is a multiple of 32
     float v = i < kx ? x[(size_t)t * ldx + i] : 0.f;
-    if (fp8) {
+    if (fp8 & 2) v = bf16r(v);
+    if (fp8 & 1) {
       const float s = pow2_ceil(fmaxf(warp_max(fabsf(v)), 1e-4f) / 448.f);
       v = e4m3_round(fminf(fmaxf(v / s, -448.f), 448.f)) * s;
     }
@@ -1063,8 +1204,7 @@ extern "C" __global__ void vprep(const float *x, int ldx, half *xh, int kx, int 
 // router logits y[t][e] += W[e] . x[t] in fp32 over K chunks of 256 (y zeroed first): block = 32 experts (4 per warp)
 // x one chunk, held in registers; the chunk of 32 tokens at a time in shared memory. grid (E / 32, K / 256), block 256
 // zst > 0: chunk blockIdx.y stores its sums at y + blockIdx.y * zst instead of adding (summed in order by vsum_z)
-extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const float *x, float *y, int E, int K, int T, int zst) {
-  __shared__ __align__(16) float xs[32 * 256];
+__device__ __forceinline__ void vrouter_body(const float *W, const float *x, float *y, int E, int K, int T, int zst, float *xs) {
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, k0 = blockIdx.y * 256;
   // this lane's 8 weights of each of its warp's 4 rows: k0 + lane * 4 + {0..3} and + 128
   float w[4][8];
@@ -1095,6 +1235,79 @@ extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const 
         }
       }
     }
+  }
+}
+extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const float *x, float *y, int E, int K, int T, int zst) {
+  __shared__ __align__(16) float xs[32 * 256];
+  vrouter_body(W, x, y, E, K, T, zst, xs);
+}
+
+// vrouter + router_topk in one launch (T <= 8): the last block (ticket in *tick) adds the chunk sums in order when zst
+// (head-parallel), then picks each token's experts, one warp per token (router_topk's arithmetic and tie order)
+extern "C" __global__ void __launch_bounds__(256) vrouter_topk(const float *W, const float *x, float *y, int E, int K, int T, int zst,
+                                                               const float *bias, int *out_idx, float *out_w, int k, float route_scale,
+                                                               float *logits, int *tick) {
+  __shared__ __align__(16) float xs[32 * 256];
+  __shared__ int last;
+  vrouter_body(W, x, y, E, K, T, zst, xs);
+  __threadfence();
+  __syncthreads();
+  if (threadIdx.x == 0) last = atomicAdd(tick, 1) == (int)(gridDim.x * gridDim.y) - 1;
+  __syncthreads();
+  if (!last) return;
+  if (threadIdx.x == 0) *tick = 0;
+  if (zst)
+    for (int i = threadIdx.x; i < T * E; i += blockDim.x) {
+      float v = 0.f;
+      for (int z = 0; z < (int)gridDim.y; z++) v += __ldcg(y + (size_t)z * zst + i);
+      logits[i] = v;
+    }
+  __syncthreads();
+  const float *lgs = zst ? logits : y;
+  const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+  float *sc = xs + warp * 512;  // the x tile is free now: 512 scores per warp
+  for (int t = warp; t < T; t += blockDim.x >> 5) {
+    const float *lg = lgs + (size_t)t * E;
+    float key[16];
+#pragma unroll
+    for (int j = 0; j < 16; j++) {
+      int e = lane + 32 * j;
+      key[j] = -INFINITY;
+      if (e < E) {
+        float xv = __ldcg(lg + e);
+        float sp = xv > 20.f ? xv : log1pf(expf(xv));
+        float sv = sqrtf(sp);
+        float kk = sv + bias[e];
+        key[j] = isnan(kk) ? -INFINITY : kk;
+        sc[e] = isnan(sv) ? 0.f : sv;
+      }
+    }
+    __syncwarp();
+    float wsum = 0.f;
+    int sel[8];
+    for (int r = 0; r < k; r++) {
+      float best = -INFINITY;
+      int bi = 0x7fffffff;
+#pragma unroll
+      for (int j = 0; j < 16; j++)
+        if (key[j] > best) { best = key[j]; bi = lane + 32 * j; }
+      for (int o = 16; o; o >>= 1) {
+        float ob = __shfl_xor_sync(0xffffffff, best, o);
+        int oi = __shfl_xor_sync(0xffffffff, bi, o);
+        if (ob > best || (ob == best && oi < bi)) { best = ob; bi = oi; }
+      }
+      if (bi >= E) bi = r;
+      sel[r] = bi;
+      wsum += sc[bi];
+#pragma unroll
+      for (int j = 0; j < 16; j++)
+        if (lane + 32 * j == bi) key[j] = -INFINITY;
+    }
+    if (lane < k) {
+      out_idx[t * k + lane] = sel[lane];
+      out_w[t * k + lane] = sc[sel[lane]] / (wsum + 1e-20f) * route_scale;
+    }
+    __syncwarp();
   }
 }
 
@@ -1210,6 +1423,50 @@ __device__ __forceinline__ uint32_t v_e2m1_code(float q) {
 // Dynamic shared memory: VAM_SMEM bytes.
 #define VAM_LD 520  // fp16 row stride of the row tile (512 + 8: rows land on different banks)
 #define VAM_SMEM (32 * VAM_LD * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16)
+// vq16 with rope_pos folded in: the rope dims (the last rd of each hd-dim head) of token t rotated at pos[t] first
+// sparse_attn_merge + the inverse rope_pos of the rope dims (the last rd of each head) at pos[t]. grid (T, H), block hd / 2
+extern "C" __global__ void vattn_merge_rope(const float *part, int S, const float *sinks, float *o, int H, int hd, int rd, const float *freqs, const int *pos) {
+  int t = blockIdx.x, h = blockIdx.y, tid = threadIdx.x;
+  const float *p0 = part + ((size_t)t * S * H + h) * (hd + 2);
+  size_t zs = (size_t)H * (hd + 2);
+  float M = -1e30f;
+  for (int z = 0; z < S; z++) M = fmaxf(M, p0[z * zs + hd]);
+  float L = 0.f, a0 = 0.f, a1 = 0.f;
+  for (int z = 0; z < S; z++) {
+    const float *pz = p0 + z * zs;
+    float f = expf(pz[hd] - M);
+    L += pz[hd + 1] * f;
+    float2 v = *(const float2 *)(pz + 2 * tid);
+    a0 += v.x * f;
+    a1 += v.y * f;
+  }
+  L += expf(sinks[h] - M);
+  float *oh = o + ((size_t)t * H + h) * hd;
+  float a = bf16r(a0 / L), b = bf16r(a1 / L);
+  const int q = tid - (hd - rd) / 2;
+  if (q >= 0) {
+    float s, c;
+    sincosf((float)pos[t] * freqs[q], &s, &c);
+    s = -s;
+    const float x = a * c - b * s, y = a * s + b * c;
+    a = x;
+    b = y;
+  }
+  oh[2 * tid] = a;
+  oh[2 * tid + 1] = b;
+}
+extern "C" __global__ void vq16_rope(const float *q, half *q16, float scale, int n, int H, int hd, int rd, const float *freqs, const int *pos) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  const int j = i % hd - (hd - rd);
+  float v = q[i];
+  if (j >= 0) {
+    float s, c;
+    sincosf((float)pos[i / (H * hd)] * freqs[j >> 1], &s, &c);
+    v = (j & 1) ? q[i - 1] * s + v * c : v * c - q[i + 1] * s;
+  }
+  q16[i] = __float2half(v * scale);
+}
 extern "C" __global__ void vq16(const float *q, half *q16, float scale, int n) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) q16[i] = __float2half(q[i] * scale);

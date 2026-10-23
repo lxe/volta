@@ -35,6 +35,11 @@ fn lut_blocks() -> usize {
     std::env::var("VOLTA_LUT_BLOCKS").ok().and_then(|v| v.parse().ok()).unwrap_or(8)
 }
 
+/// attention on the tensor cores (vattn_mma) unless VOLTA_ATTN=tile5
+fn attn_mma() -> bool {
+    std::env::var("VOLTA_ATTN").map_or(true, |v| v != "tile5")
+}
+
 fn kv_fp4() -> bool {
     std::env::var("VOLTA_KV").map_or(true, |v| v != "bf16")
 }
@@ -76,11 +81,11 @@ pub struct Opts {
 const KERNELS: &[&str] = &[
     "gemv_q8_0", "gemv_q8r", "gemv_q8r_sk", "gemv_f16", "gemv_f16_sk", "gemv_bf16", "gemv_bf16_sk", "gemv_f32", "gemv_f32_sk",
     "gemv_fp8b32", "gemv_q2_0", "gemv_ptq1_0", "gemv_q3_k", "gemv_q8g", "gemv_q6p", "gemv_q6g4", "gemv_q6s8", "gemv_q5p", "gemv_q5p4",
-    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_dots", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows", "vq16", "vattn_mma", "vstore_fp4_rows", "vindexer_score4", "vindexer_mma",
+    "rmsnorm", "rope_pos", "fake_fp8", "fake_fp4", "round_bf16", "scale_bf16", "hc_dots", "hc_finish_w", "hc_pre", "hc_post", "vhc_pre", "vhc_post", "vhc_post_pre_rms", "vhc_dots", "vhc_mix", "vhc_finish", "vprep", "vrouter", "vsrc_rows", "vmean_hc", "vgather_rows", "vmarkov_embed", "vmarkov_argmax", "vargmax_rows", "vq16", "vattn_mma", "vstore_fp4_rows", "vindexer_score4", "vindexer_mma",
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vsum_z", "vsum_parts_f", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -1000,6 +1005,8 @@ struct Work {
     hm: Buf,
     ypart: Buf,
     ypart16: Buf, // ypart as fp16, what the all-to-all sends
+    /// tickets of the fused kernels whose last block finishes the work (each resets its own)
+    tick: Buf,
     /// vhc_dots partials [TMAX][25][HC_S]
     hcp: Buf,
     cnt: Buf,
@@ -1285,6 +1292,7 @@ impl<'m> Shard<'m> {
             ypart: fz(tg * d)?,
             ypart16: g.alloc_zeroed(tg * d * 2)?,
             hcp: fz(TMAX * 25 * HC_S)?,
+            tick: g.alloc_zeroed(64)?,
             cnt: g.alloc_zeroed((3 * lmax + 1) * 4)?, // cnt [lmax] | off [lmax + 1] | cur [lmax]
             hot: g.alloc_zeroed(3 * MAX_LISTS * lmax * 32)?,
             nhot: g.alloc_zeroed(3 * MAX_LISTS * 4)?,
@@ -1386,7 +1394,7 @@ impl<'m> Shard<'m> {
     /// mm whose bits match on every GPU (head-parallel: anything that feeds the replicated residual stream)
     fn mm_det(&self, w: &Lin, x: u64, y: u64, t: usize) -> Result<()> {
         match w {
-            Lin::V(v) if self.hp => self.vmm_z(v, x, v.cols, y, t, true),
+            Lin::V(v) if self.hp => self.vmm_z(v, x, v.cols, y, t, true, false),
             _ => self.mm(w, x, y, t),
         }
     }
@@ -1394,11 +1402,13 @@ impl<'m> Shard<'m> {
     /// vmoe 4-bit, every partition in one launch: x [t][parts * cols] f32 (row stride ldx), y [t][rows] f32 where
     /// partition p of token t reads x[t][p*cols..] and writes y[t][p*prows..]
     fn vmm(&self, v: &VMat, x: u64, ldx: usize, y: u64, t: usize) -> Result<()> {
-        self.vmm_z(v, x, ldx, y, t, false)
+        self.vmm_z(v, x, ldx, y, t, false, false)
     }
 
-    /// vmm; det: the same sums in a fixed order (K chunks into zpart, then vsum_z), so every GPU gets identical bits
-    fn vmm_z(&self, v: &VMat, x: u64, ldx: usize, y_out: u64, t: usize, det: bool) -> Result<()> {
+    /// vmm; det: the same sums in a fixed order (K chunks into zpart, then vsum_z), so every GPU gets identical bits;
+    /// bf16_in: x is rounded to bf16 first (as round_bf16 would)
+    #[allow(clippy::too_many_arguments)]
+    fn vmm_z(&self, v: &VMat, x: u64, ldx: usize, y_out: u64, t: usize, det: bool, bf16_in: bool) -> Result<()> {
         ensure!(t >= 1 && t <= TMAX, "vmm over {t} tokens");
         let (n, k, parts) = (v.rows / v.parts, v.cols, v.parts);
         let w = &self.w;
@@ -1408,7 +1418,7 @@ impl<'m> Shard<'m> {
         let ny = n * parts;
         ensure!(!det || parts == 1, "a fixed-order vmm over one partition");
         let y = if det { w.zpart.ptr } else { y_out };
-        self.g.launch(self.k["vprep"], ((kx.max(ny) as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(w.xh.ptr), Arg::I(kx as i32), Arg::I(v.act_fp8 as i32), Arg::P(y_out), Arg::I(ny as i32)])?;
+        self.g.launch(self.k["vprep"], ((kx.max(ny) as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(w.xh.ptr), Arg::I(kx as i32), Arg::I(v.act_fp8 as i32 | (bf16_in as i32) << 1), Arg::P(y_out), Arg::I(ny as i32)])?;
         let nb = if t <= 8 { 1usize } else if t <= 16 { 2 } else { 4 };
         // one row group per warp, and the longest K chunk that still gives >= 3 blocks per SM (tests/dense_test.cu:
         // 145 us per layer at 8 tokens, against 250 with four row groups per warp and ~2 blocks per SM)
@@ -1507,6 +1517,10 @@ impl<'m> Shard<'m> {
         // each fn row is read once for every token, in HC_S chunks; the finish sums the chunks
         let (hcd, p) = (c.hc * c.dim, self.w.hcp.ptr);
         ensure!(hcd % (128 * HC_S) == 0 && hcd / HC_S <= 1024, "hc dots chunking");
+        if n <= 8 {
+            // the last dots block runs the Sinkhorn too
+            return self.g.launch(self.k["vhc_mix"], (HC_S as u32, 6, 1), 256, 0, &[Arg::P(fnw.0.ptr), Arg::P(h), Arg::P(p), Arg::I(hcd as i32), Arg::I(n as i32), Arg::I(HC_S as i32), Arg::P(out), Arg::F(c.eps), Arg::P(fnw.1.ptr), Arg::P(fnw.2.ptr), Arg::F(c.hc_eps), Arg::I(c.sinkhorn_iters as i32), Arg::P(self.w.tick.ptr)]);
+        }
         self.g.launch(self.k["vhc_dots"], (HC_S as u32, 6, 1), 256, 0, &[Arg::P(fnw.0.ptr), Arg::P(h), Arg::P(p), Arg::I(hcd as i32), Arg::I(n as i32), Arg::I(HC_S as i32)])?;
         self.g.launch(self.k["vhc_finish"], ((n as u32).div_ceil(4), 1, 1), 128, 0, &[Arg::P(p), Arg::P(out), Arg::I(hcd as i32), Arg::I(HC_S as i32), Arg::F(c.eps), Arg::P(fnw.1.ptr), Arg::P(fnw.2.ptr), Arg::F(c.hc_eps), Arg::I(c.sinkhorn_iters as i32), Arg::I(n as i32)])
     }
@@ -1748,8 +1762,12 @@ impl<'m> Shard<'m> {
             (w.kvv.ptr, hd)
         };
         self.mm(&l.q_b, w.qr.ptr, w.q.ptr, t)?;
-        self.rope_rows(w.q.ptr, nh, hd, compressed, x.pos, t, false)?;
         let f = if compressed { &self.freqs.1 } else { &self.freqs.0 };
+        // the tensor-core attention ropes q as it converts it to fp16 (vq16_rope)
+        let qrope = attn_mma().then_some((f.ptr, x.pos));
+        if qrope.is_none() {
+            self.rope_rows(w.q.ptr, nh, hd, compressed, x.pos, t, false)?;
+        }
         self.g.launch(self.k["vkv_store"], (t as u32, 1, 1), 1024, 0, &[Arg::P(kvp), Arg::P(l.kv_norm.ptr), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(f.ptr), Arg::I(c.rope_dim as i32), Arg::P(x.pos), Arg::P(l.window.ptr), Arg::P(x.wrow), Arg::I(kvld as i32)])?;
         if compressed {
             let is_src = c.kv_sources.contains(&li);
@@ -1788,10 +1806,14 @@ impl<'m> Shard<'m> {
         let comp_ptr = if kcomp > 0 { self.layers[x.comp_src].comp_cache.as_ref().unwrap().ptr } else { 0 };
         let scale = 1.0 / (hd as f32).sqrt();
         // up to 160 rows per block (32-row sub-tiles, online softmax), one partial per block for the merge
-        let s = self.attn_tiles(t, nh, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale)?;
-        self.g.launch(self.k["sparse_attn_merge"], (t as u32, nh as u32, 1), 256, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32)])?;
-        self.rope_rows(w.o.ptr, nh, hd, compressed, x.pos, t, true)?;
-        self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?;
+        let s = self.attn_tiles(t, nh, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale, qrope)?;
+        // merge the splits and undo the rope of the output in one launch
+        let f = if compressed { &self.freqs.1 } else { &self.freqs.0 };
+        self.g.launch(self.k["vattn_merge_rope"], (t as u32, nh as u32, 1), (hd / 2) as u32, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f.ptr), Arg::P(x.pos)])?;
+        // an FP8-input o_a rounds o to FP8 in its own prep (the same blocks of 32): fake_fp8 here would repeat it
+        if !matches!(&l.o_a, Lin::V(v) if v.act_fp8) {
+            self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?;
+        }
         // grouped low-rank output projection: group gi of token i reads o[i][gi*gsz..]
         let groups = if self.hp { 1 } else { c.o_groups };
         let gsz = nh * hd / groups;
@@ -1816,14 +1838,20 @@ impl<'m> Shard<'m> {
                 }
             }
         }
-        self.g.launch(self.k["round_bf16"], (((t * rows) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.r.ptr), Arg::I((t * rows) as i32)])?;
-        if self.hp {
-            // our heads' share of o_b goes straight into our block of the exchange
-            self.mm(&l.o_b, w.r.ptr, self.hp_block(), t)?;
-            self.hp_reduce(li, t)
-        } else {
-            self.mm(&l.o_b, w.r.ptr, w.a.ptr, t)
+        // head-parallel: our heads' share of o_b goes straight into our block of the exchange
+        let out = if self.hp { self.hp_block() } else { w.a.ptr };
+        match &l.o_b {
+            // o_b's prep rounds r to bf16 (round_bf16 folded in)
+            Lin::V(v) => self.vmm_z(v, w.r.ptr, v.cols, out, t, false, true)?,
+            ob => {
+                self.g.launch(self.k["round_bf16"], (((t * rows) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.r.ptr), Arg::I((t * rows) as i32)])?;
+                self.mm(ob, w.r.ptr, out, t)?;
+            }
         }
+        if self.hp {
+            self.hp_reduce(li, t)?;
+        }
+        Ok(())
     }
 
     /// head-parallel: f32 rows of TMAX * dim per GPU in the exchange buffer (the attention all-reduce)
@@ -1901,15 +1929,22 @@ impl<'m> Shard<'m> {
         let l = &self.layers[li];
         let (ne, kk) = (l.n_exp, l.top_k);
         ensure!(ne % 32 == 0 && d % 256 == 0, "router shape");
-        if self.hp {
-            // every GPU must pick the same experts: chunk sums stored, then added in order
-            self.g.launch(self.k["vrouter"], ((ne / 32) as u32, (d / 256) as u32, 1), 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(w.rpart.ptr), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I((t * ne) as i32)])?;
-            self.g.launch(self.k["vsum_z"], (((t * ne) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.rpart.ptr), Arg::P(w.router.ptr), Arg::I((d / 256) as i32), Arg::I((t * ne) as i32)])?;
-        } else {
+        // head-parallel: every GPU must pick the same experts, so the chunk sums are stored and added in order
+        let (ry, zst) = if self.hp { (w.rpart.ptr, t * ne) } else { (w.router.ptr, 0) };
+        if !self.hp {
             self.g.memset(w.router.ptr, t * ne * 4)?;
-            self.g.launch(self.k["vrouter"], ((ne / 32) as u32, (d / 256) as u32, 1), 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(w.router.ptr), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(0)])?;
         }
-        self.g.launch(self.k["router_topk"], (t as u32, 1, 1), 32, 0, &[Arg::P(w.router.ptr), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(ne as i32), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(0)])?;
+        let rgrid = ((ne / 32) as u32, (d / 256) as u32, 1);
+        if t <= 8 {
+            // the last router block picks the experts
+            self.g.launch(self.k["vrouter_topk"], rgrid, 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(w.router.ptr), Arg::P(w.tick.ptr + 4)])?;
+        } else {
+            self.g.launch(self.k["vrouter"], rgrid, 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(ry), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(zst as i32)])?;
+            if self.hp {
+                self.g.launch(self.k["vsum_z"], (((t * ne) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.rpart.ptr), Arg::P(w.router.ptr), Arg::I((d / 256) as i32), Arg::I((t * ne) as i32)])?;
+            }
+            self.g.launch(self.k["router_topk"], (t as u32, 1, 1), 32, 0, &[Arg::P(w.router.ptr), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(ne as i32), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(0)])?;
+        }
         if let (Some(sg), Some(su), Some(sd)) = (&l.sh_gate, &l.sh_up, &l.sh_down) {
             // shared expert -> a (local)
             let (gp, up, hp) = (w.t1.ptr, w.t1.ptr + (t * inter * 4) as u64, w.t2.ptr);
@@ -1926,11 +1961,12 @@ impl<'m> Shard<'m> {
         let me = if self.hp { 0 } else { self.gi };
         let rb = xrow_bytes(c);
         let xo = (me * TMAX * rb) as u64;
-        self.g.launch(self.k["vto_f16"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.x16.ptr), Arg::I((t * d) as i32)])?;
-        if c.expert_rot.get(li).copied().unwrap_or(false) {
-            // rotated layers store W R: the routed experts take R x (the shared expert takes x)
-            self.g.launch(self.k["fwht_rows_f16"], ((d / 128) as u32, t as u32, 1), 128, 0, &[Arg::P(w.x16.ptr), Arg::I(d as i32)])?;
+        if !c.expert_rot.get(li).copied().unwrap_or(false) {
+            return self.g.launch(self.k["vpack_xf"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::P(w.xg.ptr + xo), Arg::I(d as i32), Arg::I(kk as i32), Arg::I(rb as i32)]);
         }
+        self.g.launch(self.k["vto_f16"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.x16.ptr), Arg::I((t * d) as i32)])?;
+        // rotated layers store W R: the routed experts take R x (the shared expert takes x)
+        self.g.launch(self.k["fwht_rows_f16"], ((d / 128) as u32, t as u32, 1), 128, 0, &[Arg::P(w.x16.ptr), Arg::I(d as i32)])?;
         self.g.launch(self.k["vpack_x"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.x16.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::P(w.xg.ptr + xo), Arg::I(d as i32), Arg::I(kk as i32), Arg::I(rb as i32)])
     }
 
@@ -1985,16 +2021,21 @@ impl<'m> Shard<'m> {
         let pmax = (tg * kk).min(nl * tg); // pair rows: at most every pick of the step
         let (cnt, off, cur) = (w.cnt.ptr, w.cnt.ptr + (nl * 4) as u64, w.cnt.ptr + ((2 * nl + 1) * 4) as u64);
         let total = off + (nl * 4) as u64;
-        self.g.memset(cnt, nl * 4)?;
         self.src_rows(w.ypart.ptr, 0, d, false)?;
         let gr = ((tg * kk) as u32).div_ceil(256);
         let rb = xrow_bytes(c);
         let (selp, wtp, lds) = (w.xg.ptr + (d * 2) as u64, w.xg.ptr + (d * 2 + kk * 4) as u64, rb / 4);
-        self.g.launch(self.k["vroute_count"], (gr, 1, 1), 256, 0, &[Arg::P(selp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::P(cnt)])?;
-        self.g.launch(self.k["vroute_scan"], (1, 1, 1), 1024, 0, &[Arg::P(cnt), Arg::P(off), Arg::P(cur), Arg::I(nl as i32)])?;
-        self.g.launch(self.k["vroute_fill"], (gr, 1, 1), 256, 0, &[Arg::P(selp), Arg::P(wtp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::P(off), Arg::P(cur), Arg::P(w.tok.ptr), Arg::P(w.wt.ptr)])?;
-        // every list's entries by token count: each bucket's launch below walks only its own experts
-        self.g.launch(self.k["vbuckets"], (ll.lists.len() as u32, 1, 1), 256, 0, &[Arg::P(ll.desc.ptr), Arg::P(cnt), Arg::P(w.hot.ptr), Arg::P(w.nhot.ptr), Arg::I(self.lmax as i32)])?;
+        if nl <= 2048 && ll.lists.len() <= 16 {
+            // counts, scan, pair lists and buckets in one block
+            self.g.launch(self.k["vroute_all"], (1, 1, 1), 1024, 0, &[Arg::P(selp), Arg::P(wtp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::I(nl as i32), Arg::P(cnt), Arg::P(off), Arg::P(w.tok.ptr), Arg::P(w.wt.ptr), Arg::P(ll.desc.ptr), Arg::I(ll.lists.len() as i32), Arg::P(w.hot.ptr), Arg::P(w.nhot.ptr), Arg::I(self.lmax as i32)])?;
+        } else {
+            self.g.memset(cnt, nl * 4)?;
+            self.g.launch(self.k["vroute_count"], (gr, 1, 1), 256, 0, &[Arg::P(selp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::P(cnt)])?;
+            self.g.launch(self.k["vroute_scan"], (1, 1, 1), 1024, 0, &[Arg::P(cnt), Arg::P(off), Arg::P(cur), Arg::I(nl as i32)])?;
+            self.g.launch(self.k["vroute_fill"], (gr, 1, 1), 256, 0, &[Arg::P(selp), Arg::P(wtp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::P(off), Arg::P(cur), Arg::P(w.tok.ptr), Arg::P(w.wt.ptr)])?;
+            // every list's entries by token count: each bucket's launch below walks only its own experts
+            self.g.launch(self.k["vbuckets"], (ll.lists.len() as u32, 1, 1), 256, 0, &[Arg::P(ll.desc.ptr), Arg::P(cnt), Arg::P(w.hot.ptr), Arg::P(w.nhot.ptr), Arg::I(self.lmax as i32)])?;
+        }
         let prow = (pmax as u32).min(64); // grid rows: the kernels loop over the actual pair count
         self.g.launch(self.k["vzero_c"], (((2 * inter) as u32).div_ceil(256), prow, 1), 256, 0, &[Arg::P(w.gu.ptr), Arg::I((2 * inter) as i32), Arg::P(total)])?;
         // the side stream runs the shared-expert slice and the > 8-token lists alongside the main stream's
@@ -2160,11 +2201,13 @@ impl<'m> Shard<'m> {
     /// attention partials over each token's rows (window rows by win_idx, then compressed rows by comp_idx), 160 rows
     /// per split: tensor cores (vattn_mma) unless VOLTA_ATTN=tile5
     #[allow(clippy::too_many_arguments)]
-    fn attn_tiles(&self, t: usize, nh: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32) -> Result<usize> {
+    /// qrope: (freqs, positions) to rope q while converting it (the caller skipped rope_rows; tensor-core path only)
+    fn attn_tiles(&self, t: usize, nh: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32, qrope: Option<(u64, u64)>) -> Result<usize> {
         let c = &self.m.cfg;
         let (hd, w) = (c.head_dim, &self.w);
         let rows = nw + nk;
-        if std::env::var("VOLTA_ATTN").is_ok_and(|v| v == "tile5") {
+        if !attn_mma() {
+            ensure!(qrope.is_none(), "vattn_tile5 reads roped f32 q");
             ensure!(!kv_fp4() || nk == 0, "VOLTA_ATTN=tile5 reads bf16 KV rows: also set VOLTA_KV=bf16");
             let s = rows.div_ceil(160);
             ensure!(s <= ATTN_SPLITS, "attention over {rows} rows");
@@ -2182,7 +2225,10 @@ impl<'m> Shard<'m> {
         let s = splits(nsub);
         ensure!(t * s <= TMAX * ATTN_SPLITS, "attention over {rows} rows");
         let n = t * nh * hd;
-        self.g.launch(self.k["vq16"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32)])?;
+        match qrope {
+            Some((f, pos)) => self.g.launch(self.k["vq16_rope"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f), Arg::P(pos)])?,
+            None => self.g.launch(self.k["vq16"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32)])?,
+        }
         // VAM_SMEM in volta.cuh
         let smem = 32 * 520 * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
         self.g.set_smem(self.k["vattn_mma"], smem)?;
@@ -2671,6 +2717,13 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
         }
         Ok(())
     };
+    // post-mix + the next pre-mix + its norm, one launch (vhc_post_pre_rms); a = 0: pre-mix + norm only
+    let hc_step = |sh: &Shard, a: u64, mix: u64, norm: &Buf| -> Result<()> {
+        let w = &sh.w;
+        sh.g.launch(sh.k["vhc_post_pre_rms"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.h.ptr), Arg::P(a), Arg::P(mix), Arg::P(w.x.ptr), Arg::P(norm.ptr), Arg::I(d as i32), Arg::F(c.eps)])
+    };
+    // the previous layer's end already left this layer's normalized x (no Engram between them)
+    let mut x_ready = false;
     for li in 0..c.n_layers {
         if t > 0 {
             if let Some(eidx) = c.engram_layers.iter().position(|&x| x == li) {
@@ -2678,24 +2731,21 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             }
             sh.spark_capture(li, t)?;
             mark(sh, 0)?;
-            let w = &sh.w;
-            let l = &sh.layers[li];
-            sh.g.launch(sh.k["vhc_pre"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.mix_f.ptr), Arg::I(0), Arg::P(w.x.ptr), Arg::I(d as i32)])?;
+            if !x_ready {
+                hc_step(sh, 0, sh.w.mix_f.ptr, &sh.layers[li].attn_norm)?;
+            }
+            let (w, l) = (&sh.w, &sh.layers[li]);
             sh.hc_mixes_rows(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t)?;
-            sh.rms_rows(w.x.ptr, &l.attn_norm, w.x.ptr, d, t, true)?;
             sh.attention(toks, li, &mut st)?;
             mark(sh, 1)?;
+            hc_step(sh, sh.w.a.ptr, sh.w.mix_a.ptr, &sh.layers[li].ffn_norm)?;
             let w = &sh.w;
-            sh.g.launch(sh.k["vhc_post"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.a.ptr), Arg::P(w.mix_a.ptr), Arg::I(d as i32)])?;
             if sh.gi == 0 && std::env::var_os("DSX_DUMP").is_some() {
                 let h: Vec<f32> = sh.g.download(w.h.ptr, hc * d)?;
                 crate::model::dump("vgpuA", sh.sess[toks[0].0].pos, li, &h);
             }
-            let w = &sh.w;
             let l = &sh.layers[li];
-            sh.g.launch(sh.k["vhc_pre"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.mix_a.ptr), Arg::I(0), Arg::P(w.x.ptr), Arg::I(d as i32)])?;
             sh.hc_mixes_rows(&l.hc_ffn, w.h.ptr, w.mix_f.ptr, t)?;
-            sh.rms_rows(w.x.ptr, &l.ffn_norm, w.x.ptr, d, t, true)?;
             sh.moe_dispatch(t, li)?;
             mark(sh, 2)?;
         }
@@ -2708,8 +2758,13 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
         mark(sh, 5)?;
         if t > 0 {
             sh.moe_combine(t)?;
-            let w = &sh.w;
-            sh.g.launch(sh.k["vhc_post"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.a.ptr), Arg::P(w.mix_f.ptr), Arg::I(d as i32)])?;
+            x_ready = li + 1 < c.n_layers && !c.engram_layers.contains(&(li + 1));
+            if x_ready {
+                hc_step(sh, sh.w.a.ptr, sh.w.mix_f.ptr, &sh.layers[li + 1].attn_norm)?;
+            } else {
+                let w = &sh.w;
+                sh.g.launch(sh.k["vhc_post"], ((d as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(w.h.ptr), Arg::P(w.a.ptr), Arg::P(w.mix_f.ptr), Arg::I(d as i32)])?;
+            }
             if sh.gi == 0 && std::env::var_os("DSX_DUMP").is_some() {
                 // the residual stream of GPU0's first token, in the CPU reference's dump format (pos already advanced in finish)
                 let h: Vec<f32> = sh.g.download(sh.w.h.ptr, hc * d)?;
