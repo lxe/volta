@@ -142,6 +142,10 @@ impl Volta {
         let mut kept: Vec<Vec<Vec<u32>>> = vec![vec![vec![]; ns]; ng];
         // main tokens of the last step for the draft to observe: (slot, row, position) per GPU
         let mut obs: Vec<Vec<(usize, usize, usize)>> = vec![vec![]; ng];
+        // VOLTA_LOOP_PROF=n: every n passes, where an iteration's time went (draft call, main step call, rewind call,
+        // the rest of the loop)
+        let prof_n = std::env::var("VOLTA_LOOP_PROF").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+        let (mut pf, mut pf_i, mut t_iter) = ([0f64; 4], 0usize, Instant::now());
         loop {
             // admit
             if seqs.is_empty() && queue.is_empty() {
@@ -222,7 +226,9 @@ impl Volta {
                         at.push((i, q.g, drafts[q.g].len()));
                         drafts[q.g].push((q.s, q.fed - 1, q.next.unwrap()));
                     }
+                    let tc = Instant::now();
                     let dr = self.e.spark(SparkPlan { obs: std::mem::replace(&mut obs, vec![vec![]; ng]), drafts })?;
+                    pf[0] += tc.elapsed().as_secs_f64();
                     for (i, g, j) in at {
                         seqs[i].drafts = dr[g][j * self.block..(j + 1) * self.block].to_vec();
                     }
@@ -280,7 +286,9 @@ impl Volta {
                     // uniforms in [0, 1): an f64 just under 1 rounds to 1.0 as f32
                     tf.extend((0..9).map(|j| if j <= nd { (q.rng.next_f64() as f32).min(0.999_999_94) } else { 0.0 }));
                 }
+                let tc = Instant::now();
                 let r = self.e.step_sample(plan, tabs)?;
+                pf[1] += tc.elapsed().as_secs_f64();
                 at.into_iter().map(|(g, k)| r[g][k]).collect()
             } else if sampled {
                 let lg = self.e.step(plan)?;
@@ -341,7 +349,9 @@ impl Volta {
                 }
                 out
             } else {
+                let tc = Instant::now();
                 let ids = self.e.step_greedy(plan)?;
+                pf[1] += tc.elapsed().as_secs_f64();
                 rows.iter()
                     .map(|&(i, g, r0, n)| {
                         let q = &seqs[i];
@@ -405,7 +415,18 @@ impl Volta {
                 }
             }
             if rw.iter().any(|r| !r.is_empty()) {
+                let tc = Instant::now();
                 self.e.rewind(rw)?;
+                pf[2] += tc.elapsed().as_secs_f64();
+            }
+            if prof_n > 0 {
+                pf_i += 1;
+                if pf_i == prof_n {
+                    let all = t_iter.elapsed().as_secs_f64();
+                    let ms = |x: f64| x * 1e3 / prof_n as f64;
+                    tracing::info!(iter_ms = format!("{:.2}", ms(all)), spark_ms = format!("{:.2}", ms(pf[0])), step_ms = format!("{:.2}", ms(pf[1])), rewind_ms = format!("{:.2}", ms(pf[2])), rest_ms = format!("{:.2}", ms(all - pf[0] - pf[1] - pf[2])), "loop profile");
+                    (pf, pf_i, t_iter) = ([0f64; 4], 0, Instant::now());
+                }
             }
             if let Some(t) = &self.a.tel {
                 let now = Instant::now();
