@@ -537,3 +537,29 @@ Where a head-parallel layer goes now, against what is reachable (labs in tests/ 
 One trace showed five GPUs 7-13% slower on every kernel, which no other trace and no isolated probe reproduced (all
 eight: 1535 MHz effective, 302 ns dependent DRAM load). Check that per-GPU kernel times agree before reading skew
 from a trace.
+
+### 2026-10-23: serving agents (the braille gauntlet)
+
+Four pi agents, each drawing a rotating 3D shape in braille in its own tmux pane, against `volta-server --slots 1
+--ctx 131072` (one session per GPU, the most drafts per pass). Recordings and per-run stats live outside the repo.
+While at least two agents were working:
+
+| Run | Out tok/s (median / mean / peak) | Step | Per-request decode | Note |
+|---|---|---|---|---|
+| temperature 1, sampling on the host | 89 / 99 / 220 | 81 ms | 45 tok/s | |
+| greedy (temperature 0) | 122 / 152 / 458 | 59 ms | 91 tok/s | one agent looped |
+| greedy, `--chunk 64` | 224 / 209 / 459 | 49 ms | 106 tok/s | one agent looped |
+| temperature 0.7, sampling on the GPU (0277b5e) | 141 / 163 / 428 | 59 ms | 85 tok/s | fastest to finish (259 s) |
+
+- Sampling on the host was most of the gap to the engine: every pass downloaded every row's 129K logits and the
+  CPU softmaxed them per draft. On the GPU (vspec_sample) sampled requests run near greedy speed.
+- Greedy agents loop: an agent that runs the same read-only check gets the same tool output, and at temperature 0
+  writes the same turn again until its context fills. Temperature 0.7 broke it in every run.
+- In DP every step waits for the slowest GPU (the expert exchange spans all 8), so one session prefilling 64 tokens
+  (a ~94 ms step) slows every decoding session. A mixed test (3 decoding, 1 prefilling ~8K tokens): `--chunk` 16 /
+  32 / 64 prefill 280 / 383 / 476 tok/s while the decoders get 63 / 60 / 47 tok/s.
+- A 64-token prefill step on its GPU (nsys): dense 4-bit matmuls 30.7 ms (~5 ms of weight reads), routed experts
+  ~19 ms, attention 14.9 ms, exchanges 7.3 ms, idle gaps 8.2 ms. A 64-token tile for the dense kernel (one weight
+  read instead of two) was slower (636 against 702 tok/s prefill) and was dropped.
+- Decode alone, 4 sessions: 37.1 ms per pass through the server against 31.5 ms in `volta spec`; the difference is
+  the host between the draft step and the main step.
