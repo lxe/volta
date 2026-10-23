@@ -1743,6 +1743,284 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
                                                                const void *comp, const int *comp_idx, int K, float *part, int H,
                                                                int hd, int comp_fp4, int NSUB) { vattn_mma_b(VB_HW, q16, win, win_idx, W, comp, comp_idx, K, part, H, hd, comp_fp4, NSUB); }
 
+// ---------------------------------------------------------------- vattn2 / vmerge2 (Volta Scout's attention lab)
+// vattn_mma and vattn_merge_rope with the same arithmetic (bit-identical at H 8 / 64, t 1 / 8 / 64): the row tile's 8
+// index loads, then its 8 row loads, issued together (they were 8 dependent pairs in series); the FP4 rows decoded from
+// a byte -> half2 table in shared memory (not divergent __constant__ reads); H = 8 skips the padding head group; the
+// score tile at stride 17 (no 16-way bank conflicts); partials stored through shared memory. Lab, one token: 8 heads
+// 19.5 + 7.3 -> 7.7 + 3.5 us, 64 heads 24.0 + 7.6 -> 10.5 + 3.8 us; t = 8 / 64 also about halved.
+#define VA2_STAMP(i)
+#define VA2_SPLD 17
+#define VA2_SMEM_BASE (32 * VAM_LD * 2 + 4 * 32 * VA2_SPLD * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16)
+#define VA2_QLD 520
+#ifndef VA2_QS
+#define VA2_QS 0
+#endif
+#define VA2_SMEM (VA2_SMEM_BASE + (VA2_QS ? 16 * VA2_QLD * 2 : 0))
+__device__ __forceinline__ void vattn2_b(VB vb, const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W,
+                                                               const void *comp, const int *comp_idx, int K, float *part, int H,
+                                                               int hd, int comp_fp4, int NSUB) {
+  extern __shared__ __align__(16) unsigned char vsm[];
+  half *R = reinterpret_cast<half *>(vsm);                       // [32][VAM_LD] this sub-tile's rows
+  float *Sp = reinterpret_cast<float *>(R + 32 * VAM_LD);        // [4 k chunks][32 rows][16 heads, stride 17] partial scores
+  half *P16 = reinterpret_cast<half *>(Sp + 4 * 32 * VA2_SPLD);  // [16 heads][40] probabilities (pre-scaled)
+  float *Mh = reinterpret_cast<float *>(P16 + 16 * 40);          // running max per head
+  float *Lh = Mh + 16, *Ah = Lh + 16;                            // running sum; this tile's rescale factor
+  int *ok = reinterpret_cast<int *>(Ah + 32);
+  int *any = ok + 32;
+  // grid (H / 16, T, splits), NSUB 32-row sub-tiles per split: a token's head groups run next to each other and share its rows through L2
+  const int h0 = vb.x * 16, t = vb.y, z = vb.z, S = vb.gz, tid = threadIdx.x, lane = tid & 31, w = tid >> 5;
+  const int q4 = (lane >> 2) & 3, hh = lane >> 4, arow = 8 * q4 + (lane & 3) + 4 * hh, bcol = (lane & 3) + 4 * hh;
+  const int nrows = W + K;
+  VA2_STAMP(0);
+  // e2m1 byte table: byte b -> (value of its low nibble, value of its high nibble) as half2
+  __shared__ half2 e2m1b[256];
+  // built arithmetically (V_E2M1 is __constant__: its first miss stalled the index loads behind this store)
+  {
+    auto e2 = [](unsigned c) { const unsigned m = c & 7; unsigned short b = m == 0 ? 0 : m == 1 ? 0x3800 : (unsigned short)((((m >> 1) + 14) << 10) | ((m & 1) << 9)); return __ushort_as_half((unsigned short)(b | ((c & 8) << 12))); };
+    e2m1b[tid] = __halves2half2(e2(tid & 15), e2(tid >> 4));
+  }
+  if (tid < 16) { Mh[tid] = -1e30f; Lh[tid] = 0.f; }
+  // the scores' B fragments: this warp's 8 heads (group w & 1) over its k chunk (w >> 1) of 128 (L1-resident)
+  // H = 8 (head-parallel: a GPU's 8 heads): the second group of 8 is padding, its q reads as zero, its output dropped
+  const bool gq = h0 + (w & 1) * 8 < H;
+  const half *qh = q16 + ((size_t)t * H + h0 + (gq ? (w & 1) * 8 : 0) + bcol) * hd + (w >> 1) * 128;
+  // q is first read by the scores, after the rows land: prefetch this lane's 256 bytes into L1 now (no registers)
+  if (gq) { asm volatile("prefetch.global.L1 [%0];" :: "l"(qh)); asm volatile("prefetch.global.L1 [%0];" :: "l"(qh + 64)); }
+  const bool g1 = h0 + 8 < H;  // the second 8-head group is real (H = 8: padding, skipped)
+#if VA2_QS
+  // q of the block's heads: loaded into registers with the row indices (they were first read by the scores, from
+  // L2), stored to shared memory with the rows
+  half *Qs = reinterpret_cast<half *>(vsm + VA2_SMEM_BASE);  // [16 heads][VA2_QLD]
+  const int nqh = min(16, H - h0);
+  uint4 qr[4];
+#pragma unroll
+  for (int r = 0; r < 4; r++) { const int i = tid + 256 * r; qr[r] = i < nqh * 64 ? *reinterpret_cast<const uint4 *>(q16 + ((size_t)t * H + h0 + (i >> 6)) * hd + (i & 63) * 8) : make_uint4(0, 0, 0, 0); }
+  bool qstored = false;
+#endif
+  // output accumulators: warp w owns dims 64w .. 64w + 63 (two 32-dim fragments) x the two 8-head groups
+  float acc[2][2][8];
+#pragma unroll
+  for (int f = 0; f < 2; f++)
+#pragma unroll
+    for (int g = 0; g < 2; g++)
+#pragma unroll
+      for (int e = 0; e < 8; e++) acc[f][g][e] = 0.f;
+  for (int sub = 0; sub < NSUB; sub++) {
+    const int r0 = (z * NSUB + sub) * 32;
+    if (r0 >= nrows) break;
+    if (tid == 0) *any = 0;
+    __syncthreads();
+    // the rows: each thread owns 8 values (p8) of rows r = tid / 64 + 4j, j < 8. All 8 indices load together, then all
+    // 8 row pieces, then the decode: two dependent loads per thread instead of 2 x 8 (the loop was not overlapped)
+    {
+      const int p8 = tid & 63, rr = tid >> 6;
+      int idx[8];
+#pragma unroll
+      for (int j = 0; j < 8; j++) {
+        const int i = r0 + rr + 4 * j;
+        idx[j] = i >= nrows ? -1 : (i < W ? win_idx[t * W + i] : comp_idx[t * K + (i - W)]);
+      }
+#ifdef VA2_SUBSTAMP
+      { int d = 0; for (int j = 0; j < 8; j++) d += idx[j]; if (d == 0x7fffffff) *any = 2; }
+      VA2_STAMP(6);
+#endif
+      uint4 v[8];
+      unsigned sb[8];
+#pragma unroll
+      for (int j = 0; j < 8; j++) {
+        const int i = r0 + rr + 4 * j;
+        v[j] = make_uint4(0, 0, 0, 0);
+        sb[j] = 0;
+        if (idx[j] >= 0) {
+          if (i >= W && comp_fp4) {
+            const unsigned char *row = reinterpret_cast<const unsigned char *>(comp) + (size_t)idx[j] * (hd / 2 + hd / 16);
+            v[j].x = *reinterpret_cast<const uint32_t *>(row + p8 * 4);
+            sb[j] = row[hd / 2 + p8 / 2];
+          } else {
+            v[j] = *(const uint4 *)((i < W ? win : reinterpret_cast<const __nv_bfloat16 *>(comp)) + (size_t)idx[j] * hd + p8 * 8);
+          }
+        }
+      }
+#ifdef VA2_SUBSTAMP
+      { unsigned d = 0; for (int j = 0; j < 8; j++) d += v[j].x + v[j].w + sb[j]; if (d == 0x7fffffffu) *any = 2; }
+      VA2_STAMP(7);
+#endif
+#pragma unroll
+      for (int j = 0; j < 8; j++) {
+        const int r = rr + 4 * j, i = r0 + r;
+        half2 o[4];
+        if (i >= W && comp_fp4) {
+          // e2m1 x E4M3 as fp16: both are exact in fp16 and so is their product (<= 6 significant bits), so this equals
+          // the fp32 product rounded to half (the reference); the table is shared memory, not divergent __constant__
+          // E4M3 straight to fp32 bits (v_e4m3_dec's value: exponent E - 7, subnormal M / 512)
+          const unsigned E = (sb[j] >> 3) & 15, M = sb[j] & 7;
+          const float scf = E ? __uint_as_float(((E + 120) << 23) | (M << 20)) : (float)M * (1.f / 512.f);
+          const half sc = __float2half(scf);
+          const half2 s2 = __halves2half2(sc, sc);
+          const uint32_t cw = v[j].x;
+#pragma unroll
+          for (int q = 0; q < 4; q++) o[q] = __hmul2(e2m1b[(cw >> (8 * q)) & 255], s2);
+        } else {
+          const __nv_bfloat162 *b2 = reinterpret_cast<const __nv_bfloat162 *>(&v[j]);
+#pragma unroll
+          for (int q = 0; q < 4; q++) o[q] = __float22half2_rn(__bfloat1622float2(b2[q]));
+        }
+        *reinterpret_cast<uint4 *>(&R[r * VAM_LD + p8 * 8]) = *reinterpret_cast<uint4 *>(o);
+        if (p8 == 0) { ok[r] = idx[j] >= 0; if (idx[j] >= 0) *any = 1; }
+      }
+    }
+#if VA2_QS
+    if (!qstored) {
+#pragma unroll
+      for (int r = 0; r < 4; r++) { const int i = tid + 256 * r; if (i < nqh * 64) *reinterpret_cast<uint4 *>(&Qs[(i >> 6) * VA2_QLD + (i & 63) * 8]) = qr[r]; }
+      qstored = true;
+    }
+#endif
+    __syncthreads();
+    VA2_STAMP(1);
+    if (!*any) continue;  // block-uniform
+    {
+      const int g = w & 1, k0 = (w >> 1) * 128;
+      float s[8];
+#pragma unroll
+      for (int e = 0; e < 8; e++) s[e] = 0.f;
+      if (gq)
+#pragma unroll
+      for (int i = 0; i < 32; i++) {
+        const uint2 a = *reinterpret_cast<const uint2 *>(&R[arow * VAM_LD + k0 + 4 * i]);
+#if VA2_QS
+        const uint2 b = *reinterpret_cast<const uint2 *>(&Qs[((w & 1) * 8 + bcol) * VA2_QLD + k0 + 4 * i]);
+#else
+        const uint2 b = *reinterpret_cast<const uint2 *>(qh + 4 * i);  // q: no __ldg (mega.cuh)
+#endif
+        v_mma884(s, a.x, a.y, b.x, b.y);
+      }
+#pragma unroll
+      for (int e = 0; e < 8; e++) {
+        const int rs = 8 * q4 + (lane & 1) + 2 * ((e >> 1) & 1) + 4 * hh, tc = 2 * ((lane >> 1) & 1) + (e & 1) + 4 * (e >> 2);
+        Sp[((w >> 1) * 32 + rs) * VA2_SPLD + g * 8 + tc] = s[e];
+      }
+    }
+    __syncthreads();
+    VA2_STAMP(2);
+    // softmax of this tile: warp w takes heads 2w, 2w + 1, lane = row
+#pragma unroll
+    for (int j = 0; j < 2; j++) {
+      const int h = 2 * w + j;
+      float sv = Sp[(0 * 32 + lane) * VA2_SPLD + h] + Sp[(1 * 32 + lane) * VA2_SPLD + h] + Sp[(2 * 32 + lane) * VA2_SPLD + h] + Sp[(3 * 32 + lane) * VA2_SPLD + h];
+      const bool v = ok[lane];
+      sv = v ? sv : -1e30f;
+      const float mt = warp_max(sv), mo = Mh[h], mn = fmaxf(mo, mt);
+      const float pv = v ? expf(sv - mt) : 0.f, lt = warp_sum(pv);
+      const float a = expf(mo - mn), bsc = expf(mt - mn);
+      P16[h * 40 + lane] = __float2half(pv * bsc);
+      if (lane == 0) { Ah[h] = a; Lh[h] = Lh[h] * a + lt * bsc; Mh[h] = mn; }
+    }
+    __syncthreads();
+    VA2_STAMP(3);
+    // output: O^T[dim][head] = O^T * a[head] + R^T P^T
+#pragma unroll
+    for (int f = 0; f < 2; f++) {
+      const int dim = 64 * w + 32 * f + arow;
+#pragma unroll
+      for (int g = 0; g < 2; g++) {
+        if (g == 1 && !g1) break;  // block-uniform
+#pragma unroll
+        for (int e = 0; e < 8; e++) acc[f][g][e] *= Ah[g * 8 + 2 * ((lane >> 1) & 1) + (e & 1) + 4 * (e >> 2)];
+#pragma unroll
+        for (int kk = 0; kk < 32; kk += 4) {
+          half2 a0 = __halves2half2(R[(kk + 0) * VAM_LD + dim], R[(kk + 1) * VAM_LD + dim]);
+          half2 a1 = __halves2half2(R[(kk + 2) * VAM_LD + dim], R[(kk + 3) * VAM_LD + dim]);
+          const uint2 b = *reinterpret_cast<const uint2 *>(&P16[(g * 8 + bcol) * 40 + kk]);
+          v_mma884(acc[f][g], *reinterpret_cast<uint32_t *>(&a0), *reinterpret_cast<uint32_t *>(&a1), b.x, b.y);
+        }
+      }
+    }
+    __syncthreads();  // the next tile overwrites R, P16, Ah
+    VA2_STAMP(4);
+  }
+  // the partial: through shared memory (the row tile is free now), then 8-byte stores along each head's 512 dims
+  // (the fragment layout scattered every store over 8 heads)
+  __syncthreads();
+  float *Os = reinterpret_cast<float *>(R);  // [16 heads][516]
+#pragma unroll
+  for (int f = 0; f < 2; f++)
+#pragma unroll
+    for (int g = 0; g < 2; g++)
+#pragma unroll
+      for (int e = 0; e < 8; e++) {
+        const int dim = 64 * w + 32 * f + 8 * q4 + (lane & 1) + 2 * ((e >> 1) & 1) + 4 * hh;
+        const int h = g * 8 + 2 * ((lane >> 1) & 1) + (e & 1) + 4 * (e >> 2);
+        Os[h * 516 + dim] = acc[f][g][e];
+      }
+  __syncthreads();
+  VA2_STAMP(8);
+  {
+    const int nh = min(16, H - h0);
+    for (int i = 2 * tid; i < nh * 512; i += 512) {
+      const int h = i >> 9, d = i & 511;
+      *reinterpret_cast<float2 *>(part + (((size_t)t * S + z) * H + h0 + h) * (hd + 2) + d) = *reinterpret_cast<const float2 *>(&Os[h * 516 + d]);
+    }
+  }
+  if (tid < 16 && h0 + tid < H) {
+    float *ph = part + (((size_t)t * S + z) * H + h0 + tid) * (hd + 2);
+    ph[hd] = Mh[tid];
+    ph[hd + 1] = Lh[tid];
+  }
+  VA2_STAMP(5);
+}
+
+#undef VA2_STAMP
+extern "C" __global__ void __launch_bounds__(256, 2) vattn2(const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W,
+                                                            const void *comp, const int *comp_idx, int K, float *part, int H,
+                                                            int hd, int comp_fp4, int NSUB) { vattn2_b(VB_HW, q16, win, win_idx, W, comp, comp_idx, K, part, H, hd, comp_fp4, NSUB); }
+// merge with every split's loads in flight: (M, L) of all splits first (S <= 32), then the S partial pairs
+// unrolled, instead of two loops of dependent loads. Same math and order as vattn_merge_rope. grid (T, H), block hd / 2
+template <int SMAX>
+__device__ __forceinline__ void vmerge2_b(const float *part, int S, const float *sinks, float *o, int H, int hd, int rd, const float *freqs, const int *pos) {
+  const int t = blockIdx.x, h = blockIdx.y, tid = threadIdx.x;
+  const float *p0 = part + ((size_t)t * S * H + h) * (hd + 2);
+  const size_t zs = (size_t)H * (hd + 2);
+  float mz[SMAX], lz[SMAX];
+#pragma unroll
+  for (int z = 0; z < SMAX; z++) { mz[z] = z < S ? p0[z * zs + hd] : -1e30f; lz[z] = z < S ? p0[z * zs + hd + 1] : 0.f; }
+  float M = -1e30f;
+#pragma unroll
+  for (int z = 0; z < SMAX; z++) if (z < S) M = fmaxf(M, mz[z]);
+  float2 v[SMAX];
+#pragma unroll
+  for (int z = 0; z < SMAX; z++) v[z] = z < S ? *(const float2 *)(p0 + z * zs + 2 * tid) : make_float2(0.f, 0.f);
+  float L = 0.f, a0 = 0.f, a1 = 0.f;
+#pragma unroll
+  for (int z = 0; z < SMAX; z++) {
+    if (z >= S) break;
+    float f = expf(mz[z] - M);
+    L += lz[z] * f;
+    a0 += v[z].x * f;
+    a1 += v[z].y * f;
+  }
+  L += expf(sinks[h] - M);
+  float *oh = o + ((size_t)t * H + h) * hd;
+  float a = bf16r(a0 / L), b = bf16r(a1 / L);
+  const int q = tid - (hd - rd) / 2;
+  if (q >= 0) {
+    float s, c;
+    sincosf((float)pos[t] * freqs[q], &s, &c);
+    s = -s;
+    const float x = a * c - b * s, y = a * s + b * c;
+    a = x;
+    b = y;
+  }
+  oh[2 * tid] = a;
+  oh[2 * tid + 1] = b;
+}
+extern "C" __global__ void vmerge2(const float *part, int S, const float *sinks, float *o, int H, int hd, int rd, const float *freqs, const int *pos) {
+  if (S <= 8) vmerge2_b<8>(part, S, sinks, o, H, hd, rd, freqs, pos);
+  else if (S <= 20) vmerge2_b<20>(part, S, sinks, o, H, hd, rd, freqs, pos);
+  else vmerge2_b<32>(part, S, sinks, o, H, hd, rd, freqs, pos);
+}
+
 // rows src[t][n] (f32, not yet rounded) -> FP4 rows of `pool` at dst_row[t] (-1 = skip), rounded as fake_fp4(block,
 // e4m3s) does. grid T, block n (n <= 1024, block 16 or 32)
 extern "C" __global__ void vstore_fp4_rows(const float *src, unsigned char *pool, const int *dst_row, int n, int block, int e4m3s) {

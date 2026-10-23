@@ -112,7 +112,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "volta_mega", "vmoe_b4_pf", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "volta_mega", "vmoe_b4_pf", "vattn2", "vmerge2", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -1883,7 +1883,9 @@ impl<'m> Shard<'m> {
         let s = self.attn_tiles(t, nh, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale, qrope, Some(kv_op))?;
         // merge the splits and undo the rope of the output in one launch
         let f = if compressed { &self.freqs.1 } else { &self.freqs.0 };
-        self.g.launch(self.k["vattn_merge_rope"], (t as u32, nh as u32, 1), (hd / 2) as u32, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f.ptr), Arg::P(x.pos)])?;
+        // vmerge2 loads every split at once: faster from 10 splits (one token), slower at 4-5 (lab)
+        let merge = if s >= 10 && !self.g.mega_on() { "vmerge2" } else { "vattn_merge_rope" };
+        self.g.launch(self.k[merge], (t as u32, nh as u32, 1), (hd / 2) as u32, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f.ptr), Arg::P(x.pos)])?;
         // an FP8-input o_a rounds o to FP8 in its own prep (the same blocks of 32): fake_fp8 here would repeat it
         if !matches!(&l.o_a, Lin::V(v) if v.act_fp8) {
             self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?;
@@ -2353,14 +2355,16 @@ impl<'m> Shard<'m> {
             Some((f, pos)) => self.g.launch(self.k["vq16_rope"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(c.rope_dim as i32), Arg::P(f), Arg::P(pos)])?,
             None => self.g.launch(self.k["vq16"], ((n as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.q.ptr), Arg::P(w.q16.ptr), Arg::F(scale), Arg::I(n as i32)])?,
         }
-        // VAM_SMEM in volta.cuh
-        let smem = 32 * 520 * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
-        self.g.set_smem(self.k["vattn_mma"], smem)?;
+        // vattn2 (the megakernel records vattn_mma, whose body it runs); VA2_SMEM / VAM_SMEM in volta.cuh
+        let a2 = !self.g.mega_on();
+        let kname = if a2 { "vattn2" } else { "vattn_mma" };
+        let smem = 32 * 520 * 2 + 4 * 32 * if a2 { 17 } else { 16 } * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
+        self.g.set_smem(self.k[kname], smem)?;
         if let Some(kv) = kv_op {
             let q = self.g.mega_mark().saturating_sub(1);
             self.g.mega_dep(&[q, kv]);
         }
-        self.g.launch(self.k["vattn_mma"], (nh.div_ceil(16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32), Arg::I(nsub as i32)])?;
+        self.g.launch(self.k[kname], (nh.div_ceil(16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32), Arg::I(nsub as i32)])?;
         Ok(s)
     }
 
