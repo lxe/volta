@@ -112,7 +112,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vmarkov_part", "vmarkov_argmax2", "vx_llargmax", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vac_pro", "vattn2t", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vmarkov_part", "vmarkov_argmax2", "vx_llargmax", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vac_pro", "vattn2t", "vroute_hp", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -2212,6 +2212,9 @@ impl<'m> Shard<'m> {
         let me = if self.hp { 0 } else { self.gi };
         let rb = xrow_bytes(c);
         let xo = (me * TMAX * rb) as u64;
+        if self.route_hp(t, li) {
+            return Ok(()); // vroute_hp writes the row
+        }
         if !c.expert_rot.get(li).copied().unwrap_or(false) {
             ensure!(d % 4 == 0 && d <= 5 * 4 * 256, "vpack_xf: dim {d}");
             return self.g.launch(self.k["vpack_xf"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::P(w.xg.ptr + xo), Arg::I(d as i32), Arg::I(kk as i32), Arg::I(rb as i32)]);
@@ -2237,6 +2240,21 @@ impl<'m> Shard<'m> {
         self.lx(true, self.k["vswiglu"], (((t * sl) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.shgu.ptr), Arg::P(0), Arg::P(w.shh.ptr), Arg::I(t as i32), Arg::I(sl as i32), Arg::F(c.swiglu_limit)])?;
         self.vmm_h(sdn, w.shh.ptr, sl, w.ypart.ptr, d, t, true)?;
         self.g.record(self.aevs[2], true)
+    }
+
+    /// head-parallel, <= 8 tokens: vroute_hp builds this layer's exchange row, expert lists and buckets and zeroes
+    /// ypart and gu in one launch (in moe_experts), in place of vpack_xf, vsrc_f16, vroute_all and vzero_c
+    fn route_hp(&self, t: usize, li: usize) -> bool {
+        let c = &self.m.cfg;
+        let ll = &self.local[li];
+        self.hp
+            && (1..=8).contains(&t)
+            && !self.shared_early
+            && !c.expert_rot.get(li).copied().unwrap_or(false)
+            && ll.n_local <= 2048
+            && ll.lists.len() <= 16
+            && self.ngpu * TMAX * self.layers[li].top_k <= 3 * 1024
+            && std::env::var("VOLTA_ROUTE_HP").map_or(true, |v| v != "0")
     }
 
     /// cube all-gather of every GPU's exchange rows (vx_allgather)
@@ -2295,14 +2313,18 @@ impl<'m> Shard<'m> {
         let (cnt, off, cur) = (w.cnt.ptr, w.cnt.ptr + (nl * 4) as u64, w.cnt.ptr + ((2 * nl + 1) * 4) as u64);
         let total = off + (nl * 4) as u64;
         // consumed here: the draft's MoE runs moe_experts too, outside the layer that set it
+        let rhp = counts.get(self.gi).is_some_and(|&t| self.route_hp(t, li));
         let early = std::mem::take(&mut self.shared_early);
-        if !early {
+        if !early && !rhp {
             self.src_rows(w.ypart.ptr, 0, d, false)?;
         }
         let gr = ((tg * kk) as u32).div_ceil(256);
         let rb = xrow_bytes(c);
         let (selp, wtp, lds) = (w.xg.ptr + (d * 2) as u64, w.xg.ptr + (d * 2 + kk * 4) as u64, rb / 4);
-        if nl <= 2048 && ll.lists.len() <= 16 && tg * kk <= 3 * 1024 {
+        if rhp {
+            let t = counts[self.gi];
+            self.g.launch(self.k["vroute_hp"], (1 + t as u32, 1, 1), 1024, 0, &[Arg::P(w.x.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::P(w.xg.ptr), Arg::I(d as i32), Arg::I(kk as i32), Arg::I(rb as i32), Arg::P(w.ypart.ptr), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::P(ll.lidx.ptr), Arg::I(nl as i32), Arg::P(cnt), Arg::P(off), Arg::P(w.tok.ptr), Arg::P(w.wt.ptr), Arg::P(ll.desc.ptr), Arg::I(ll.lists.len() as i32), Arg::P(w.hot.ptr), Arg::P(w.nhot.ptr), Arg::I(self.lmax as i32), Arg::P(w.gu.ptr), Arg::I((2 * inter) as i32)])?;
+        } else if nl <= 2048 && ll.lists.len() <= 16 && tg * kk <= 3 * 1024 {
             // counts, scan, pair lists and buckets in one block
             self.g.launch(self.k["vroute_all"], (1, 1, 1), 1024, 0, &[Arg::P(selp), Arg::P(wtp), Arg::I(lds as i32), Arg::P(w.ntok.ptr), Arg::I(TMAX as i32), Arg::I(self.ngpu as i32), Arg::I(kk as i32), Arg::P(ll.lidx.ptr), Arg::I(nl as i32), Arg::P(cnt), Arg::P(off), Arg::P(w.tok.ptr), Arg::P(w.wt.ptr), Arg::P(ll.desc.ptr), Arg::I(ll.lists.len() as i32), Arg::P(w.hot.ptr), Arg::P(w.nhot.ptr), Arg::I(self.lmax as i32)])?;
         } else {
@@ -2314,7 +2336,9 @@ impl<'m> Shard<'m> {
             self.g.launch(self.k["vbuckets"], (ll.lists.len() as u32, 1, 1), 256, 0, &[Arg::P(ll.desc.ptr), Arg::P(cnt), Arg::P(w.hot.ptr), Arg::P(w.nhot.ptr), Arg::I(self.lmax as i32)])?;
         }
         let prow = (pmax as u32).min(64); // grid rows: the kernels loop over the actual pair count
-        self.g.launch(self.k["vzero_c"], (((2 * inter) as u32).div_ceil(256), prow, 1), 256, 0, &[Arg::P(w.gu.ptr), Arg::I((2 * inter) as i32), Arg::P(total)])?;
+        if !rhp {
+            self.g.launch(self.k["vzero_c"], (((2 * inter) as u32).div_ceil(256), prow, 1), 256, 0, &[Arg::P(w.gu.ptr), Arg::I((2 * inter) as i32), Arg::P(total)])?;
+        }
         // the side stream runs the shared-expert slice and the > 8-token lists alongside the main stream's
         // <= 8-token lists (graph branches)
         let (ov, ev) = (self.overlap, self.evs);

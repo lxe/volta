@@ -2447,3 +2447,113 @@ extern "C" __global__ void vfp8_xh(float *x, int n, half *xh, float *z, int zn) 
   vzero_share(z, zn, blockIdx.x, gridDim.x);
 }
 
+// ---------------------------------------------------------------- the head-parallel routing chain in one launch (Volta Scout's ro lab)
+// vroute_hp: vpack_xf + vsrc_f16 (ypart = 0) + vroute_all + vzero_c in one launch, head-parallel (every token is
+// source 0's: ntok[g] = 0 for g > 0). grid 1 + T, block 1024.
+//   block 0: vroute_all's code (generated from volta.cuh), its picks read from the router's sel / wts (the values
+//            vpack_xf copies into the exchange row), then vzero_c's gu rows p < total;
+//   block 1 + t: token t's exchange row (vpack_xf's x fp16, picks, weights) and its ypart row zeroed.
+__device__ __forceinline__ void vroute_hp_route(const int *sel, const float *wts, const int *ntok, int tmax, int ngpu, int k, const int *lidx, int L, int *cnt,
+                                                int *off, int *tok, float *wt, const unsigned long long *desc, int nlists, unsigned *out, int *nout, int lmax,
+                                                float *gu, int guw) {
+  // one block, so every phase is a chain of dependent loads: each pick is loaded once (into registers, its selg
+  // and weight loads together, then its lidx), and every list's entries are bucketed in one pass, not list by list
+  constexpr int NP = 3;  // picks per thread: ngpu * tmax * k <= 1024 * NP
+  __shared__ int sc[2048], so[2048], cur[2048], ws[32], kb[3 * 16], lpre[17], lstr[16];
+  __shared__ const unsigned *lwork[16];
+  __shared__ int tot_s;
+  const int tid = threadIdx.x, n = ngpu * tmax * k;
+  if (tid < nlists) { lwork[tid] = reinterpret_cast<const unsigned *>(desc[2 * tid]); lstr[tid] = (int)(desc[2 * tid + 1] >> 32); lpre[tid + 1] = (int)(desc[2 * tid + 1] & 0xffffffffu); }
+  for (int j = tid; j < L; j += blockDim.x) { sc[j] = 0; cur[j] = 0; }
+  if (tid < 3 * 16) kb[tid] = 0;
+  int ps[NP], pj[NP], pt[NP];
+  float pw[NP];
+#pragma unroll
+  for (int q = 0; q < NP; q++) {
+    const int i = tid + q * (int)blockDim.x, t = i / k, g = t / tmax;
+    pt[q] = t;
+    ps[q] = -1;
+    if (i < n && t - g * tmax < ntok[g]) { ps[q] = sel[(t - g * tmax) * k + i % k]; pw[q] = wts[(t - g * tmax) * k + i % k]; }  // HP: source 0's rows are tokens 0..
+  }
+#pragma unroll
+  for (int q = 0; q < NP; q++) pj[q] = ps[q] >= 0 ? lidx[ps[q]] : -1;
+  __syncthreads();
+  if (tid == 0) { lpre[0] = 0; for (int b = 0; b < nlists; b++) lpre[b + 1] += lpre[b]; }
+#pragma unroll
+  for (int q = 0; q < NP; q++) if (pj[q] >= 0) atomicAdd(&sc[pj[q]], 1);
+  __syncthreads();
+  // exclusive scan of sc (vroute_scan's scheme)
+  const int per = (L + blockDim.x - 1) / blockDim.x, j0 = tid * per, lane = tid & 31, w = tid >> 5;
+  int a = 0;
+  for (int j = j0; j < min(j0 + per, L); j++) a += sc[j];
+  int x = a;
+  for (int o = 1; o < 32; o <<= 1) { int y = __shfl_up_sync(0xffffffffu, x, o); if (lane >= o) x += y; }
+  if (lane == 31) ws[w] = x;
+  __syncthreads();
+  if (w == 0) {
+    int v = lane < (int)(blockDim.x >> 5) ? ws[lane] : 0;
+    for (int o = 1; o < 32; o <<= 1) { int y = __shfl_up_sync(0xffffffffu, v, o); if (lane >= o) v += y; }
+    ws[lane] = v;
+  }
+  __syncthreads();
+  int b = x - a + (w ? ws[w - 1] : 0);
+  for (int j = j0; j < min(j0 + per, L); j++) { so[j] = b; off[j] = b; cnt[j] = sc[j]; b += sc[j]; }
+  if (tid == blockDim.x - 1) { off[L] = b; tot_s = b; }
+  __syncthreads();
+#pragma unroll
+  for (int q = 0; q < NP; q++) {
+    if (pj[q] < 0) continue;
+    const int p = so[pj[q]] + atomicAdd(&cur[pj[q]], 1);
+    tok[p] = pt[q];
+    wt[p] = pw[q];
+  }
+  // buckets (vbuckets) of every list in one pass over all their entries: each entry's expert index first, then its
+  // count, then its copy
+  const int total = lpre[nlists];
+  for (int e0 = tid; e0 < total; e0 += 2 * blockDim.x) {
+    int bl[2], ei[2], nt[2];
+#pragma unroll
+    for (int r = 0; r < 2; r++) {
+      const int e = e0 + r * (int)blockDim.x;
+      bl[r] = -1;
+      if (e < total) {
+        int q = 0;
+        while (lpre[q + 1] <= e) q++;
+        bl[r] = q;
+        ei[r] = e - lpre[q];
+        nt[r] = lwork[q][ei[r] * lstr[q] + 3];
+      }
+    }
+#pragma unroll
+    for (int r = 0; r < 2; r++) {
+      if (bl[r] < 0) continue;
+      const int c = sc[nt[r]];
+      if (c == 0) continue;
+      const int q = bl[r], stride = lstr[q], jb = c <= 8 ? 0 : c <= 16 ? 1 : 2;
+      unsigned *o = out + (size_t)(3 * q + jb) * lmax * 8 + (size_t)atomicAdd(&kb[3 * q + jb], 1) * stride;
+      const unsigned *src = lwork[q] + (size_t)ei[r] * stride;
+      for (int u = 0; u < stride; u += 4) *reinterpret_cast<uint4 *>(o + u) = *reinterpret_cast<const uint4 *>(src + u);
+    }
+  }
+  __syncthreads();
+  if (tid < 3 * nlists) nout[tid] = kb[tid];
+  // vzero_c: the gu rows p < total
+  for (int z = tid; z < tot_s * guw; z += blockDim.x) gu[z] = 0.f;
+}
+extern "C" __global__ void __launch_bounds__(1024) vroute_hp(const float *x, const int *sel, const float *wts, unsigned char *xg, int d, int k, int rb, float *ypart,
+                                                             const int *ntok, int tmax, int ngpu, const int *lidx, int L, int *cnt, int *off, int *tok, float *wt,
+                                                             const unsigned long long *desc, int nlists, unsigned *out, int *nout, int lmax, float *gu, int guw) {
+  if (blockIdx.x == 0) { vroute_hp_route(sel, wts, ntok, tmax, ngpu, k, lidx, L, cnt, off, tok, wt, desc, nlists, out, nout, lmax, gu, guw); return; }
+  // block 1 + t: token t's exchange row (vpack_xf's fp16 conversions, element for element) and its ypart row = 0
+  const int t = blockIdx.x - 1;
+  if (t >= ntok[0]) return;
+  unsigned char *row = xg + (size_t)t * rb;
+  const float4 *x4 = reinterpret_cast<const float4 *>(x + (size_t)t * d);
+  half2 *o = reinterpret_cast<half2 *>(row);
+  for (int i = threadIdx.x; i < d / 4; i += blockDim.x) { const float4 v = x4[i]; o[2 * i] = __floats2half2_rn(v.x, v.y); o[2 * i + 1] = __floats2half2_rn(v.z, v.w); }
+  if (threadIdx.x < k) {
+    reinterpret_cast<int *>(row + d * 2)[threadIdx.x] = sel[t * k + threadIdx.x];
+    reinterpret_cast<float *>(row + d * 2 + k * 4)[threadIdx.x] = wts[t * k + threadIdx.x];
+  }
+  for (int i = threadIdx.x; i < d; i += blockDim.x) ypart[(size_t)t * d + i] = 0.f;  // HP: source 0's rows 0..t
+}
