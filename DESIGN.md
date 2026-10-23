@@ -513,6 +513,9 @@ Steady-state median step, one session, greedy, head-parallel (`VOLTA_HEADS=1 vol
 | hc mixes on the side stream | their Sinkhorn is one warp's serial chain, on the critical path | 12.7 -> 12.1 ms |
 | output head split by vocabulary (cross-GPU argmax) | one GPU read the whole head | 12.1 -> 11.6 ms |
 | indexer and compressor work on the side stream | a ~55 us serial chain before attention in 8 layers | 11.6 -> 11.3 ms |
+| attention chain in two nodes (vac_pro, vattn2t: kv store + q rope, attention + merge + FP8 round) | five serial nodes | 11.34 -> 11.05 ms |
+| routing chain in one launch (vroute_hp) | four serial nodes, two of them one block | 11.06 -> 10.66 ms |
+| attention exchange by quad sums | each quad link carried every block twice | 10.73 -> 10.66 ms; 4 drafts 18.42 -> 18.08 |
 
 The draft's head and Markov chain are split by vocabulary the same way in head-parallel mode, and its argmax runs
 over many blocks per session (vmarkov_argmax2: 54 -> 5 us per Markov step at one session, lab).
@@ -528,7 +531,7 @@ Where a head-parallel layer goes now, against what is reachable (labs in tests/ 
 |---|---|---|---|
 | routed experts, gate/up + down | ~45 | ~29 | vlut2 (4-warp blocks, decode reordered) is 18.6 us for gate/up against 31.2 in the lab, bit-identical; it lost in the engine while the shared slice ran beside it on the side stream |
 | dense matmuls | ~42 | ~37 | within ~1.5 us of bytes / 690 GB/s plus a ~2 us launch ramp each (mm1_test) |
-| attention chain (kv store, q rope, attention, merge, FP8 round) | ~34 + 5 nodes | ~10 | five serial nodes for one token's 8 heads |
+| attention chain (kv store + q rope, attention + merge + FP8 round) | ~25 + 2 nodes | ~10 | two nodes since f875418; the in-kernel merge costs what vmerge2 did |
 | exchanges (LL), attention + MoE | ~14 | ~9 | the last GPU to arrive spends 8.2 / 6 us; GPUs arrive within 2-3 us of each other |
 
 One trace showed five GPUs 7-13% slower on every kernel, which no other trace and no isolated probe reproduced (all

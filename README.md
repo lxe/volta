@@ -59,10 +59,10 @@ One session (`volta spec`, greedy, steady-state step):
 
 | Mode | Step | Per session | With the draft, on code |
 |---|---|---|---|
-| default (attention on the session's GPU) | 17.9 ms | 56 tok/s | 200 tok/s |
-| `--head-parallel` (every GPU, 8 heads each) | 11.3 ms | 89 tok/s | 267 tok/s |
+| default (attention on the session's GPU) | 17.8 ms | 56 tok/s | 200 tok/s |
+| `--head-parallel` (every GPU, 8 heads each) | 10.7 ms | 94 tok/s | 277 tok/s |
 
-With `--head-parallel`, 4 sessions with the draft on code get 110 tok/s each.
+With `--head-parallel`, 4 sessions with the draft on code get 114 tok/s each.
 
 Through the server (`volta-server`, sampling at temperature 1 with drafts, 300-token answers):
 
@@ -101,7 +101,7 @@ That serves 32 sessions of 8,192 tokens. For agents with long conversations, tra
 `--slots 2 --ctx 131072` serves 16 sessions of 128K, and `--slots 1 --ctx 262144` 8 sessions of 256K.
 
 For the fastest single sessions, add `--head-parallel`: every GPU runs every session with 8 of the 64 attention
-heads, so the machine holds `--slots` sessions in total instead of `--slots` per GPU, each at up to ~89 tok/s
+heads, so the machine holds `--slots` sessions in total instead of `--slots` per GPU, each at up to ~94 tok/s
 without the draft. Every GPU keeps a copy of each session's KV cache, so `--slots` and `--ctx` share memory as
 they do without the flag.
 
@@ -299,6 +299,15 @@ attention, and two Engram lookups. Every step runs all sessions' tokens together
 | `VOLTA_PROF` | prints where each step's time went |
 | `VOLTA_OVERLAP=0`, `VOLTA_ATTN=tile5`, `VOLTA_SPARK_CB2=0` | one stream, CUDA-core attention, cb3 draft experts |
 | `VOLTA_KV=bf16` | store the compressed KV cache in bf16 instead of FP4 (3.5x larger) |
+
+## Next
+
+- A 256K-context run with 8 head-parallel sessions and the most drafts per step.
+- Volta Scout's expert kernel (vlut2: gate/up 31 -> 19 us at one token in the lab, same bits) with the shared-expert
+  slice moved beside the router (`VOLTA_SHARED_EARLY=1`), so the expert pass has the GPU to itself.
+- The routing chain folded into the router's last block (built in the lab, not yet measured).
+- The MoE exchange and the down projection, the remaining per-layer costs above their floors (DESIGN.md).
+- A router process in front of the server, so sampling settings change without a restart.
 
 ## Repo
 
