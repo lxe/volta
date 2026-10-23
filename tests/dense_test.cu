@@ -27,8 +27,8 @@ int main() {
       if (KC > s.k) continue;
       dim3 g((s.n + 256 * R - 1) / (256 * R), s.parts, (s.k + KC - 1) / KC);
       size_t sm = 8 * (KC + 8) * 2;
-      auto go = [&] { if (R == 4) vmoe_b4_n1<<<g, 256, sm>>>(W, Sc, wk, nullptr, nullptr, nullptr, X, Y, s.n, s.k, KC, s.n, nullptr, nullptr, 0, 0, 0, s.k, nullptr);
-                      else vmoe_b4_n1_r1<<<g, 256, sm>>>(W, Sc, wk, nullptr, nullptr, nullptr, X, Y, s.n, s.k, KC, s.n, nullptr, nullptr, 0, 0, 0, s.k, nullptr); };
+      auto go = [&] { if (R == 4) vmoe_b4_n1<<<g, 256, sm>>>(W, Sc, wk, nullptr, nullptr, nullptr, X, Y, s.n, s.k, KC, s.n, nullptr, nullptr, 0, 0, 0, s.k, nullptr, 0);
+                      else vmoe_b4_n1_r1<<<g, 256, sm>>>(W, Sc, wk, nullptr, nullptr, nullptr, X, Y, s.n, s.k, KC, s.n, nullptr, nullptr, 0, 0, 0, s.k, nullptr, 0); };
       go(); CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
       cudaEventRecord(a); for (int i = 0; i < 50; i++) go(); cudaEventRecord(b); cudaEventSynchronize(b);
       float ms; cudaEventElapsedTime(&ms, a, b); double us = ms * 1000 / 50;

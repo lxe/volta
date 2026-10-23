@@ -35,12 +35,12 @@ static Mat randmat(int bits, int N, int K, unsigned seed) {
 }
 
 template <int BITS, int NT> void launch(dim3 g, size_t sm, const uint4* W, const half* S, const VWork* wk, const int* ir, const int* orr, const float* tw, const half* X, float* Y, int N, int K, int KC) {
-  if (BITS == 2 && NT == 1) vmoe_b2_n1<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr);
-  if (BITS == 2 && NT == 2) vmoe_b2_n2<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr);
-  if (BITS == 2 && NT == 4) vmoe_b2_n4<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr);
-  if (BITS == 4 && NT == 1) vmoe_b4_n1<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr);
-  if (BITS == 4 && NT == 2) vmoe_b4_n2<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr);
-  if (BITS == 4 && NT == 4) vmoe_b4_n4<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr);
+  if (BITS == 2 && NT == 1) vmoe_b2_n1<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr, 0);
+  if (BITS == 2 && NT == 2) vmoe_b2_n2<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr, 0);
+  if (BITS == 2 && NT == 4) vmoe_b2_n4<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr, 0);
+  if (BITS == 4 && NT == 1) vmoe_b4_n1<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr, 0);
+  if (BITS == 4 && NT == 2) vmoe_b4_n2<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr, 0);
+  if (BITS == 4 && NT == 4) vmoe_b4_n4<<<g, 256, sm>>>(W, S, wk, ir, orr, tw, X, Y, N, K, KC, N, nullptr, nullptr, 0, 0, 0, K, nullptr, 0);
 }
 static int rows_per_block(int NT) { int R = NT == 1 ? 4 : NT == 2 ? 2 : 1; return 8 * 32 * R; }
 

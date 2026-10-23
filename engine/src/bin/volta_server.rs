@@ -29,9 +29,13 @@ struct Cli {
     model_name: String,
     #[arg(long, default_value_t = 8)]
     gpus: usize,
-    /// concurrent sessions per GPU
+    /// concurrent sessions per GPU (with --head-parallel: in total)
     #[arg(long, default_value_t = 4)]
     slots: usize,
+    /// head-parallel: every GPU runs every session with 8 of the 64 attention heads, for the fastest single
+    /// sessions; holds --slots sessions in total instead of --slots per GPU
+    #[arg(long)]
+    head_parallel: bool,
     /// context window per session (prompt + generated tokens)
     #[arg(long, default_value_t = 8192)]
     ctx: usize,
@@ -82,8 +86,9 @@ async fn main() -> Result<()> {
         unsafe { std::env::set_var("VOLTA_SPARK", &cli.model) };
     }
     let model = cli.model.clone();
-    let tel = Arc::new(Telemetry::new(cli.gpus, cli.slots, cli.ctx));
-    let args = dsx::server::volta::VoltaArgs { gpus: cli.gpus, slots: cli.slots, ctx: cli.ctx, chunk: cli.chunk, spec_k: cli.spec_k, theta: cli.theta, tel: Some(tel.clone()) };
+    let capacity = if cli.head_parallel { cli.slots } else { cli.gpus * cli.slots };
+    let tel = Arc::new(Telemetry::new(cli.gpus, capacity, cli.ctx, cli.head_parallel));
+    let args = dsx::server::volta::VoltaArgs { gpus: cli.gpus, slots: cli.slots, heads: cli.head_parallel, ctx: cli.ctx, chunk: cli.chunk, spec_k: cli.spec_k, theta: cli.theta, tel: Some(tel.clone()) };
     let engine = EngineHandle::spawn_batched(move || {
         let m: &'static dsx::model::Model = Box::leak(Box::new(dsx::model::Model::load_hf(&model)?));
         dsx::server::volta::volta_engine(m, args)
@@ -109,7 +114,7 @@ async fn main() -> Result<()> {
         tokio::spawn(async move { axum::serve(al, admin).await });
     }
     let listener = tokio::net::TcpListener::bind((cli.host.as_str(), cli.port)).await?;
-    tracing::info!("listening on http://{} (volta, {} GPUs x {} sessions)", listener.local_addr()?, cli.gpus, cli.slots);
+    tracing::info!("listening on http://{} (volta, {} GPUs, {} sessions{})", listener.local_addr()?, cli.gpus, capacity, if cli.head_parallel { ", head-parallel" } else { "" });
     dsx::server::serve(listener, st).await?;
     Ok(())
 }

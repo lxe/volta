@@ -52,8 +52,11 @@ struct State {
 pub struct Telemetry {
     t0: Instant,
     pub gpus: usize,
-    pub slots: usize,
+    /// sessions the engine holds at once
+    pub capacity: usize,
     pub ctx: usize,
+    /// head-parallel: every GPU runs every session
+    pub heads: bool,
     s: Mutex<State>,
 }
 
@@ -70,6 +73,7 @@ pub struct Snapshot {
     pub gpus: usize,
     pub capacity: usize,
     pub ctx: usize,
+    pub heads: bool,
     pub active: usize,
     pub prefilling: usize,
     pub queued: usize,
@@ -93,8 +97,8 @@ pub struct Snapshot {
 }
 
 impl Telemetry {
-    pub fn new(gpus: usize, slots: usize, ctx: usize) -> Self {
-        Self { t0: Instant::now(), gpus, slots, ctx, s: Mutex::new(State::default()) }
+    pub fn new(gpus: usize, capacity: usize, ctx: usize, heads: bool) -> Self {
+        Self { t0: Instant::now(), gpus, capacity, ctx, heads, s: Mutex::new(State::default()) }
     }
 
     fn now(&self) -> f64 {
@@ -166,8 +170,9 @@ impl Telemetry {
         Snapshot {
             uptime_s: t,
             gpus: self.gpus,
-            capacity: self.gpus * self.slots,
+            capacity: self.capacity,
             ctx: self.ctx,
+            heads: self.heads,
             active: s.sessions.len(),
             prefilling: s.sessions.iter().filter(|x| x.state == "prefill").count(),
             queued: s.queued,

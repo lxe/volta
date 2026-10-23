@@ -68,6 +68,9 @@ pub struct Opts {
     /// session slots per GPU
     pub slots: usize,
     pub max_ctx: usize,
+    /// head-parallel: every GPU runs every session, with 8 of the 64 attention heads (one output group) each and a
+    /// copy of the KV cache; the engine looks like one GPU of `slots` sessions (Engine::gpus() = 1)
+    pub heads: bool,
 }
 
 const KERNELS: &[&str] = &[
@@ -77,7 +80,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vsum_z", "vsum_parts_f", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -845,6 +848,20 @@ fn upload_v4_f32(g: &Gpu, rows: usize, k: usize, x: &[f32], act_fp8: bool) -> Re
 }
 
 /// vmoe-able shape: rows a multiple of 32 x 4 (NT 1 uses 4 row groups per warp) and k a multiple of 32
+/// rows r0 .. r0 + n and columns c0 .. c0 + k of `m` in the vmoe 4-bit layout: the same codes and scales as those
+/// entries get in the whole matrix (16-column groups), for a head-parallel GPU's slice
+fn upload_v4_sub(g: &Gpu, m: &Mat, r0: usize, n: usize, c0: usize, k: usize) -> Result<VMat> {
+    use rayon::prelude::*;
+    ensure!(r0 + n <= m.rows && c0 + k <= m.cols && c0 % 32 == 0 && k % 32 == 0 && n % 32 == 0, "slice of a {}x{} matrix", m.rows, m.cols);
+    let mut x = vec![0f32; n * k];
+    x.par_chunks_mut(k).enumerate().for_each(|(r, xr)| {
+        let mut row = vec![0f32; m.cols];
+        m.dequant(r0 + r, &mut row);
+        xr.copy_from_slice(&row[c0..c0 + k]);
+    });
+    upload_v4_f32(g, n, k, &x, m.act_fp8)
+}
+
 fn v4_ok(m: &Mat) -> bool {
     m.rows % 128 == 0 && m.cols % 32 == 0
 }
@@ -964,6 +981,9 @@ struct Work {
     srcl: Buf,
     srcoff: Buf,  // first exchange row of each source GPU (src * TMAX)
     router: Buf,
+    /// head-parallel: the router's per-chunk sums, and the fixed-order vmm's per-chunk products (vmm_z)
+    rpart: Buf,
+    zpart: Buf,
     sel: Buf,
     wts: Buf,
     topk_scratch: Buf,
@@ -1062,6 +1082,8 @@ struct Shard<'m> {
     graphs: HashMap<(usize, usize), Option<crate::gpu::GraphExec>>,
     /// a graph failed to instantiate (out of memory): capture no more
     graph_full: bool,
+    /// head-parallel (Opts::heads)
+    hp: bool,
 }
 
 /// device addresses of one GPU's exchange buffers (written by every peer)
@@ -1117,6 +1139,12 @@ impl<'m> Shard<'m> {
         let split_sh = |li: usize| shared_tp && !c.expert_rot[li];
         let upo = |w: &Option<Mat>| -> Result<Option<DMat>> { w.as_ref().map(|w| if w.act_fp8 || w.ty == GType::Fp8B32 { f32dm(w) } else { up(w) }).transpose() };
         let upv = |v: &Option<Vec<f32>>| -> Result<Option<Buf>> { v.as_ref().map(|v| f32buf(&g, v)).transpose() };
+        // head-parallel: this GPU's 8 heads are output group gi: its rows of q_b, its group of o_a, its columns of o_b
+        let hp = o.heads;
+        if hp {
+            ensure!(v4 && c.n_heads % o.ngpu == 0 && c.o_groups == o.ngpu, "head-parallel needs {} heads in {} output groups, one per GPU", c.n_heads, o.ngpu);
+        }
+        let hrows = c.n_heads / o.ngpu * c.head_dim;
         let mut layers = vec![];
         let mut cap = vec![];
         for l in &m.layers {
@@ -1128,11 +1156,17 @@ impl<'m> Shard<'m> {
                 qkv_a: if fuse_qkv(l) { Some(upload_v4_cat(&g, &[&l.q_a, &l.kv])?) } else { None },
                 q_a: if fuse_qkv(l) { None } else { Some(lin(&l.q_a)?) },
                 q_a_norm: f32buf(&g, &l.q_a_norm)?,
-                q_b: lin(&l.q_b)?,
+                q_b: if hp { Lin::V(upload_v4_sub(&g, &l.q_b, gi * hrows, hrows, 0, l.q_b.cols)?) } else { lin(&l.q_b)? },
                 kv: if fuse_qkv(l) { None } else { Some(lin(&l.kv)?) },
                 kv_norm: f32buf(&g, &l.kv_norm)?,
-                o_a: if v4 && l.o_a.cols % 32 == 0 { Lin::V(upload_v4(&g, &l.o_a, c.o_groups)?) } else { Lin::D(up(&l.o_a)?) },
-                o_b: lin(&l.o_b)?,
+                o_a: if hp {
+                    Lin::V(upload_v4_sub(&g, &l.o_a, gi * c.o_lora, c.o_lora, 0, l.o_a.cols)?)
+                } else if v4 && l.o_a.cols % 32 == 0 {
+                    Lin::V(upload_v4(&g, &l.o_a, c.o_groups)?)
+                } else {
+                    Lin::D(up(&l.o_a)?)
+                },
+                o_b: if hp { Lin::V(upload_v4_sub(&g, &l.o_b, 0, l.o_b.rows, gi * c.o_lora, c.o_lora)?) } else { lin(&l.o_b)? },
                 sinks: f32buf(&g, &l.sinks)?,
                 attn_norm: f32buf(&g, &l.attn_norm)?,
                 ffn_norm: f32buf(&g, &l.ffn_norm)?,
@@ -1228,13 +1262,20 @@ impl<'m> Shard<'m> {
             srcwork: g.upload(&(0..o.ngpu as u32).flat_map(|i| [0u32, 0, 0, i]).collect::<Vec<u32>>())?,
             srcoff: g.upload(&(0..o.ngpu as i32).map(|i| i * TMAX as i32).collect::<Vec<i32>>())?,
             router: fz(t * c.n_experts)?,
+            rpart: fz(if o.heads { (d / 256) * t * c.n_experts } else { 1 })?,
+            zpart: fz(if o.heads {
+                m.layers.iter().filter_map(|l| l.engram_kv.as_ref()).map(|w| w.rows * (w.cols / even_kc(w.cols, 1, 0)) * t).max().unwrap_or(1)
+            } else {
+                1
+            })?,
             sel: g.alloc_zeroed(t * c.top_k * 4)?,
             wts: fz(t * c.top_k)?,
             topk_scratch: g.alloc_zeroed(
                 crate::topk::TopK::topk_scratch(o.max_ctx, c.idx_topk, t).max(crate::topk::TopK::blocks_scratch(o.max_ctx, c.cand_block, c.cand_blocks, t)).max(64),
             )?,
             eng: fz(c.engram_layers.len() * t * (c.engram_ngram - 1) * c.engram_heads * c.engram_dim)?,
-            xg: g.alloc_zeroed(tg * xrow_bytes(c))?,
+            // head-parallel: also the attention all-gather's f32 blocks (TMAX rows per GPU)
+            xg: g.alloc_zeroed((tg * xrow_bytes(c)).max(if o.heads { o.ngpu * TMAX * d * 4 } else { 0 }))?,
             selg: g.alloc_zeroed(4)?,
             wtg: fz(1)?,
             x16: g.alloc_zeroed(t * d * 2)?,
@@ -1313,6 +1354,7 @@ impl<'m> Shard<'m> {
             eng_ids: vec![],
             graphs: HashMap::new(),
             graph_full: false,
+            hp: o.heads,
             g,
         })
     }
@@ -1341,9 +1383,22 @@ impl<'m> Shard<'m> {
         }
     }
 
+    /// mm whose bits match on every GPU (head-parallel: anything that feeds the replicated residual stream)
+    fn mm_det(&self, w: &Lin, x: u64, y: u64, t: usize) -> Result<()> {
+        match w {
+            Lin::V(v) if self.hp => self.vmm_z(v, x, v.cols, y, t, true),
+            _ => self.mm(w, x, y, t),
+        }
+    }
+
     /// vmoe 4-bit, every partition in one launch: x [t][parts * cols] f32 (row stride ldx), y [t][rows] f32 where
     /// partition p of token t reads x[t][p*cols..] and writes y[t][p*prows..]
     fn vmm(&self, v: &VMat, x: u64, ldx: usize, y: u64, t: usize) -> Result<()> {
+        self.vmm_z(v, x, ldx, y, t, false)
+    }
+
+    /// vmm; det: the same sums in a fixed order (K chunks into zpart, then vsum_z), so every GPU gets identical bits
+    fn vmm_z(&self, v: &VMat, x: u64, ldx: usize, y_out: u64, t: usize, det: bool) -> Result<()> {
         ensure!(t >= 1 && t <= TMAX, "vmm over {t} tokens");
         let (n, k, parts) = (v.rows / v.parts, v.cols, v.parts);
         let w = &self.w;
@@ -1351,12 +1406,20 @@ impl<'m> Shard<'m> {
         ensure!(t * kx * 2 <= w.xh.bytes, "vmm: {t} x {kx} activations overflow the fp16 scratch");
         // FP8 inputs: the reference rounds them to FP8 (block 32) first
         let ny = n * parts;
-        self.g.launch(self.k["vprep"], ((kx.max(ny) as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(w.xh.ptr), Arg::I(kx as i32), Arg::I(v.act_fp8 as i32), Arg::P(y), Arg::I(ny as i32)])?;
+        ensure!(!det || parts == 1, "a fixed-order vmm over one partition");
+        let y = if det { w.zpart.ptr } else { y_out };
+        self.g.launch(self.k["vprep"], ((kx.max(ny) as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(w.xh.ptr), Arg::I(kx as i32), Arg::I(v.act_fp8 as i32), Arg::P(y_out), Arg::I(ny as i32)])?;
         let nb = if t <= 8 { 1usize } else if t <= 16 { 2 } else { 4 };
         // one row group per warp, and the longest K chunk that still gives >= 3 blocks per SM (tests/dense_test.cu:
         // 145 us per layer at 8 tokens, against 250 with four row groups per warp and ~2 blocks per SM)
         let rtiles = n.div_ceil(8 * 32);
-        let kc = even_kc(k, rtiles * parts, 3 * self.g.sms);
+        // fixed order: the longest K chunks (fewest partial copies)
+        let kc = if det { even_kc(k, 1, 0) } else { even_kc(k, rtiles * parts, 3 * self.g.sms) };
+        let zst = if det { (t * n) as u64 } else { 0 };
+        if det {
+            ensure!(k.div_ceil(kc) * t * n * 4 <= w.zpart.bytes, "vmm: fixed-order partials overflow zpart");
+            self.g.memset(y, k.div_ceil(kc) * t * n * 4)?;
+        }
         let kern = self.k[match nb { 1 => "vmoe_b4_n1_r1", 2 => "vmoe_b4_n2_r1", _ => "vmoe_b4_n4" }];
         let smem = nb * 8 * (kc + 8) * 2;
         if smem > 48 * 1024 {
@@ -1369,8 +1432,12 @@ impl<'m> Shard<'m> {
             (rtiles as u32, parts as u32, (k as u32).div_ceil(kc as u32)),
             256,
             smem as u32,
-            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(work), Arg::P(rows_in), Arg::P(rows_out), Arg::P(0), Arg::P(w.xh.ptr), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(n as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(k as i32), Arg::P(0)],
-        )
+            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(work), Arg::P(rows_in), Arg::P(rows_out), Arg::P(0), Arg::P(w.xh.ptr), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(n as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(k as i32), Arg::P(0), Arg::P(zst)],
+        )?;
+        if zst > 0 {
+            self.g.launch(self.k["vsum_z"], (((t * n) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.zpart.ptr), Arg::P(y_out), Arg::I(k.div_ceil(kc) as i32), Arg::I((t * n) as i32)])?;
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1652,7 +1719,7 @@ impl<'m> Shard<'m> {
         // rows were gathered for every engram layer at step start (gather_engram)
         let src = self.w.eng.ptr + (eidx * TMAX * per * hd * 4) as u64;
         let l = &self.layers[li];
-        self.mm(l.engram_kv.as_ref().unwrap(), src, self.w.t1.ptr, t)?;
+        self.mm_det(l.engram_kv.as_ref().unwrap(), src, self.w.t1.ptr, t)?;
         self.g.launch(self.k["engram_gate_t"], (c.hc as u32, t as u32, 1), 1024, 0, &[Arg::P(self.w.h.ptr), Arg::P(self.w.t1.ptr), Arg::P(l.engram_qk.as_ref().unwrap().ptr), Arg::I(c.dim as i32), Arg::F(c.eps)])
     }
 
@@ -1661,7 +1728,8 @@ impl<'m> Shard<'m> {
         let m = self.m;
         let c = &m.cfg;
         let t = toks.len();
-        let (hd, nh, win) = (c.head_dim, c.n_heads, c.window);
+        // head-parallel: this GPU's heads only (its q_b rows, o_a group and o_b columns)
+        let (hd, nh, win) = (c.head_dim, if self.hp { c.n_heads / self.ngpu } else { c.n_heads }, c.window);
         let ratio = m.layers[li].ratio;
         let compressed = ratio > 0;
         let x = std::mem::take(&mut self.lt[li]);
@@ -1720,13 +1788,14 @@ impl<'m> Shard<'m> {
         let comp_ptr = if kcomp > 0 { self.layers[x.comp_src].comp_cache.as_ref().unwrap().ptr } else { 0 };
         let scale = 1.0 / (hd as f32).sqrt();
         // up to 160 rows per block (32-row sub-tiles, online softmax), one partial per block for the merge
-        let s = self.attn_tiles(t, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale)?;
+        let s = self.attn_tiles(t, nh, l.window.ptr, w.win_idx.ptr, win, comp_ptr, w.comp_idx.ptr, kcomp, scale)?;
         self.g.launch(self.k["sparse_attn_merge"], (t as u32, nh as u32, 1), 256, 0, &[Arg::P(w.attn_part.ptr), Arg::I(s as i32), Arg::P(l.sinks.ptr), Arg::P(w.o.ptr), Arg::I(nh as i32), Arg::I(hd as i32)])?;
         self.rope_rows(w.o.ptr, nh, hd, compressed, x.pos, t, true)?;
         self.g.launch(self.k["fake_fp8"], (((t * nh * hd) as u32 / 32).div_ceil(8), 1, 1), 256, 0, &[Arg::P(w.o.ptr), Arg::I((t * nh * hd) as i32)])?;
         // grouped low-rank output projection: group gi of token i reads o[i][gi*gsz..]
-        let gsz = nh * hd / c.o_groups;
-        let rows = c.o_groups * c.o_lora;
+        let groups = if self.hp { 1 } else { c.o_groups };
+        let gsz = nh * hd / groups;
+        let rows = groups * c.o_lora;
         match &l.o_a {
             Lin::V(v) => self.vmm(v, w.o.ptr, nh * hd, w.r.ptr, t)?,
             Lin::D(oa) if oa.q6.is_some() && oa.ty != GType::Q5K && c.o_lora % 16 == 0 => {
@@ -1747,8 +1816,31 @@ impl<'m> Shard<'m> {
                 }
             }
         }
-        self.g.launch(self.k["round_bf16"], (((t * c.o_groups * c.o_lora) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.r.ptr), Arg::I((t * c.o_groups * c.o_lora) as i32)])?;
-        self.mm(&l.o_b, w.r.ptr, w.a.ptr, t)
+        self.g.launch(self.k["round_bf16"], (((t * rows) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.r.ptr), Arg::I((t * rows) as i32)])?;
+        if self.hp {
+            // our heads' share of o_b goes straight into our block of the exchange
+            self.mm(&l.o_b, w.r.ptr, self.hp_block(), t)?;
+            self.hp_reduce(li, t)
+        } else {
+            self.mm(&l.o_b, w.r.ptr, w.a.ptr, t)
+        }
+    }
+
+    /// head-parallel: f32 rows of TMAX * dim per GPU in the exchange buffer (the attention all-reduce)
+    fn hp_slot(&self) -> usize {
+        TMAX * self.m.cfg.dim * 4
+    }
+
+    fn hp_block(&self) -> u64 {
+        self.w.xg.ptr + (self.gi * self.hp_slot()) as u64
+    }
+
+    /// head-parallel: a = the sum of every GPU's attention output (its heads' share of o_b, left in its exchange
+    /// block), the same bits on every GPU: the cube all-gather of the f32 blocks, then a fixed-order sum
+    fn hp_reduce(&self, li: usize, t: usize) -> Result<()> {
+        let (d, w, slot) = (self.m.cfg.dim, &self.w, self.hp_slot());
+        self.g.launch(self.k["vx_allgather"], (VX_BLOCKS as u32, 1, 1), 256, 0, &[Arg::P(w.vx_pa.ptr), Arg::I(self.gi as i32), Arg::P(slot as u64), Arg::P(w.vx_bytes.ptr), Arg::P(w.seqd.ptr), Arg::I(li as i32)])?;
+        self.g.launch(self.k["vsum_parts_f"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.a.ptr), Arg::P(w.xg.ptr), Arg::I(self.ngpu as i32), Arg::I((slot / 4) as i32), Arg::I((t * d) as i32)])
     }
 
     fn indexer(&mut self, li: usize, t: usize, x: &LTab, st: &mut StepState) -> Result<()> {
@@ -1809,8 +1901,14 @@ impl<'m> Shard<'m> {
         let l = &self.layers[li];
         let (ne, kk) = (l.n_exp, l.top_k);
         ensure!(ne % 32 == 0 && d % 256 == 0, "router shape");
-        self.g.memset(w.router.ptr, t * ne * 4)?;
-        self.g.launch(self.k["vrouter"], ((ne / 32) as u32, (d / 256) as u32, 1), 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(w.router.ptr), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32)])?;
+        if self.hp {
+            // every GPU must pick the same experts: chunk sums stored, then added in order
+            self.g.launch(self.k["vrouter"], ((ne / 32) as u32, (d / 256) as u32, 1), 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(w.rpart.ptr), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I((t * ne) as i32)])?;
+            self.g.launch(self.k["vsum_z"], (((t * ne) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.rpart.ptr), Arg::P(w.router.ptr), Arg::I((d / 256) as i32), Arg::I((t * ne) as i32)])?;
+        } else {
+            self.g.memset(w.router.ptr, t * ne * 4)?;
+            self.g.launch(self.k["vrouter"], ((ne / 32) as u32, (d / 256) as u32, 1), 256, 0, &[Arg::P(l.gate_w.ptr), Arg::P(w.x.ptr), Arg::P(w.router.ptr), Arg::I(ne as i32), Arg::I(d as i32), Arg::I(t as i32), Arg::I(0)])?;
+        }
         self.g.launch(self.k["router_topk"], (t as u32, 1, 1), 32, 0, &[Arg::P(w.router.ptr), Arg::P(l.gate_bias.ptr), Arg::P(w.sel.ptr), Arg::P(w.wts.ptr), Arg::I(ne as i32), Arg::I(kk as i32), Arg::F(c.route_scale), Arg::P(0)])?;
         if let (Some(sg), Some(su), Some(sd)) = (&l.sh_gate, &l.sh_up, &l.sh_down) {
             // shared expert -> a (local)
@@ -1824,7 +1922,8 @@ impl<'m> Shard<'m> {
             self.g.memset(w.a.ptr, t * d * 4)?;
         }
         // fp16 x (rotated for rotated layers) + picks + weights into our rows of the exchange, then one copy per peer
-        let me = self.gi;
+        // (head-parallel: every GPU has every token, as source 0's rows, and nothing is gathered)
+        let me = if self.hp { 0 } else { self.gi };
         let rb = xrow_bytes(c);
         let xo = (me * TMAX * rb) as u64;
         self.g.launch(self.k["vto_f16"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.x.ptr), Arg::P(w.x16.ptr), Arg::I((t * d) as i32)])?;
@@ -1837,6 +1936,9 @@ impl<'m> Shard<'m> {
 
     /// cube all-gather of every GPU's exchange rows (vx_allgather)
     fn vx_gather(&self, li: usize) -> Result<()> {
+        if self.hp {
+            return Ok(());
+        }
         let rb = xrow_bytes(&self.m.cfg);
         self.g.launch(self.k["vx_allgather"], (VX_BLOCKS as u32, 1, 1), 256, 0, &[Arg::P(self.w.vx_pa.ptr), Arg::I(self.gi as i32), Arg::P((TMAX * rb) as u64), Arg::P(self.w.vx_bytes.ptr), Arg::P(self.w.seqd.ptr), Arg::I(li as i32)])
     }
@@ -1847,7 +1949,9 @@ impl<'m> Shard<'m> {
         let w = &self.w;
         self.src_rows(w.ypart.ptr, w.ypart16.ptr, d, false)?;
         let slot = (TMAX * d * 2) as u64;
-        self.g.launch(self.k["vx_alltoall"], (VX_BLOCKS as u32, 1, 1), 256, 0, &[Arg::P(w.vx_pb.ptr), Arg::I(self.gi as i32), Arg::P(slot), Arg::P(w.ypart16.ptr), Arg::P(slot), Arg::P(w.vx_bytes.ptr + 32), Arg::P(w.seqd.ptr), Arg::I(li as i32)])
+        // head-parallel: every GPU gets our partials of source 0's rows (the all-to-all with one source block)
+        let stride = if self.hp { 0 } else { slot };
+        self.g.launch(self.k["vx_alltoall"], (VX_BLOCKS as u32, 1, 1), 256, 0, &[Arg::P(w.vx_pb.ptr), Arg::I(self.gi as i32), Arg::P(slot), Arg::P(w.ypart16.ptr), Arg::P(stride), Arg::P(w.vx_bytes.ptr + 32), Arg::P(w.seqd.ptr), Arg::I(li as i32)])
     }
 
     /// tell every peer that phase `ph` of the current layer has landed (after this stream's copies)
@@ -1935,6 +2039,22 @@ impl<'m> Shard<'m> {
         Ok(())
     }
 
+    /// the step's exchange sizes: ntok (each source GPU's rows) and vx_bytes (all-gather, then all-to-all bytes per
+    /// GPU). Head-parallel: every GPU has the same t tokens, as source 0's rows; the all-gather moves t f32 rows (the
+    /// attention output) and the all-to-all t fp16 rows (the MoE partials)
+    fn exchange_counts(&self, counts: &[usize]) -> Result<()> {
+        let (d, n) = (self.m.cfg.dim, self.ngpu);
+        let rb = xrow_bytes(&self.m.cfg);
+        let (nt, vb): (Vec<i32>, Vec<i32>) = if self.hp {
+            let t = counts[self.gi];
+            ((0..n).map(|g| if g == 0 { t as i32 } else { 0 }).collect(), [vec![(t * d * 4) as i32; n], vec![(t * d * 2) as i32; n]].concat())
+        } else {
+            (counts.iter().map(|&x| x as i32).collect(), counts.iter().map(|&x| (x * rb) as i32).chain(counts.iter().map(|&x| (x * d * 2) as i32)).collect())
+        };
+        self.g.htod_sync(self.w.ntok.ptr, &nt)?;
+        self.g.htod_sync(self.w.vx_bytes.ptr, &vb)
+    }
+
     /// over the exchange rows that hold tokens (n floats each, by the device counts): y16 = fp16(y), or y = 0
     fn src_rows(&self, y: u64, y16: u64, n: usize, side: bool) -> Result<()> {
         self.lx(side, self.k["vsrc_f16"], ((n as u32).div_ceil(256), self.ngpu as u32, 8), 256, 0, &[Arg::P(y), Arg::P(y16), Arg::I(n as i32), Arg::P(self.w.ntok.ptr), Arg::I(TMAX as i32)])
@@ -1962,7 +2082,7 @@ impl<'m> Shard<'m> {
             ((rtiles * ttiles) as u32, 1, (k as u32).div_ceil(kc as u32)),
             256,
             smem as u32,
-            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(self.w.srcwork.ptr), Arg::P(l + 8), Arg::P(l + 8), Arg::P(0), Arg::P(x), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(ldy as i32), Arg::P(l), Arg::P(l + 4), Arg::I(0), Arg::I(1 << 30), Arg::I(rtiles as i32), Arg::I(ldx as i32), Arg::P(0)],
+            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(self.w.srcwork.ptr), Arg::P(l + 8), Arg::P(l + 8), Arg::P(0), Arg::P(x), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(ldy as i32), Arg::P(l), Arg::P(l + 4), Arg::I(0), Arg::I(1 << 30), Arg::I(rtiles as i32), Arg::I(ldx as i32), Arg::P(0), Arg::P(0)],
         )
     }
 
@@ -1981,7 +2101,7 @@ impl<'m> Shard<'m> {
             ((n as u32).div_ceil(256), (rows / 32) as u32, (k as u32).div_ceil(kc as u32)),
             256,
             smem as u32,
-            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(self.w.tile32.ptr), Arg::P(0), Arg::P(0), Arg::P(0), Arg::P(x), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(ldy as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(ldx as i32), Arg::P(0)],
+            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(self.w.tile32.ptr), Arg::P(0), Arg::P(0), Arg::P(0), Arg::P(x), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(ldy as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(ldx as i32), Arg::P(0), Arg::P(0)],
         )
     }
 
@@ -2029,6 +2149,7 @@ impl<'m> Shard<'m> {
                     }
                     let mut args = vec![Arg::P(ll.wbase), Arg::P(ll.sbase), Arg::P(wptr)];
                     args.extend(common);
+                    args.push(Arg::P(0));
                     self.lx(side, kern, grid, 256, smem as u32, &args)?;
                 }
             }
@@ -2039,9 +2160,9 @@ impl<'m> Shard<'m> {
     /// attention partials over each token's rows (window rows by win_idx, then compressed rows by comp_idx), 160 rows
     /// per split: tensor cores (vattn_mma) unless VOLTA_ATTN=tile5
     #[allow(clippy::too_many_arguments)]
-    fn attn_tiles(&self, t: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32) -> Result<usize> {
+    fn attn_tiles(&self, t: usize, nh: usize, win: u64, win_idx: u64, nw: usize, comp: u64, comp_idx: u64, nk: usize, scale: f32) -> Result<usize> {
         let c = &self.m.cfg;
-        let (hd, nh, w) = (c.head_dim, c.n_heads, &self.w);
+        let (hd, w) = (c.head_dim, &self.w);
         let rows = nw + nk;
         if std::env::var("VOLTA_ATTN").is_ok_and(|v| v == "tile5") {
             ensure!(!kv_fp4() || nk == 0, "VOLTA_ATTN=tile5 reads bf16 KV rows: also set VOLTA_KV=bf16");
@@ -2050,12 +2171,12 @@ impl<'m> Shard<'m> {
             self.g.launch(self.k["vattn_tile5"], (t as u32, (nh / 16) as u32, s as u32), 256, 0, &[Arg::P(w.q.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::F(scale)])?;
             return Ok(s);
         }
-        ensure!(hd == 512 && nh % 16 == 0, "vattn_mma: 512-dim heads in groups of 16");
+        ensure!(hd == 512 && (nh % 16 == 0 || nh == 8), "vattn_mma: 512-dim heads in groups of 16 (or 8)");
         // 32-row sub-tiles per block: 5 (160 rows) while that gives >= 2 blocks per SM, fewer for a few tokens so a
         // single token's rows still spread over the GPU (the partials buffer holds TMAX * ATTN_SPLITS splits)
         let splits = |nsub: usize| rows.div_ceil(32 * nsub);
         let mut nsub = 5;
-        while nsub > 1 && (nh / 16) * t * splits(nsub) < 2 * self.g.sms && t * splits(nsub - 1) <= TMAX * ATTN_SPLITS {
+        while nsub > 1 && nh.div_ceil(16) * t * splits(nsub) < 2 * self.g.sms && t * splits(nsub - 1) <= TMAX * ATTN_SPLITS {
             nsub -= 1;
         }
         let s = splits(nsub);
@@ -2065,7 +2186,7 @@ impl<'m> Shard<'m> {
         // VAM_SMEM in volta.cuh
         let smem = 32 * 520 * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16;
         self.g.set_smem(self.k["vattn_mma"], smem)?;
-        self.g.launch(self.k["vattn_mma"], ((nh / 16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32), Arg::I(nsub as i32)])?;
+        self.g.launch(self.k["vattn_mma"], (nh.div_ceil(16) as u32, t as u32, s as u32), 256, smem as u32, &[Arg::P(w.q16.ptr), Arg::P(win), Arg::P(win_idx), Arg::I(nw as i32), Arg::P(comp), Arg::P(comp_idx), Arg::I(nk as i32), Arg::P(w.attn_part.ptr), Arg::I(nh as i32), Arg::I(hd as i32), Arg::I(kv_fp4() as i32), Arg::I(nsub as i32)])?;
         Ok(s)
     }
 
@@ -2311,8 +2432,8 @@ impl Engine {
     /// One decode step: plan[g] = (slot, token) pairs on GPU g (each slot at most once). Returns logits per GPU,
     /// [tokens][vocab] flattened.
     pub fn step(&self, plan: Vec<Vec<(usize, u32)>>) -> Result<Vec<Vec<f32>>> {
-        ensure!(plan.len() == self.opts.ngpu && plan.iter().all(|p| p.len() <= TMAX), "plan: one list per GPU, <= {TMAX} tokens each");
-        let plan = Arc::new(plan);
+        ensure!(plan.len() == self.gpus() && plan.iter().all(|p| p.len() <= TMAX), "plan: one list per GPU, <= {TMAX} tokens each");
+        let plan = Arc::new(self.spread(plan));
         for t in &self.tx {
             t.send(Cmd::Step(plan.clone()))?;
         }
@@ -2326,13 +2447,31 @@ impl Engine {
             }
             out[gi] = r.with_context(|| format!("GPU{gi} step"))?;
         }
-        Ok(out)
+        Ok(self.first(out))
+    }
+
+    /// GPUs as the caller sees them: 1 when head-parallel (every GPU runs every session)
+    pub fn gpus(&self) -> usize {
+        if self.opts.heads { 1 } else { self.opts.ngpu }
+    }
+
+    /// head-parallel: the caller's single list goes to every GPU
+    fn spread<T: Clone>(&self, v: Vec<T>) -> Vec<T> {
+        if self.opts.heads { vec![v[0].clone(); self.opts.ngpu] } else { v }
+    }
+
+    /// head-parallel: GPU 0's results stand for all of them
+    fn first<T>(&self, mut out: Vec<T>) -> Vec<T> {
+        if self.opts.heads {
+            out.truncate(1);
+        }
+        out
     }
 
     /// one draft step on every GPU; returns each GPU's drafts, `block` per entry of `p.drafts[gpu]`
     pub fn spark(&self, p: SparkPlan) -> Result<Vec<Vec<u32>>> {
-        ensure!(p.obs.len() == self.opts.ngpu && p.drafts.len() == self.opts.ngpu, "spark plan: one list per GPU");
-        let p = Arc::new(p);
+        ensure!(p.obs.len() == self.gpus() && p.drafts.len() == self.gpus(), "spark plan: one list per GPU");
+        let p = Arc::new(SparkPlan { obs: self.spread(p.obs), drafts: self.spread(p.drafts) });
         for t in &self.tx {
             t.send(Cmd::Spark(p.clone()))?;
         }
@@ -2341,12 +2480,13 @@ impl Engine {
             let (gi, r) = self.rx.recv()?;
             out[gi] = r.with_context(|| format!("GPU{gi} draft step"))?.into_iter().map(f32::to_bits).collect();
         }
-        Ok(out)
+        Ok(self.first(out))
     }
 
     /// drop slots' last tokens (rejected drafts): (slot, n) per GPU
     pub fn rewind(&self, v: Vec<Vec<(usize, usize)>>) -> Result<()> {
-        let v = Arc::new(v);
+        ensure!(v.len() == self.gpus(), "rewind: one list per GPU");
+        let v = Arc::new(self.spread(v));
         for t in &self.tx {
             t.send(Cmd::Rewind(v.clone()))?;
         }
@@ -2359,8 +2499,8 @@ impl Engine {
 
     /// a step that returns every token's greedy next id instead of its logits
     pub fn step_greedy(&self, plan: Vec<Vec<(usize, u32)>>) -> Result<Vec<Vec<u32>>> {
-        ensure!(plan.len() == self.opts.ngpu && plan.iter().all(|p| p.len() <= TMAX), "plan: one list per GPU, <= {TMAX} tokens each");
-        let plan = Arc::new(plan);
+        ensure!(plan.len() == self.gpus() && plan.iter().all(|p| p.len() <= TMAX), "plan: one list per GPU, <= {TMAX} tokens each");
+        let plan = Arc::new(self.spread(plan));
         for t in &self.tx {
             t.send(Cmd::StepGreedy(plan.clone()))?;
         }
@@ -2374,7 +2514,7 @@ impl Engine {
             }
             out[gi] = r.with_context(|| format!("GPU{gi} step"))?.into_iter().map(f32::to_bits).collect();
         }
-        Ok(out)
+        Ok(self.first(out))
     }
 
     /// the draft block size, when a draft is loaded
@@ -2383,9 +2523,14 @@ impl Engine {
     }
 
     pub fn reset(&self, gpu: usize, slot: usize) -> Result<()> {
-        self.tx[gpu].send(Cmd::Reset(slot))?;
-        let (gi, r) = self.rx.recv()?;
-        r.with_context(|| format!("GPU{gi} reset"))?;
+        let to: Vec<usize> = if self.opts.heads { (0..self.opts.ngpu).collect() } else { vec![gpu] };
+        for &g in &to {
+            self.tx[g].send(Cmd::Reset(slot))?;
+        }
+        for _ in &to {
+            let (gi, r) = self.rx.recv()?;
+            r.with_context(|| format!("GPU{gi} reset"))?;
+        }
         Ok(())
     }
 }
@@ -2430,11 +2575,7 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
     let counts: Vec<usize> = plan.iter().map(|p| p.len()).collect();
     let t = toks.len();
     sh.g.bind();
-    let nt32: Vec<i32> = counts.iter().map(|&n| n as i32).collect();
-    sh.g.htod_sync(sh.w.ntok.ptr, &nt32)?;
-    let rb = xrow_bytes(c) as i32;
-    let vb: Vec<i32> = counts.iter().map(|&n| n as i32 * rb).chain(counts.iter().map(|&n| (n * c.dim * 2) as i32)).collect();
-    sh.g.htod_sync(sh.w.vx_bytes.ptr, &vb)?;
+    sh.exchange_counts(&counts)?;
     // exchange sequence base for this step (layer li uses base + li); flags start at 0, so base starts at 1
     let base = sh.seq + 1;
     sh.seq += c.n_layers as u32;
@@ -2442,9 +2583,16 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
     // context bucket: power of two >= the longest of this GPU's sessions after this token, at least 64
     let longest = sh.tok_pos(toks).iter().map(|&p| p + 1).max().unwrap_or(1);
     sh.bucket = longest.next_power_of_two().max(64).min(sh.cap[0]);
+    // VOLTA_STEPT: every GPU prints where a step's wall time goes (host setup, the layers, the head and download)
+    let stept = std::env::var_os("VOLTA_STEPT").is_some();
+    let t_begin = std::time::Instant::now();
     if t > 0 {
         sh.begin(toks)?;
     }
+    if stept {
+        sh.g.sync()?;
+    }
+    let t_layers = std::time::Instant::now();
     let prof = sh.gi == 0 && std::env::var_os("VOLTA_PROF").is_some();
     let eager = prof || std::env::var_os("DSX_DUMP").is_some() || std::env::var("VOLTA_GRAPH").is_ok_and(|v| v == "0");
     let key = (t, sh.bucket);
@@ -2484,7 +2632,26 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
     if t == 0 {
         return Ok(vec![]);
     }
-    sh.finish(toks)
+    if stept {
+        sh.g.sync()?;
+    }
+    if sh.hp && std::env::var_os("VOLTA_HP_CHECK").is_some() {
+        // head-parallel debugging: every GPU's residual stream and last layer's picks should be the same bits
+        let h: Vec<u32> = sh.g.download(sh.w.h.ptr, t * c.hc * c.dim)?;
+        let sel: Vec<i32> = sh.g.download(sh.w.sel.ptr, t * c.top_k)?;
+        let fnv = |v: &mut dyn Iterator<Item = u32>| v.fold(0xcbf29ce484222325u64, |a, x| (a ^ x as u64).wrapping_mul(0x100000001b3));
+        eprintln!("GPU{} h {:016x} sel {:016x}", sh.gi, fnv(&mut h.into_iter()), fnv(&mut sel.into_iter().map(|x| x as u32)));
+    }
+    let t_finish = std::time::Instant::now();
+    let r = sh.finish(toks);
+    if stept {
+        let ms = |a: std::time::Instant, b: std::time::Instant| (b - a).as_secs_f64() * 1e3;
+        let end = std::time::Instant::now();
+        static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let t0 = *T0.get_or_init(std::time::Instant::now);
+        eprintln!("GPU{} step at {:.2}: begin {:.2} ms, layers {:.2}, finish {:.2}", sh.gi, ms(t0, t_begin), ms(t_begin, t_layers), ms(t_layers, t_finish), ms(t_finish, end));
+    }
+    r
 }
 
 /// enqueue every layer of the step (captured into a graph unless `prof`)
@@ -2591,7 +2758,7 @@ pub fn expert_selftest(m: &Model, gpu: i32, li: usize, e: usize) -> Result<(f64,
         let kc = if k % 1024 == 0 { 1024 } else { 1152 };
         let kern = g.kernel(if bits == 2 { "vmoe_b2_n1" } else { "vmoe_b4_n1" })?;
         g.launch(kern, ((n as u32).div_ceil(1024), 1, (k as u32).div_ceil(kc as u32)), 256, ((kc + 8) * 16) as u32,
-            &[Arg::P(wb.ptr), Arg::P(sb.ptr), Arg::P(wk.ptr), Arg::P(rows.ptr), Arg::P(rows.ptr), Arg::P(0), Arg::P(x), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(n as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(k as i32), Arg::P(0)])?;
+            &[Arg::P(wb.ptr), Arg::P(sb.ptr), Arg::P(wk.ptr), Arg::P(rows.ptr), Arg::P(rows.ptr), Arg::P(0), Arg::P(x), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(n as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(k as i32), Arg::P(0), Arg::P(0)])?;
         g.sync()
     };
     run(gu.bits, 0, 0, xb.ptr, gub.ptr, 2 * inter, d)?;

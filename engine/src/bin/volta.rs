@@ -9,6 +9,11 @@ use dsx::volta::{Engine, Opts, SparkPlan, TMAX};
 use std::path::PathBuf;
 use std::time::Instant;
 
+/// VOLTA_HEADS=1: run eval / spec / bench head-parallel (every GPU runs every session; one logical GPU)
+fn heads() -> bool {
+    std::env::var("VOLTA_HEADS").is_ok_and(|v| v == "1")
+}
+
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
@@ -131,7 +136,7 @@ fn main() -> Result<()> {
         Cmd::Check { model, engram, ids, gpus, ctx, no_ref } => {
             let m = load(&model, engram.as_deref())?;
             let t0 = Instant::now();
-            let e = Engine::new(m, Opts { ngpu: gpus, slots: 2, max_ctx: ctx })?;
+            let e = Engine::new(m, Opts { ngpu: gpus, slots: 2, max_ctx: ctx, heads: false })?;
             eprintln!("engine up in {:.0} s", t0.elapsed().as_secs_f64());
             // GPU g's slot 0 gets the prompt after g filler tokens, slot 1 the prompt itself (two sessions per GPU)
             let filler = 1000u32;
@@ -200,8 +205,9 @@ fn main() -> Result<()> {
             let tidx: Vec<i32> = rd("teacher_idx.i32")?.chunks(4).map(|b| i32::from_le_bytes(b.try_into().unwrap())).collect();
             let tlp: Vec<f32> = rd("teacher_lp.f32")?.chunks(4).map(|b| f32::from_le_bytes(b.try_into().unwrap())).collect();
             let m = load(&model, engram.as_deref())?;
+            let (pg, gpus) = (gpus, if heads() { 1 } else { gpus });
             let slots = seqs.div_ceil(gpus);
-            let e = Engine::new(m, Opts { ngpu: gpus, slots, max_ctx: len + 64 })?;
+            let e = Engine::new(m, Opts { ngpu: pg, slots, max_ctx: len + 64, heads: heads() })?;
             let (mut nll, mut kl, mut agree, mut cnt) = (0f64, 0f64, 0usize, 0usize);
             let t0 = Instant::now();
             // full eval length (1024) uses the teacher rows as laid out: row = seq * 1023 + pos
@@ -237,13 +243,14 @@ fn main() -> Result<()> {
         }
         Cmd::Spec { model, gpus, sessions, total, steps, prompt, text, k, adaptive } => {
             let m = load(&model, None)?;
+            let (pg, gpus) = (gpus, if heads() { 1 } else { gpus });
             let corpus: Vec<u32> = std::fs::read(&text)?.chunks(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32).collect();
             // sessions per GPU: `sessions` each, or `total` spread round-robin (some GPUs may have none)
             let ns = total.unwrap_or(gpus * sessions);
             let nper: Vec<usize> = (0..gpus).map(|g| ns / gpus + usize::from(g < ns % gpus)).collect();
             let gid = |g: usize, s: usize| s * gpus + g; // global session index
             let smax = *nper.iter().max().unwrap();
-            let e = Engine::new(m, Opts { ngpu: gpus, slots: smax.max(1), max_ctx: prompt + steps * (k + 1) + 64 })?;
+            let e = Engine::new(m, Opts { ngpu: pg, slots: smax.max(1), max_ctx: prompt + steps * (k + 1) + 64, heads: heads() })?;
             let block = e.spark_block().context("VOLTA_SPARK is not set")?;
             anyhow::ensure!(k <= block && smax * (k + 1) <= TMAX, "k {k}: at most the block ({block}), and sessions per GPU * (k + 1) <= {TMAX}");
             // prefill: chunks of TMAX / sessions tokens per session; the draft observes every prompt token
@@ -383,7 +390,8 @@ fn main() -> Result<()> {
             anyhow::ensure!(sessions <= TMAX, "at most {TMAX} sessions per GPU in phase 1");
             let m = load(&model, engram.as_deref())?;
             let t0 = Instant::now();
-            let e = Engine::new(m, Opts { ngpu: gpus, slots: sessions, max_ctx: ctx })?;
+            let (pg, gpus) = (gpus, if heads() { 1 } else { gpus });
+            let e = Engine::new(m, Opts { ngpu: pg, slots: sessions, max_ctx: ctx, heads: heads() })?;
             eprintln!("engine up in {:.0} s", t0.elapsed().as_secs_f64());
             let corpus: Option<Vec<u32>> = text.map(|p| std::fs::read(p).map(|b| b.chunks(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32).collect())).transpose()?;
             let mut toks: Vec<Vec<u32>> = (0..gpus)

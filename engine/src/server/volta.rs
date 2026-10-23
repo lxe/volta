@@ -23,8 +23,10 @@ use std::sync::Arc;
 
 pub struct VoltaArgs {
     pub gpus: usize,
-    /// sessions per GPU
+    /// sessions per GPU (head-parallel: in total)
     pub slots: usize,
+    /// head-parallel (Opts::heads): the engine looks like one GPU
+    pub heads: bool,
     /// context per session (prompt + generated)
     pub ctx: usize,
     /// prompt tokens per session per step while prefilling
@@ -108,10 +110,11 @@ unsafe impl Send for Volta {}
 /// Runs on the server's engine thread: load the model and start the GPUs.
 pub fn volta_engine(m: &'static Model, a: VoltaArgs) -> Result<Box<dyn BatchEngine>> {
     anyhow::ensure!(a.slots >= 1 && a.slots <= TMAX, "slots per GPU: 1..={TMAX}");
-    let e = Engine::new(m, Opts { ngpu: a.gpus, slots: a.slots, max_ctx: a.ctx })?;
+    let e = Engine::new(m, Opts { ngpu: a.gpus, slots: a.slots, max_ctx: a.ctx, heads: a.heads })?;
     let block = e.spark_block().unwrap_or(0);
-    let a = VoltaArgs { spec_k: if block == 0 { 0 } else { a.spec_k.min(block) }, ..a };
-    tracing::info!(gpus = a.gpus, slots = a.slots, ctx = a.ctx, draft = block > 0, spec_k = a.spec_k, "volta engine up");
+    // from here on `gpus` is what the scheduler places sessions on
+    let a = VoltaArgs { spec_k: if block == 0 { 0 } else { a.spec_k.min(block) }, gpus: e.gpus(), ..a };
+    tracing::info!(gpus = a.gpus, slots = a.slots, heads = a.heads, ctx = a.ctx, draft = block > 0, spec_k = a.spec_k, "volta engine up");
     Ok(Box::new(Volta { e, a, block }))
 }
 

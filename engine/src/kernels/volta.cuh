@@ -43,8 +43,11 @@ template <int BITS, int NT, int R>
 __device__ __forceinline__ void vmoe_mm(const uint4 *__restrict__ W, const half *__restrict__ S, const VWork *__restrict__ work,
                                         const int *__restrict__ in_rows, const int *__restrict__ out_rows, const float *__restrict__ tw,
                                         const half *__restrict__ X, float *__restrict__ Y, int N, int K, int KC, int ldy,
-                                        const int *__restrict__ cnt, const int *__restrict__ off, int lo, int hi, int rtiles, int ldx, const int *__restrict__ nwork) {
+                                        const int *__restrict__ cnt, const int *__restrict__ off, int lo, int hi, int rtiles, int ldx, const int *__restrict__ nwork,
+                                        long long zst) {
   constexpr int WPU = 128 / BITS, F = 32 / BITS, WARPS = 8;
+  // zst: K chunk z adds into its own copy of Y at Y + z * zst (each output once: a fixed-order sum after, vsum_z)
+  Y += (size_t)blockIdx.z * zst;
   extern __shared__ __align__(16) unsigned char vsm[];
   half *xs = reinterpret_cast<half *>(vsm);
   const int LDX = KC + 8;
@@ -161,8 +164,8 @@ __device__ __forceinline__ void vmoe_mm(const uint4 *__restrict__ W, const half 
   extern "C" __global__ void __launch_bounds__(256) vmoe_b##BITS##_n##NT(                                                     \
       const uint4 *W, const half *S, const VWork *work, const int *in_rows, const int *out_rows, const float *tw, const half *X, \
       float *Y, int N, int K, int KC, int ldy, const int *cnt, const int *off, int lo, int hi, int rtiles, int ldx,             \
-      const int *nwork) {                                                                                                     \
-    vmoe_mm<BITS, NT, R>(W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork);      \
+      const int *nwork, long long zst) {                                                                                      \
+    vmoe_mm<BITS, NT, R>(W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork, zst); \
   }
 VMOE(2, 1, 4)
 VMOE(2, 2, 2)
@@ -175,8 +178,8 @@ VMOE(4, 4, 1)
   extern "C" __global__ void __launch_bounds__(256) vmoe_b##BITS##_n##NT##_r1(                                                \
       const uint4 *W, const half *S, const VWork *work, const int *in_rows, const int *out_rows, const float *tw, const half *X, \
       float *Y, int N, int K, int KC, int ldy, const int *cnt, const int *off, int lo, int hi, int rtiles, int ldx,             \
-      const int *nwork) {                                                                                                     \
-    vmoe_mm<BITS, NT, 1>(W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork);      \
+      const int *nwork, long long zst) {                                                                                      \
+    vmoe_mm<BITS, NT, 1>(W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork, zst); \
   }
 VMOE1(4, 1)
 VMOE1(4, 2)
@@ -535,6 +538,24 @@ extern "C" __global__ void __launch_bounds__(256) vx_alltoall(const VxPeers *Pp,
   for (int i = 0; i < 4; i++) { int s = q + i; if (s != me) vx_wait(VXF(me, 0, s), seq); }
   vx_wait(VXF(me, 0, tw), seq);
   for (int i = 0; i < 4; i++) { int s = fq + i; if (s != tw) vx_wait(VXF(me, 1, s), seq); }
+}
+
+// a[i] = sum_s parts[s * stride + i] over S sources of f32 partials, in order (the head-parallel attention output)
+extern "C" __global__ void vsum_parts_f(float *a, const float *parts, int S, int stride, int n) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  float v = 0.f;
+  for (int s = 0; s < S; s++) v += parts[(size_t)s * stride + i];
+  a[i] = v;
+}
+
+// y[i] = sum over z of part[z * n + i], in order (the deterministic end of a split-K product); grid (ceil(n / 256))
+extern "C" __global__ void vsum_z(const float *part, float *y, int Z, int n) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  float v = 0.f;
+  for (int z = 0; z < Z; z++) v += part[(size_t)z * n + i];
+  y[i] = v;
 }
 
 // a[t][d] = bf16(a[t][d] + sum_s parts[s][t][d]) over S sources of fp16 partials; grid (ceil(T*d/256))
@@ -1041,7 +1062,8 @@ extern "C" __global__ void vprep(const float *x, int ldx, half *xh, int kx, int 
 
 // router logits y[t][e] += W[e] . x[t] in fp32 over K chunks of 256 (y zeroed first): block = 32 experts (4 per warp)
 // x one chunk, held in registers; the chunk of 32 tokens at a time in shared memory. grid (E / 32, K / 256), block 256
-extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const float *x, float *y, int E, int K, int T) {
+// zst > 0: chunk blockIdx.y stores its sums at y + blockIdx.y * zst instead of adding (summed in order by vsum_z)
+extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const float *x, float *y, int E, int K, int T, int zst) {
   __shared__ __align__(16) float xs[32 * 256];
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, k0 = blockIdx.y * 256;
   // this lane's 8 weights of each of its warp's 4 rows: k0 + lane * 4 + {0..3} and + 128
@@ -1066,7 +1088,11 @@ extern "C" __global__ void __launch_bounds__(256) vrouter(const float *W, const 
       for (int r = 0; r < 4; r++) {
         float s = w[r][0] * a.x + w[r][1] * a.y + w[r][2] * a.z + w[r][3] * a.w + w[r][4] * b.x + w[r][5] * b.y + w[r][6] * b.z + w[r][7] * b.w;
         s = warp_sum(s);
-        if (lane == r) atomicAdd(&y[(size_t)(t0 + t) * E + blockIdx.x * 32 + warp * 4 + r], s);
+        if (lane == r) {
+          const size_t o = (size_t)(t0 + t) * E + blockIdx.x * 32 + warp * 4 + r;
+          if (zst) y[(size_t)blockIdx.y * zst + o] = s;
+          else atomicAdd(&y[o], s);
+        }
       }
     }
   }
@@ -1205,7 +1231,9 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
   const int nrows = W + K;
   if (tid < 16) { Mh[tid] = -1e30f; Lh[tid] = 0.f; }
   // the scores' B fragments: this warp's 8 heads (group w & 1) over its k chunk (w >> 1) of 128 (L1-resident)
-  const half *qh = q16 + ((size_t)t * H + h0 + (w & 1) * 8 + bcol) * hd + (w >> 1) * 128;
+  // H = 8 (head-parallel: a GPU's 8 heads): the second group of 8 is padding, its q reads as zero, its output dropped
+  const bool gq = h0 + (w & 1) * 8 < H;
+  const half *qh = q16 + ((size_t)t * H + h0 + (gq ? (w & 1) * 8 : 0) + bcol) * hd + (w >> 1) * 128;
   // output accumulators: warp w owns dims 64w .. 64w + 63 (two 32-dim fragments) x the two 8-head groups
   float acc[2][2][8];
 #pragma unroll
@@ -1254,7 +1282,7 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
 #pragma unroll
       for (int i = 0; i < 32; i++) {
         const uint2 a = *reinterpret_cast<const uint2 *>(&R[arow * VAM_LD + k0 + 4 * i]);
-        const uint2 b = __ldg(reinterpret_cast<const uint2 *>(qh + 4 * i));
+        const uint2 b = gq ? __ldg(reinterpret_cast<const uint2 *>(qh + 4 * i)) : make_uint2(0, 0);
         v_mma884(s, a.x, a.y, b.x, b.y);
       }
 #pragma unroll
@@ -1305,9 +1333,9 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
       for (int e = 0; e < 8; e++) {
         const int dim = 64 * w + 32 * f + 8 * q4 + (lane & 1) + 2 * ((e >> 1) & 1) + 4 * hh;
         const int h = g * 8 + 2 * ((lane >> 1) & 1) + (e & 1) + 4 * (e >> 2);
-        part[(((size_t)t * S + z) * H + h0 + h) * (hd + 2) + dim] = acc[f][g][e];
+        if (h0 + h < H) part[(((size_t)t * S + z) * H + h0 + h) * (hd + 2) + dim] = acc[f][g][e];
       }
-  if (tid < 16) {
+  if (tid < 16 && h0 + tid < H) {
     float *ph = part + (((size_t)t * S + z) * H + h0 + tid) * (hd + 2);
     ph[hd] = Mh[tid];
     ph[hd + 1] = Lh[tid];

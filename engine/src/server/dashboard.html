@@ -116,7 +116,7 @@ async function tick() {
   try {
     const s = await (await fetch("stats")).json();
     $("err").textContent = "";
-    $("sub").textContent = `${s.gpus} GPUs · ${s.capacity} session slots · ${fmt(s.ctx)}-token context · up ${dur(s.uptime_s)}`;
+    $("sub").textContent = `${s.gpus} GPUs${s.heads ? " head-parallel" : ""} · ${s.capacity} session slots · ${fmt(s.ctx)}-token context · up ${dur(s.uptime_s)}`;
     $("out").innerHTML = `${fmt(s.out_tok_s)} <small>tok/s</small>`;
     $("prompt").innerHTML = `${fmt(s.prompt_tok_s)} <small>tok/s</small>`;
     $("sess").innerHTML = `${s.active} <small>/ ${s.capacity}${s.prefilling ? ` · ${s.prefilling} reading` : ""}${s.queued ? ` · ${s.queued} queued` : ""}</small>`;
