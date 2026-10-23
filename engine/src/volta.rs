@@ -1109,6 +1109,8 @@ struct Shard<'m> {
     spark_ids: Buf,
     /// fork / join events for the side stream
     evs: [crate::gpu::Event; 4],
+    /// fork / join of the hc mixes on the side stream (layers)
+    mevs: [crate::gpu::Event; 4],
     m: &'m Model,
     g: Gpu,
     k: HashMap<&'static str, Kernel>,
@@ -1401,6 +1403,7 @@ impl<'m> Shard<'m> {
             greedy: false,
             spark_ids: g.alloc_zeroed(TMAX * 4)?,
             evs: [g.event()?, g.event()?, g.event()?, g.event()?],
+            mevs: [g.event()?, g.event()?, g.event()?, g.event()?],
             m,
             // VOLTA_HEAD=q6 keeps the head in dsx's 6-bit planes (two GEMV passes per 16 tokens)
             head: if std::env::var("VOLTA_HEAD").is_ok_and(|v| v == "q6") || !v4_ok(&m.head) { Lin::D(up(&m.head)?) } else { Lin::V(upload_v4(&g, &m.head, 1)?) },
@@ -1584,16 +1587,21 @@ impl<'m> Shard<'m> {
     }
 
     fn hc_mixes_rows(&self, fnw: &(Buf, Buf, Buf), h: u64, out: u64, n: usize) -> Result<()> {
+        self.hc_mixes_on(fnw, h, out, n, false)
+    }
+
+    /// hc_mixes_rows on the side stream (side) or the main one
+    fn hc_mixes_on(&self, fnw: &(Buf, Buf, Buf), h: u64, out: u64, n: usize, side: bool) -> Result<()> {
         let c = &self.m.cfg;
         // each fn row is read once for every token, in HC_S chunks; the finish sums the chunks
         let (hcd, p) = (c.hc * c.dim, self.w.hcp.ptr);
         ensure!(hcd % (128 * HC_S) == 0 && hcd / HC_S <= 1024, "hc dots chunking");
         if n <= 8 {
             // the last dots block runs the Sinkhorn too
-            return self.g.launch(self.k["vhc_mix"], (HC_S as u32, 6, 1), 256, 0, &[Arg::P(fnw.0.ptr), Arg::P(h), Arg::P(p), Arg::I(hcd as i32), Arg::I(n as i32), Arg::I(HC_S as i32), Arg::P(out), Arg::F(c.eps), Arg::P(fnw.1.ptr), Arg::P(fnw.2.ptr), Arg::F(c.hc_eps), Arg::I(c.sinkhorn_iters as i32), Arg::P(self.w.tick.ptr)]);
+            return self.lx(side, self.k["vhc_mix"], (HC_S as u32, 6, 1), 256, 0, &[Arg::P(fnw.0.ptr), Arg::P(h), Arg::P(p), Arg::I(hcd as i32), Arg::I(n as i32), Arg::I(HC_S as i32), Arg::P(out), Arg::F(c.eps), Arg::P(fnw.1.ptr), Arg::P(fnw.2.ptr), Arg::F(c.hc_eps), Arg::I(c.sinkhorn_iters as i32), Arg::P(self.w.tick.ptr)]);
         }
-        self.g.launch(self.k["vhc_dots"], (HC_S as u32, 6, 1), 256, 0, &[Arg::P(fnw.0.ptr), Arg::P(h), Arg::P(p), Arg::I(hcd as i32), Arg::I(n as i32), Arg::I(HC_S as i32)])?;
-        self.g.launch(self.k["vhc_finish"], ((n as u32).div_ceil(4), 1, 1), 128, 0, &[Arg::P(p), Arg::P(out), Arg::I(hcd as i32), Arg::I(HC_S as i32), Arg::F(c.eps), Arg::P(fnw.1.ptr), Arg::P(fnw.2.ptr), Arg::F(c.hc_eps), Arg::I(c.sinkhorn_iters as i32), Arg::I(n as i32)])
+        self.lx(side, self.k["vhc_dots"], (HC_S as u32, 6, 1), 256, 0, &[Arg::P(fnw.0.ptr), Arg::P(h), Arg::P(p), Arg::I(hcd as i32), Arg::I(n as i32), Arg::I(HC_S as i32)])?;
+        self.lx(side, self.k["vhc_finish"], ((n as u32).div_ceil(4), 1, 1), 128, 0, &[Arg::P(p), Arg::P(out), Arg::I(hcd as i32), Arg::I(HC_S as i32), Arg::F(c.eps), Arg::P(fnw.1.ptr), Arg::P(fnw.2.ptr), Arg::F(c.hc_eps), Arg::I(c.sinkhorn_iters as i32), Arg::I(n as i32)])
     }
 
     // ------------------------------------------------------------ one step's halves
@@ -2892,6 +2900,8 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
     };
     // the previous layer's end already left this layer's normalized x (no Engram between them)
     let mut x_ready = false;
+    // the hc mixes on the side stream, off the critical path (not with the megakernel, VOLTA_SIDE_MIX=0 off)
+    let side_mix = sh.overlap && !mega() && std::env::var("VOLTA_SIDE_MIX").map_or(true, |v| v != "0");
     for li in 0..c.n_layers {
         if t > 0 {
             if let Some(eidx) = c.engram_layers.iter().position(|&x| x == li) {
@@ -2903,12 +2913,25 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             if !x_ready {
                 hc_step(sh, 0, sh.w.mix_f.ptr, &sh.layers[li].attn_norm, Some(li))?;
             }
+            // the attention's hc mixes read h, which the attention does not write, and only the post step after it
+            // reads them: on the side stream they run alongside the attention (their Sinkhorn is one serial warp)
+            let me = sh.mevs;
+            if side_mix {
+                sh.g.record(me[0], false)?;
+                sh.g.wait(me[0], true)?;
+                let (w, l) = (&sh.w, &sh.layers[li]);
+                sh.hc_mixes_on(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t, true)?;
+                sh.g.record(me[1], true)?;
+            }
             sh.attention(toks, li, &mut st)?;
-            // the attention's mixes are read only by the post step after it, and nothing in between writes h: last,
-            // so in the megakernel the Sinkhorn's one block overlaps the exchange instead of the first matmul
-            sh.g.mega_dep(&[]);
-            let (w, l) = (&sh.w, &sh.layers[li]);
-            sh.hc_mixes_rows(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t)?;
+            if side_mix {
+                sh.g.wait(me[1], false)?;
+            } else {
+                // in the megakernel: last, so the Sinkhorn's one block overlaps the exchange, not the first matmul
+                sh.g.mega_dep(&[]);
+                let (w, l) = (&sh.w, &sh.layers[li]);
+                sh.hc_mixes_rows(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t)?;
+            }
             sh.g.mega_end()?;
             mark(sh, 1)?;
             hc_step(sh, sh.w.a.ptr, sh.w.mix_a.ptr, &sh.layers[li].ffn_norm, None)?;
@@ -2917,8 +2940,16 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
                 let h: Vec<f32> = sh.g.download(w.h.ptr, hc * d)?;
                 crate::model::dump("vgpuA", sh.sess[toks[0].0].pos, li, &h);
             }
+            // the FFN's mixes (read h after the post step; only the step after the MoE reads them): alongside the MoE
             let l = &sh.layers[li];
-            sh.hc_mixes_rows(&l.hc_ffn, w.h.ptr, w.mix_f.ptr, t)?;
+            if side_mix {
+                sh.g.record(me[2], false)?;
+                sh.g.wait(me[2], true)?;
+                sh.hc_mixes_on(&l.hc_ffn, w.h.ptr, w.mix_f.ptr, t, true)?;
+                sh.g.record(me[3], true)?;
+            } else {
+                sh.hc_mixes_rows(&l.hc_ffn, w.h.ptr, w.mix_f.ptr, t)?;
+            }
             sh.moe_dispatch(t, li)?;
             mark(sh, 2)?;
         }
@@ -2930,6 +2961,9 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
         sh.vx_scatter(li, t)?;
         mark(sh, 5)?;
         if t > 0 {
+            if side_mix {
+                sh.g.wait(sh.mevs[3], false)?;
+            }
             sh.moe_combine(t)?;
             x_ready = li + 1 < c.n_layers && !c.engram_layers.contains(&(li + 1));
             if x_ready {
