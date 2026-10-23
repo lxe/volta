@@ -64,13 +64,14 @@ One session (`volta spec`, greedy, steady-state step):
 
 With `--head-parallel`, 4 sessions with the draft on code get 114 tok/s each.
 
-Through the server (`volta-server`, sampling at temperature 1 with drafts, 300-token answers):
+Through the server (`volta-server`, sampling at temperature 1 with drafts, 300-token answers; up to 8 streams with
+`--slots 1 --ctx 131072`, 32 with `--slots 4 --ctx 32768`):
 
 | Concurrent streams | Per stream | Total | First token |
 |---|---|---|---|
-| 1 | 38 tok/s | 38 tok/s | 0.27 s |
-| 8 | 29 tok/s | 169 tok/s | 0.22 s |
-| 32 | 20 tok/s | 500 tok/s | 0.4 s |
+| 1 | 93 tok/s | 84 tok/s | 0.33 s |
+| 8 | 72 tok/s | 343 tok/s | 0.5 s |
+| 32 | 39 tok/s | 967 tok/s | 1.0 s |
 
 Long prompts (`volta spec`, 8 sessions, one per GPU, code, with drafts): with 64K-token prompts, prefill runs at
 2,490 tok/s in total and decoding at 71 tok/s per session; with 128K-token prompts, at 1,430 and 46. The compressed

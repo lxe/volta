@@ -550,6 +550,7 @@ While at least two agents were working:
 | greedy (temperature 0) | 122 / 152 / 458 | 59 ms | 91 tok/s | one agent looped |
 | greedy, `--chunk 64` | 224 / 209 / 459 | 49 ms | 106 tok/s | one agent looped |
 | temperature 0.7, sampling on the GPU (0277b5e) | 141 / 163 / 428 | 59 ms | 85 tok/s | fastest to finish (259 s) |
+| the same, final (d677324) | 136 / 156 / 442 | 53 ms | 92 tok/s | 421 s, more work done (42K tokens out) |
 
 - Sampling on the host was most of the gap to the engine: every pass downloaded every row's 129K logits and the
   CPU softmaxed them per draft. On the GPU (vspec_sample) sampled requests run near greedy speed.
@@ -561,5 +562,25 @@ While at least two agents were working:
 - A 64-token prefill step on its GPU (nsys): dense 4-bit matmuls 30.7 ms (~5 ms of weight reads), routed experts
   ~19 ms, attention 14.9 ms, exchanges 7.3 ms, idle gaps 8.2 ms. A 64-token tile for the dense kernel (one weight
   read instead of two) was slower (636 against 702 tok/s prefill) and was dropped.
-- Decode alone, 4 sessions: 37.1 ms per pass through the server against 31.5 ms in `volta spec`; the difference is
-  the host between the draft step and the main step.
+- Decode alone, 4 sessions: 37.1 ms per pass through the server against 31.5 ms in `volta spec` (4K-token prompts,
+  4 drafts); the loop profile below puts all of it in the step itself, not the host.
+- The server table in the README (1 / 8 / 32 streams, temperature 1): 38 / 29 / 20 tok/s per stream before
+  sampling moved to the GPU, 93 / 72 / 39 after.
+- Where the server's decode pass goes (`VOLTA_LOOP_PROF`, 4 greedy sessions): the draft call 3.2 ms, the main step
+  33.5 ms, the rewind 0.09 ms, the rest of the loop 0.01 ms. Fusing the calls would save under a millisecond.
+- 5 drafts per pass against 4 (8 sampled 1000-token answers, two runs each): 87 / 81 against 78 / 83 tok/s per
+  request, the same within noise; 5 stays the default.
+
+The next prefill fix is the dense kernel at 32-64 tokens (tests/pf_test.cu, DP shapes, per layer):
+
+| Tokens | 8 | 16 | 32 | 64 | weight reads |
+|---|---|---|---|---|---|
+| us per layer | 175 | 233 | 371 | 689 | 134 |
+
+From 32 to 64 tokens the time nearly doubles, so the cost is per 8-token tile, not the weights: each tile runs one
+m8n8k4 per 32 rows x 4 k with its own shared-memory load of x, and the dequantization is shared only across the 4
+tiles of a block. The tensor-core work at 64 tokens is ~150 us per layer and the issue count lower still, so the
+kernel runs at ~4.5x its arithmetic floor for a reason the counts do not show. This box has no performance counters:
+the next step is clock64 probes and ablations in pf_test (no dequant, no mma, no x loads) to find the limiter, then a
+kernel built for 64-token tiles (x fragments held across k, more rows per warp so each x load feeds several mma).
+Worth up to ~22 ms of a 94 ms prefill step, which in DP also shortens every other session's step.
