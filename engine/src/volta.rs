@@ -2139,10 +2139,19 @@ impl<'m> Shard<'m> {
             // this GPU's slice of the shared expert over every exchange row (rows past a GPU's count are unused)
             let sl = sdn.cols;
             self.src_rows(w.shgu.ptr, 0, 2 * sl, ov)?;
-            self.lx(ov, self.k["vsrc_rows"], (1, 1, 1), 32, 0, &[Arg::P(w.ntok.ptr), Arg::I(self.ngpu as i32), Arg::I(TMAX as i32), Arg::P(w.srcl.ptr)])?;
-            self.vrows_src(sgu, w.xg.ptr, rb / 2, w.shgu.ptr, 2 * sl, ov)?;
-            self.lx(ov, self.k["vswiglu"], (((tg * sl) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.shgu.ptr), Arg::P(0), Arg::P(w.shh.ptr), Arg::I(tg as i32), Arg::I(sl as i32), Arg::F(c.swiglu_limit)])?;
-            self.vrows_src(sdn, w.shh.ptr, sl, w.ypart.ptr, d, ov)?;
+            // head-parallel, <= 8 tokens: every GPU has the same t rows (source 0's), so the 1-token dense kernel
+            // runs them directly; the 32-row tile kernel over the source list took ~36 us for one token
+            let ht = counts.get(self.gi).copied().filter(|&t| self.hp && (1..=8).contains(&t));
+            if let Some(t) = ht {
+                self.vmm_h(sgu, w.xg.ptr, rb / 2, w.shgu.ptr, 2 * sl, t, ov)?;
+                self.lx(ov, self.k["vswiglu"], (((t * sl) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.shgu.ptr), Arg::P(0), Arg::P(w.shh.ptr), Arg::I(t as i32), Arg::I(sl as i32), Arg::F(c.swiglu_limit)])?;
+                self.vmm_h(sdn, w.shh.ptr, sl, w.ypart.ptr, d, t, ov)?;
+            } else {
+                self.lx(ov, self.k["vsrc_rows"], (1, 1, 1), 32, 0, &[Arg::P(w.ntok.ptr), Arg::I(self.ngpu as i32), Arg::I(TMAX as i32), Arg::P(w.srcl.ptr)])?;
+                self.vrows_src(sgu, w.xg.ptr, rb / 2, w.shgu.ptr, 2 * sl, ov)?;
+                self.lx(ov, self.k["vswiglu"], (((tg * sl) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.shgu.ptr), Arg::P(0), Arg::P(w.shh.ptr), Arg::I(tg as i32), Arg::I(sl as i32), Arg::F(c.swiglu_limit)])?;
+                self.vrows_src(sdn, w.shh.ptr, sl, w.ypart.ptr, d, ov)?;
+            }
         }
         // gate/up: X = xg rows (tokens of every GPU), Y = gu rows (pairs)
         self.vmoe_lists(li, true, w.tok.ptr, 0, w.xg.ptr, w.gu.ptr, 2 * inter, d, tg, off, rb / 2, false)?;
@@ -2184,6 +2193,30 @@ impl<'m> Shard<'m> {
         };
         self.g.htod_sync(self.w.ntok.ptr, &nt)?;
         self.g.htod_sync(self.w.vx_bytes.ptr, &vb)
+    }
+
+    /// y[r][n] += W x[r] for rows r < t <= 8 of fp16 x (row stride ldx halves) into y (row stride ldy), y zeroed by
+    /// the caller: the 1-token dense kernel without vprep (x is fp16 already)
+    #[allow(clippy::too_many_arguments)]
+    fn vmm_h(&self, v: &VMat, x: u64, ldx: usize, y: u64, ldy: usize, t: usize, side: bool) -> Result<()> {
+        ensure!((1..=8).contains(&t) && v.parts == 1, "vmm_h over {t} rows");
+        let (n, k) = (v.rows, v.cols);
+        let rtiles = n.div_ceil(8 * 32);
+        let kc = even_kc(k, rtiles, 3 * self.g.sms);
+        let kern = self.k["vmoe_b4_n1_r1"];
+        let smem = 8 * (kc + 8) * 2;
+        if smem > 48 * 1024 {
+            self.g.set_smem(kern, smem)?;
+        }
+        let work = v.work.ptr + ((t - 1) * 16) as u64;
+        self.lx(
+            side,
+            kern,
+            (rtiles as u32, 1, (k as u32).div_ceil(kc as u32)),
+            256,
+            smem as u32,
+            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(work), Arg::P(0), Arg::P(0), Arg::P(0), Arg::P(x), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(ldy as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(ldx as i32), Arg::P(0), Arg::P(0)],
+        )
     }
 
     /// over the exchange rows that hold tokens (n floats each, by the device counts): y16 = fp16(y), or y = 0
