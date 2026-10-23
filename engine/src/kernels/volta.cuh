@@ -1562,6 +1562,64 @@ extern "C" __global__ void vmarkov_argmax(const float *logits, const float *bias
     if (lane == 0) { out[s * B + i] = arg; prev[s] = arg; }
   }
 }
+// ---------------------------------------------------------------- vmarkov_argmax2 (Volta Scout's lab)
+// The Markov step's argmax over many blocks per session: block b scans its slice of the vocabulary (float4 loads,
+// vocab % 4 == 0, each thread in increasing order with the reference's strict >), writes its (max, index) to
+// pval / pidx[s][b]; the session's last block (ticket in tick[s], reset by it) reduces the pairs, (larger value,
+// then lower index): the first maximal element, as vmarkov_argmax. pair: write (value bits, index + base) at
+// pair[2 s] instead of out / prev (head-parallel: this GPU's slice, for vx_llargmax). grid (NB, S), block 256
+__device__ __forceinline__ void am_take(float &best, int &arg, float ob, int oa) { if (ob > best || (ob == best && oa < arg)) { best = ob; arg = oa; } }
+__device__ __forceinline__ void am_warp(float &best, int &arg) {
+#pragma unroll
+  for (int o = 16; o; o >>= 1) am_take(best, arg, __shfl_xor_sync(0xffffffffu, best, o), __shfl_xor_sync(0xffffffffu, arg, o));
+}
+extern "C" __global__ void __launch_bounds__(256) vmarkov_argmax2(const float *logits, const float *bias, int vocab, int B, int i, int *prev, int *out,
+                                                                 float *pval, int *pidx, int *tick, int base, unsigned *pair) {
+  __shared__ float bv[8];
+  __shared__ int bi[8];
+  __shared__ int last;
+  const int s = blockIdx.y, nb = gridDim.x, b = blockIdx.x, lane = threadIdx.x & 31, w = threadIdx.x >> 5;
+  const float4 *lg = reinterpret_cast<const float4 *>(logits + (size_t)(s * B + i) * vocab), *bs = reinterpret_cast<const float4 *>(bias + (size_t)s * vocab);
+  const int n4 = vocab / 4, per = (n4 + nb - 1) / nb, v0 = b * per, v1 = min(n4, v0 + per);
+  float best = -INFINITY;
+  int arg = 0x7fffffff;
+  // two float4 of logits and bias per thread in flight per step
+  for (int v = v0 + threadIdx.x; v < v1; v += 2 * blockDim.x) {
+    const int v2 = v + blockDim.x;
+    const float4 a = lg[v], c = bs[v];
+    float4 a2 = make_float4(0, 0, 0, 0), c2 = a2;
+    if (v2 < v1) { a2 = lg[v2]; c2 = bs[v2]; }
+    am_take(best, arg, a.x + c.x, 4 * v); am_take(best, arg, a.y + c.y, 4 * v + 1); am_take(best, arg, a.z + c.z, 4 * v + 2); am_take(best, arg, a.w + c.w, 4 * v + 3);
+    if (v2 < v1) { am_take(best, arg, a2.x + c2.x, 4 * v2); am_take(best, arg, a2.y + c2.y, 4 * v2 + 1); am_take(best, arg, a2.z + c2.z, 4 * v2 + 2); am_take(best, arg, a2.w + c2.w, 4 * v2 + 3); }
+  }
+  am_warp(best, arg);
+  if (lane == 0) { bv[w] = best; bi[w] = arg; }
+  __syncthreads();
+  if (w == 0) {
+    best = lane < 8 ? bv[lane] : -INFINITY;
+    arg = lane < 8 ? bi[lane] : 0x7fffffff;
+    am_warp(best, arg);
+    if (lane == 0) {
+      pval[s * nb + b] = best;
+      pidx[s * nb + b] = arg;
+      __threadfence();
+      last = atomicAdd(&tick[s], 1) == nb - 1;
+    }
+  }
+  __syncthreads();
+  if (!last || w != 0) return;
+  __threadfence();
+  best = -INFINITY;
+  arg = 0x7fffffff;
+  for (int k = lane; k < nb; k += 32) am_take(best, arg, __ldcg(pval + s * nb + k), __ldcg(pidx + s * nb + k));
+  am_warp(best, arg);
+  if (lane == 0) {
+    if (pair) { pair[2 * s] = __float_as_uint(best); pair[2 * s + 1] = (unsigned)(arg + base); }
+    else { out[s * B + i] = arg; prev[s] = arg; }
+    tick[s] = 0;
+  }
+}
+
 // head-parallel draft: the Markov step over this GPU's slice of the vocabulary (vs entries from id base): per session
 // its best (logit + bias, id) as the word pair (value bits, id) at pair[2 s]. grid sessions, block 1024
 extern "C" __global__ void vmarkov_part(const float *logits, const float *bias, int vs, int B, int i, int base, unsigned *pair) {
