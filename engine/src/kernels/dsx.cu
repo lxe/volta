@@ -5,6 +5,11 @@
 #include <cuda_bf16.h>
 #include <stdint.h>
 
+// a block's coordinates as a kernel body sees them: the hardware's, or one virtual block of the megakernel (mega.cuh),
+// which runs the bodies of many kernels in one persistent launch
+struct VB { int x, y, z, gx, gy, gz; };
+#define VB_HW (VB{(int)blockIdx.x, (int)blockIdx.y, (int)blockIdx.z, (int)gridDim.x, (int)gridDim.y, (int)gridDim.z})
+
 #define MAXT 8
 
 __device__ __forceinline__ float warp_sum(float v) {
@@ -119,11 +124,11 @@ extern "C" __global__ void gemv_f32(const float *__restrict__ w, const float *__
 // ---------------------------------------------------------------- elementwise / norms
 
 // one block per row: out = w * x * rsqrt(mean(x^2) + eps), optionally bf16-rounded
-extern "C" __global__ void rmsnorm(const float *x, const float *w, float *out, int n, int ld_in, int ld_out, float eps,
+__device__ __forceinline__ void rmsnorm_b(VB vb, const float *x, const float *w, float *out, int n, int ld_in, int ld_out, float eps,
                                    int round) {
   __shared__ float sh[32];
-  const float *xr = x + (size_t)blockIdx.x * ld_in;
-  float *o = out + (size_t)blockIdx.x * ld_out;
+  const float *xr = x + (size_t)vb.x * ld_in;
+  float *o = out + (size_t)vb.x * ld_out;
   float s = 0.f;
   for (int i = threadIdx.x; i < n; i += blockDim.x) s += xr[i] * xr[i];
   s = block_sum(s, sh);
@@ -133,6 +138,8 @@ extern "C" __global__ void rmsnorm(const float *x, const float *w, float *out, i
     o[i] = round ? bf16r(v) : v;
   }
 }
+extern "C" __global__ void rmsnorm(const float *x, const float *w, float *out, int n, int ld_in, int ld_out, float eps,
+                                   int round) { rmsnorm_b(VB_HW, x, w, out, n, ld_in, ld_out, eps, round); }
 
 extern "C" __global__ void round_bf16(float *x, int n) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -194,14 +201,15 @@ __device__ float e2m1_round(float v) {
 }
 
 // one warp per block of 32: FP8 E4M3 with a power-of-two scale. n multiple of 32.
-extern "C" __global__ void fake_fp8(float *x, int n) {
-  int b = blockIdx.x * (blockDim.x >> 5) + (threadIdx.x >> 5), lane = threadIdx.x & 31;
+__device__ __forceinline__ void fake_fp8_b(VB vb, float *x, int n) {
+  int b = vb.x * (blockDim.x >> 5) + (threadIdx.x >> 5), lane = threadIdx.x & 31;
   if (b * 32 >= n) return;
   float v = x[b * 32 + lane];
   float amax = fmaxf(warp_max(fabsf(v)), 1e-4f);
   float s = pow2_ceil(amax / 448.f);
   x[b * 32 + lane] = e4m3_round(fminf(fmaxf(v / s, -448.f), 448.f)) * s;
 }
+extern "C" __global__ void fake_fp8(float *x, int n) { fake_fp8_b(VB_HW, x, n); }
 
 // decode KV head in one launch: rmsnorm in place (no rounding), RoPE on its last rd dims at `pos`, fake FP8 per 32, then
 // bf16 into the window slot `dst`. Same arithmetic as rmsnorm (block 1024) + rope + fake_fp8 + store_bf16. Grid 1,
@@ -2105,3 +2113,4 @@ extern "C" __global__ void fwht_rows_f16(__half *w, int cols) {
 }
 
 #include "volta.cuh"
+#include "mega.cuh"

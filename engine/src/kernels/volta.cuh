@@ -40,29 +40,29 @@ template <int BITS> __device__ __forceinline__ int v_perm(int j) { constexpr int
 // start at wk.t0, and the launch takes the lists with lo < count <= hi, in tiles of 8 * NT tokens (grid.x =
 // row tiles x token tiles, row tiles = rtiles). in_rows / out_rows null = the row is the pair index itself.
 template <int BITS, int NT, int R>
-__device__ __forceinline__ void vmoe_mm(const uint4 *__restrict__ W, const half *__restrict__ S, const VWork *__restrict__ work,
+__device__ __forceinline__ void vmoe_mm(VB vb, const uint4 *__restrict__ W, const half *__restrict__ S, const VWork *__restrict__ work,
                                         const int *__restrict__ in_rows, const int *__restrict__ out_rows, const float *__restrict__ tw,
                                         const half *__restrict__ X, float *__restrict__ Y, int N, int K, int KC, int ldy,
                                         const int *__restrict__ cnt, const int *__restrict__ off, int lo, int hi, int rtiles, int ldx, const int *__restrict__ nwork,
                                         long long zst) {
   constexpr int WPU = 128 / BITS, F = 32 / BITS, WARPS = 8;
   // zst: K chunk z adds into its own copy of Y at Y + z * zst (each output once: a fixed-order sum after, vsum_z)
-  Y += (size_t)blockIdx.z * zst;
+  Y += (size_t)vb.z * zst;
   extern __shared__ __align__(16) unsigned char vsm[];
   half *xs = reinterpret_cast<half *>(vsm);
   const int LDX = KC + 8;
-  // nwork: the entries are a compacted list of *nwork (hot experts); blocks loop over them by gridDim.y
-  const int nent = nwork ? *nwork : (int)gridDim.y;
-  for (int ei = blockIdx.y; ei < nent; ei += gridDim.y) {
+  // nwork: the entries are a compacted list of *nwork (hot experts); blocks loop over them by vb.gy
+  const int nent = nwork ? *nwork : (int)vb.gy;
+  for (int ei = vb.y; ei < nent; ei += vb.gy) {
   const VWork wk0 = work[ei];
-  int bx = blockIdx.x, n_all = (int)wk0.nt, t_base = (int)wk0.t0, tt0 = 0, tstep = 1;  // fixed launches: each block walks every token tile
+  int bx = vb.x, n_all = (int)wk0.nt, t_base = (int)wk0.t0, tt0 = 0, tstep = 1;  // fixed launches: each block walks every token tile
   if (cnt) {
     // device-built lists: this block takes token tiles tt0, tt0 + tstep, ... of its list (bounded grid, any count)
     n_all = cnt[wk0.nt];
     if (n_all <= lo || n_all > hi) continue;
-    tt0 = blockIdx.x / rtiles;
-    tstep = gridDim.x / rtiles;
-    bx = blockIdx.x % rtiles;
+    tt0 = vb.x / rtiles;
+    tstep = vb.gx / rtiles;
+    bx = vb.x % rtiles;
     t_base = off[wk0.nt];
   }
   const int ntiles = (n_all + 8 * NT - 1) / (8 * NT);
@@ -71,7 +71,7 @@ __device__ __forceinline__ void vmoe_mm(const uint4 *__restrict__ W, const half 
   wk.t0 = t_base + tt * 8 * NT;
   wk.nt = min(8 * NT, n_all - tt * 8 * NT);
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, q = (lane >> 2) & 3, h = lane >> 4;
-  const int k0 = blockIdx.z * KC;
+  const int k0 = vb.z * KC;
   if (k0 >= K) continue;
   const int kc = min(KC, K - k0), units = kc / WPU;
   const int tok = (lane & 3) + 4 * h;
@@ -165,7 +165,7 @@ __device__ __forceinline__ void vmoe_mm(const uint4 *__restrict__ W, const half 
       const uint4 *W, const half *S, const VWork *work, const int *in_rows, const int *out_rows, const float *tw, const half *X, \
       float *Y, int N, int K, int KC, int ldy, const int *cnt, const int *off, int lo, int hi, int rtiles, int ldx,             \
       const int *nwork, long long zst) {                                                                                      \
-    vmoe_mm<BITS, NT, R>(W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork, zst); \
+    vmoe_mm<BITS, NT, R>(VB_HW, W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork, zst); \
   }
 VMOE(2, 1, 4)
 VMOE(2, 2, 2)
@@ -179,7 +179,7 @@ VMOE(4, 4, 1)
       const uint4 *W, const half *S, const VWork *work, const int *in_rows, const int *out_rows, const float *tw, const half *X, \
       float *Y, int N, int K, int KC, int ldy, const int *cnt, const int *off, int lo, int hi, int rtiles, int ldx,             \
       const int *nwork, long long zst) {                                                                                      \
-    vmoe_mm<BITS, NT, 1>(W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork, zst); \
+    vmoe_mm<BITS, NT, 1>(VB_HW, W, S, work, in_rows, out_rows, tw, X, Y, N, K, KC, ldy, cnt, off, lo, hi, rtiles, ldx, nwork, zst); \
   }
 VMOE1(4, 1)
 VMOE1(4, 2)
@@ -204,18 +204,18 @@ extern "C" __global__ void vto_f16(const float *x, half *y, int n) {
 
 // kv_norm_rope_store for T tokens: x[t][n] normalized, roped at pos[t], FP8 fake-quantized, stored as bf16 at
 // pool row dst_row[t]. grid T, block 1024 (n <= 1024)
-extern "C" __global__ void vkv_store(float *x, const float *w, int n, float eps, const float *freqs, int rd, const int *pos,
+__device__ __forceinline__ void vkv_store_b(VB vb, float *x, const float *w, int n, float eps, const float *freqs, int rd, const int *pos,
                                      __nv_bfloat16 *pool, const int *dst_row, int ldx) {
   __shared__ float sh[32];
-  if (dst_row[blockIdx.x] < 0) return;  // padding row (the draft's observe pads to a fixed count)
-  float *xt = x + (size_t)blockIdx.x * ldx;
+  if (dst_row[vb.x] < 0) return;  // padding row (the draft's observe pads to a fixed count)
+  float *xt = x + (size_t)vb.x * ldx;
   float s = 0.f;
   for (int i = threadIdx.x; i < n; i += blockDim.x) s += xt[i] * xt[i];
   s = block_sum(s, sh);
   float r = rsqrtf(s / n + eps);
   for (int i = threadIdx.x; i < n; i += blockDim.x) xt[i] = w[i] * (xt[i] * r);
   __syncthreads();
-  int half = rd / 2, p0 = pos[blockIdx.x];
+  int half = rd / 2, p0 = pos[vb.x];
   for (int p = threadIdx.x; p < half; p += blockDim.x) {
     float sn, cs;
     sincosf((float)p0 * freqs[p], &sn, &cs);
@@ -225,16 +225,18 @@ extern "C" __global__ void vkv_store(float *x, const float *w, int n, float eps,
     v[1] = a * sn + b * cs;
   }
   __syncthreads();
-  int i = threadIdx.x;
-  if (i < n) {
+  // n % 32 == 0: whole warps take each 32-value FP8 block
+  for (int i = threadIdx.x; i < n; i += blockDim.x) {
     float v = xt[i];
     float amax = fmaxf(warp_max(fabsf(v)), 1e-4f);
     float sc = pow2_ceil(amax / 448.f);
     v = e4m3_round(fminf(fmaxf(v / sc, -448.f), 448.f)) * sc;
     xt[i] = v;
-    pool[(size_t)dst_row[blockIdx.x] * n + i] = __float2bfloat16(v);
+    pool[(size_t)dst_row[vb.x] * n + i] = __float2bfloat16(v);
   }
 }
+extern "C" __global__ void vkv_store(float *x, const float *w, int n, float eps, const float *freqs, int rd, const int *pos,
+                                     __nv_bfloat16 *pool, const int *dst_row, int ldx) { vkv_store_b(VB_HW, x, w, n, eps, freqs, rd, pos, pool, dst_row, ldx); }
 
 // rows src[t][n] (f32) -> pool rows dst_row[t] (f32 pool, row width n); grid T, block 256
 extern "C" __global__ void vrows_scatter(const float *src, float *pool, const int *dst_row, int n) {
@@ -637,11 +639,11 @@ extern "C" __global__ void __launch_bounds__(256) vx_alltoall(const VxPeers *Pp,
 // lab (8 GPUs, in-kernel loop): 20 KB in 7.2 us, 10 KB in 5.2 us, against 13.9 / 10.1 for vx_allgather
 __device__ __forceinline__ void vx_st2(uint2 *p, uint2 v) { asm volatile("st.volatile.global.v2.u32 [%0], {%1, %2};" ::"l"(p), "r"(v.x), "r"(v.y) : "memory"); }
 __device__ __forceinline__ uint2 vx_ld2(const uint2 *p) { uint2 v; asm volatile("ld.volatile.global.v2.u32 {%0, %1}, [%2];" : "=r"(v.x), "=r"(v.y) : "l"(p) : "memory"); return v; }
-extern "C" __global__ void __launch_bounds__(256) vx_llreduce(uint2 *const *rx, int me, const unsigned *src, int words, int maxw, float *a, int mode,
+__device__ __forceinline__ void vx_llreduce_b(VB vb, uint2 *const *rx, int me, const unsigned *src, int words, int maxw, float *a, int mode,
                                                               const unsigned *seqp, unsigned li) {
   const unsigned seq = *seqp + li;
   const int par = seq & 1, q = me & ~3, tw = me ^ 4;
-  const int tid = blockIdx.x * blockDim.x + threadIdx.x, nt = gridDim.x * blockDim.x;
+  const int tid = vb.x * blockDim.x + threadIdx.x, nt = vb.gx * blockDim.x;
   const size_t blk = (size_t)maxw;
   for (int i = tid; i < words; i += nt) {
     const uint2 w = make_uint2(src[i], seq);
@@ -667,6 +669,8 @@ extern "C" __global__ void __launch_bounds__(256) vx_llreduce(uint2 *const *rx, 
     else { a[2 * i] = bf16r(s0); a[2 * i + 1] = bf16r(s1); }
   }
 }
+extern "C" __global__ void __launch_bounds__(256) vx_llreduce(uint2 *const *rx, int me, const unsigned *src, int words, int maxw, float *a, int mode,
+                                                              const unsigned *seqp, unsigned li) { vx_llreduce_b(VB_HW, rx, me, src, words, maxw, a, mode, seqp, li); }
 
 // a[i] = sum_s parts[s * stride + i] over S sources of f32 partials, in order (the head-parallel attention output)
 extern "C" __global__ void vsum_parts_f(float *a, const float *parts, int S, int stride, int n) {
@@ -1115,11 +1119,11 @@ extern "C" __global__ void vhc_pre(const float *h, const float *mixes, int moff,
 // y = bf16(pre(h, mixes)), and the slice's sum of squares into ss[t][blockIdx.x]; (2) y = bf16(w * rms(y)) with the
 // slices' sums added in order (the same bits on every GPU). A token in one block was issue-bound on one SM
 // (~11 us for 5120 elements); 20 blocks spread it. grid (d / 256, T), block 256
-extern "C" __global__ void __launch_bounds__(256) vhc_pp1(float *__restrict__ h, const float *__restrict__ a, const float *__restrict__ mixes,
+__device__ __forceinline__ void vhc_pp1_b(VB vb, float *__restrict__ h, const float *__restrict__ a, const float *__restrict__ mixes,
                                                           float *__restrict__ y, float *__restrict__ ss, int d) {
   __shared__ float sh[32], m[24];
-  const int t = blockIdx.y, i = blockIdx.x * 256 + threadIdx.x;
-  if (threadIdx.x < 24) m[threadIdx.x] = __ldg(mixes + t * 24 + threadIdx.x);
+  const int t = vb.y, i = vb.x * 256 + threadIdx.x;
+  if (threadIdx.x < 24) m[threadIdx.x] = mixes[t * 24 + threadIdx.x];  // an activation: no __ldg (mega.cuh)
   float *ht = h + (size_t)t * 4 * d;
   float r[4], av = 0.f;
   if (i < d) {
@@ -1141,15 +1145,18 @@ extern "C" __global__ void __launch_bounds__(256) vhc_pp1(float *__restrict__ h,
     y[(size_t)t * d + i] = v;
   }
   const float s = block_sum(v * v, sh);
-  if (threadIdx.x == 0) ss[t * gridDim.x + blockIdx.x] = s;
+  if (threadIdx.x == 0) ss[t * vb.gx + vb.x] = s;
 }
-extern "C" __global__ void __launch_bounds__(256) vhc_pp2(float *__restrict__ y, const float *__restrict__ ss, const float *__restrict__ w, int d, float eps) {
-  const int t = blockIdx.y, i = blockIdx.x * 256 + threadIdx.x;
+extern "C" __global__ void __launch_bounds__(256) vhc_pp1(float *__restrict__ h, const float *__restrict__ a, const float *__restrict__ mixes,
+                                                          float *__restrict__ y, float *__restrict__ ss, int d) { vhc_pp1_b(VB_HW, h, a, mixes, y, ss, d); }
+__device__ __forceinline__ void vhc_pp2_b(VB vb, float *__restrict__ y, const float *__restrict__ ss, const float *__restrict__ w, int d, float eps) {
+  const int t = vb.y, i = vb.x * 256 + threadIdx.x;
   float s = 0.f;
-  for (int b = 0; b < (int)gridDim.x; b++) s += ss[t * gridDim.x + b];
+  for (int b = 0; b < (int)vb.gx; b++) s += ss[t * vb.gx + b];
   const float rs = rsqrtf(s / d + eps);
   if (i < d) y[(size_t)t * d + i] = bf16r(__ldg(w + i) * (y[(size_t)t * d + i] * rs));
 }
+extern "C" __global__ void __launch_bounds__(256) vhc_pp2(float *__restrict__ y, const float *__restrict__ ss, const float *__restrict__ w, int d, float eps) { vhc_pp2_b(VB_HW, y, ss, w, d, eps); }
 extern "C" __global__ void vhc_post(float *h, const float *x, const float *mixes, int d) {
   const int t = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= d) return;
@@ -1164,8 +1171,8 @@ extern "C" __global__ void vhc_post(float *h, const float *x, const float *mixes
 // mix dots split over S chunks of hcd (S <= 32, hcd / S a multiple of 128) and 6 groups of 4 fn rows: block (s, g)
 // gives each token a warp, which holds the token's chunk in registers and runs the 4 rows side by side.
 // part[t][25][S]: rows 0..23 the dots, row 24 the sum of squares (from the g = 0 blocks). grid (S, 6), block 256
-__device__ __forceinline__ void vhc_dots_body(const float *fn, const float *h, float *part, int hcd, int T, int S) {
-  const int s = blockIdx.x, g = blockIdx.y, warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+__device__ __forceinline__ void vhc_dots_body(VB vb, const float *fn, const float *h, float *part, int hcd, int T, int S) {
+  const int s = vb.x, g = vb.y, warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   const int len = hcd / S, j0 = s * len, per = len / 128;  // float4 per lane
   for (int t = warp; t < T; t += blockDim.x >> 5) {
     const float4 *x = reinterpret_cast<const float4 *>(h + (size_t)t * hcd + j0);
@@ -1194,7 +1201,7 @@ __device__ __forceinline__ void vhc_dots_body(const float *fn, const float *h, f
   }
 }
 extern "C" __global__ void vhc_dots(const float *fn, const float *h, float *part, int hcd, int T, int S) {
-  vhc_dots_body(fn, h, part, hcd, T, S);
+  vhc_dots_body(VB_HW, fn, h, part, hcd, T, S);
 }
 // sum the chunks (lane s holds chunk s; all 25 loads issued before the sums), normalize, Sinkhorn: one warp per token
 extern "C" __global__ void vhc_finish(const float *part, float *mixes, int hcd, int S, float eps, const float *scale, const float *base,
@@ -1217,13 +1224,13 @@ extern "C" __global__ void vhc_finish(const float *part, float *mixes, int hcd, 
 
 // vhc_dots + vhc_finish in one launch (T <= 8): the last block to finish its dots (a ticket in *tick, reset for the
 // next launch) sums every token's chunks and runs the Sinkhorn, one warp per token. grid (S, 6), block 256
-extern "C" __global__ void vhc_mix(const float *fn, const float *h, float *part, int hcd, int T, int S, float *mixes, float eps,
+__device__ __forceinline__ void vhc_mix_b(VB vb, const float *fn, const float *h, float *part, int hcd, int T, int S, float *mixes, float eps,
                                    const float *scale, const float *base, float hc_eps, int iters, int *tick) {
   __shared__ int last;
-  vhc_dots_body(fn, h, part, hcd, T, S);
+  vhc_dots_body(vb, fn, h, part, hcd, T, S);
   __threadfence();
   __syncthreads();
-  if (threadIdx.x == 0) last = atomicAdd(tick, 1) == (int)(gridDim.x * gridDim.y) - 1;
+  if (threadIdx.x == 0) last = atomicAdd(tick, 1) == (int)(vb.gx * vb.gy) - 1;
   __syncthreads();
   if (!last) return;
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
@@ -1243,13 +1250,15 @@ extern "C" __global__ void vhc_mix(const float *fn, const float *h, float *part,
     hc_finish_warp(mixes + t * 24, lane < 24 ? mine * rsqrtf(ss / hcd + eps) : 0.f, lane, scale, base, hc_eps, iters);
   }
 }
+extern "C" __global__ void vhc_mix(const float *fn, const float *h, float *part, int hcd, int T, int S, float *mixes, float eps,
+                                   const float *scale, const float *base, float hc_eps, int iters, int *tick) { vhc_mix_b(VB_HW, fn, h, part, hcd, T, S, mixes, eps, scale, base, hc_eps, iters, tick); }
 
 // dense matmul prep in one launch: xh = fp16(x) (after the reference's FP8 block-32 rounding when fp8), y = 0.
 // grid (ceil(max(kx, ny) / 256), T), block 256; kx is a multiple of 32
 // fp8: bit 0 = the FP8 block-32 rounding, bit 1 = round x to bf16 first (round_bf16 folded in)
-extern "C" __global__ void vprep(const float *x, int ldx, half *xh, int kx, int fp8, float *y, int ny) {
-  const int t = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (blockIdx.x * blockDim.x < kx) {  // whole warps: kx is a multiple of 32
+__device__ __forceinline__ void vprep_b(VB vb, const float *x, int ldx, half *xh, int kx, int fp8, float *y, int ny) {
+  const int t = vb.y, i = vb.x * blockDim.x + threadIdx.x;
+  if (vb.x * blockDim.x < kx) {  // whole warps: kx is a multiple of 32
     float v = i < kx ? x[(size_t)t * ldx + i] : 0.f;
     if (fp8 & 2) v = bf16r(v);
     if (fp8 & 1) {
@@ -1260,6 +1269,7 @@ extern "C" __global__ void vprep(const float *x, int ldx, half *xh, int kx, int 
   }
   if (i < ny) y[(size_t)t * ny + i] = 0.f;
 }
+extern "C" __global__ void vprep(const float *x, int ldx, half *xh, int kx, int fp8, float *y, int ny) { vprep_b(VB_HW, x, ldx, xh, kx, fp8, y, ny); }
 
 // router logits y[t][e] += W[e] . x[t] in fp32 over K chunks of 256 (y zeroed first): block = 32 experts (4 per warp)
 // x one chunk, held in registers; the chunk of 32 tokens at a time in shared memory. grid (E / 32, K / 256), block 256
@@ -1498,8 +1508,8 @@ __device__ __forceinline__ uint32_t v_e2m1_code(float q) {
 #define VAM_SMEM (32 * VAM_LD * 2 + 4 * 32 * 16 * 4 + 16 * 40 * 2 + 4 * 16 * 4 + 32 * 4 + 16)
 // vq16 with rope_pos folded in: the rope dims (the last rd of each hd-dim head) of token t rotated at pos[t] first
 // sparse_attn_merge + the inverse rope_pos of the rope dims (the last rd of each head) at pos[t]. grid (T, H), block hd / 2
-extern "C" __global__ void vattn_merge_rope(const float *part, int S, const float *sinks, float *o, int H, int hd, int rd, const float *freqs, const int *pos) {
-  int t = blockIdx.x, h = blockIdx.y, tid = threadIdx.x;
+__device__ __forceinline__ void vattn_merge_rope_b(VB vb, const float *part, int S, const float *sinks, float *o, int H, int hd, int rd, const float *freqs, const int *pos) {
+  int t = vb.x, h = vb.y, tid = threadIdx.x;
   const float *p0 = part + ((size_t)t * S * H + h) * (hd + 2);
   size_t zs = (size_t)H * (hd + 2);
   float M = -1e30f;
@@ -1528,8 +1538,9 @@ extern "C" __global__ void vattn_merge_rope(const float *part, int S, const floa
   oh[2 * tid] = a;
   oh[2 * tid + 1] = b;
 }
-extern "C" __global__ void vq16_rope(const float *q, half *q16, float scale, int n, int H, int hd, int rd, const float *freqs, const int *pos) {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+extern "C" __global__ void vattn_merge_rope(const float *part, int S, const float *sinks, float *o, int H, int hd, int rd, const float *freqs, const int *pos) { vattn_merge_rope_b(VB_HW, part, S, sinks, o, H, hd, rd, freqs, pos); }
+__device__ __forceinline__ void vq16_rope_b(VB vb, const float *q, half *q16, float scale, int n, int H, int hd, int rd, const float *freqs, const int *pos) {
+  const int i = vb.x * blockDim.x + threadIdx.x;
   if (i >= n) return;
   const int j = i % hd - (hd - rd);
   float v = q[i];
@@ -1540,11 +1551,12 @@ extern "C" __global__ void vq16_rope(const float *q, half *q16, float scale, int
   }
   q16[i] = __float2half(v * scale);
 }
+extern "C" __global__ void vq16_rope(const float *q, half *q16, float scale, int n, int H, int hd, int rd, const float *freqs, const int *pos) { vq16_rope_b(VB_HW, q, q16, scale, n, H, hd, rd, freqs, pos); }
 extern "C" __global__ void vq16(const float *q, half *q16, float scale, int n) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) q16[i] = __float2half(q[i] * scale);
 }
-extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W,
+__device__ __forceinline__ void vattn_mma_b(VB vb, const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W,
                                                                const void *comp, const int *comp_idx, int K, float *part, int H,
                                                                int hd, int comp_fp4, int NSUB) {
   extern __shared__ __align__(16) unsigned char vsm[];
@@ -1556,7 +1568,7 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
   int *ok = reinterpret_cast<int *>(Ah + 32);
   int *any = ok + 32;
   // grid (H / 16, T, splits), NSUB 32-row sub-tiles per split: a token's head groups run next to each other and share its rows through L2
-  const int h0 = blockIdx.x * 16, t = blockIdx.y, z = blockIdx.z, S = gridDim.z, tid = threadIdx.x, lane = tid & 31, w = tid >> 5;
+  const int h0 = vb.x * 16, t = vb.y, z = vb.z, S = vb.gz, tid = threadIdx.x, lane = tid & 31, w = tid >> 5;
   const int q4 = (lane >> 2) & 3, hh = lane >> 4, arow = 8 * q4 + (lane & 3) + 4 * hh, bcol = (lane & 3) + 4 * hh;
   const int nrows = W + K;
   if (tid < 16) { Mh[tid] = -1e30f; Lh[tid] = 0.f; }
@@ -1612,7 +1624,7 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
 #pragma unroll
       for (int i = 0; i < 32; i++) {
         const uint2 a = *reinterpret_cast<const uint2 *>(&R[arow * VAM_LD + k0 + 4 * i]);
-        const uint2 b = gq ? __ldg(reinterpret_cast<const uint2 *>(qh + 4 * i)) : make_uint2(0, 0);
+        const uint2 b = gq ? *reinterpret_cast<const uint2 *>(qh + 4 * i) : make_uint2(0, 0);  // q: no __ldg (mega.cuh)
         v_mma884(s, a.x, a.y, b.x, b.y);
       }
 #pragma unroll
@@ -1671,6 +1683,9 @@ extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, 
     ph[hd + 1] = Lh[tid];
   }
 }
+extern "C" __global__ void __launch_bounds__(256, 2) vattn_mma(const half *q16, const __nv_bfloat16 *win, const int *win_idx, int W,
+                                                               const void *comp, const int *comp_idx, int K, float *part, int H,
+                                                               int hd, int comp_fp4, int NSUB) { vattn_mma_b(VB_HW, q16, win, win_idx, W, comp, comp_idx, K, part, H, hd, comp_fp4, NSUB); }
 
 // rows src[t][n] (f32, not yet rounded) -> FP4 rows of `pool` at dst_row[t] (-1 = skip), rounded as fake_fp4(block,
 // e4m3s) does. grid T, block n (n <= 1024, block 16 or 32)

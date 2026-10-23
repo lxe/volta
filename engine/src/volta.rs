@@ -35,6 +35,27 @@ fn lut_blocks() -> usize {
     std::env::var("VOLTA_LUT_BLOCKS").ok().and_then(|v| v.parse().ok()).unwrap_or(8)
 }
 
+/// VOLTA_MEGA=1: run each layer's attention segment as one persistent kernel
+fn mega() -> bool {
+    std::env::var("VOLTA_MEGA").is_ok_and(|v| v == "1")
+}
+
+/// the kernels the megakernel runs, with their op codes (MkCode in kernels/mega.cuh)
+const MEGA_OPS: &[(&str, u32)] = &[
+    ("vhc_pp1", 1),
+    ("vhc_pp2", 2),
+    ("vhc_mix", 3),
+    ("vprep", 4),
+    ("vmoe_b4_n1_r1", 5),
+    ("rmsnorm", 6),
+    ("vkv_store", 7),
+    ("vq16_rope", 8),
+    ("vattn_mma", 9),
+    ("vattn_merge_rope", 10),
+    ("fake_fp8", 11),
+    ("vx_llreduce", 12),
+];
+
 /// attention on the tensor cores (vattn_mma) unless VOLTA_ATTN=tile5
 fn attn_mma() -> bool {
     std::env::var("VOLTA_ATTN").map_or(true, |v| v != "tile5")
@@ -90,7 +111,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "volta_mega", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -1146,6 +1167,11 @@ impl<'m> Shard<'m> {
         let mut k = HashMap::new();
         for &n in KERNELS {
             k.insert(n, g.kernel(n).with_context(|| format!("kernel {n}"))?);
+        }
+        // VOLTA_MEGA=1: the attention segment of each layer runs as one persistent kernel (kernels/mega.cuh)
+        if mega() {
+            let ported: Vec<(Kernel, u32)> = MEGA_OPS.iter().map(|&(n, code)| (k[n], code)).collect();
+            g.mega_init(k["volta_mega"], &ported)?;
         }
         let c = &m.cfg;
         // dense Q8_0 -> 6-bit planes (q6.rs): ~2 GB per GPU of headroom for experts and sessions
@@ -2789,12 +2815,14 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             }
             sh.spark_capture(li, t)?;
             mark(sh, 0)?;
+            sh.g.mega_begin();
             if !x_ready {
                 hc_step(sh, 0, sh.w.mix_f.ptr, &sh.layers[li].attn_norm)?;
             }
             let (w, l) = (&sh.w, &sh.layers[li]);
             sh.hc_mixes_rows(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t)?;
             sh.attention(toks, li, &mut st)?;
+            sh.g.mega_end()?;
             mark(sh, 1)?;
             hc_step(sh, sh.w.a.ptr, sh.w.mix_a.ptr, &sh.layers[li].ffn_norm)?;
             let w = &sh.w;
