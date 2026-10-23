@@ -1021,6 +1021,7 @@ struct Work {
     ints: Buf,
     tabs: Buf, // every layer's per-token tables of the step (Shard::plan)
     xh: Buf,   // fp16 activations for the vmoe dense projections [TMAX][max(heads * head_dim, 8192)]
+    xh2: Buf,  // the same for projections on the side stream (Gpu::set_side), which run alongside the main stream's
     xq: Buf,   // FP8-rounded f32 copy of x for FP8-input projections
     shgu: Buf, // shared-expert slice: gate+up rows [TG][2 * inter / ngpu] f32
     shh: Buf,  // its SwiGLU output [TG][inter / ngpu] fp16
@@ -1113,6 +1114,8 @@ struct Shard<'m> {
     evs: [crate::gpu::Event; 4],
     /// fork / join of the hc mixes on the side stream (layers)
     mevs: [crate::gpu::Event; 4],
+    /// the attention's side branch: q latent ready (main -> side), the indexer's / compressor's side work done (side -> main)
+    aevs: [crate::gpu::Event; 2],
     m: &'m Model,
     g: Gpu,
     k: HashMap<&'static str, Kernel>,
@@ -1328,6 +1331,7 @@ impl<'m> Shard<'m> {
             ints: g.alloc_zeroed(64 * t * 4)?,
             tabs: g.alloc_zeroed(c.n_layers * 12 * TMAX * 4 * 2 + 4096)?,
             xh: g.alloc_zeroed(TMAX * (c.n_heads * c.head_dim).max(8192) * 2)?,
+            xh2: g.alloc_zeroed(TMAX * (c.n_heads * c.head_dim).max(8192) * 2)?,
             xq: fz(TMAX * (c.n_heads * c.head_dim).max(8192))?,
             shgu: fz(tg * 2 * c.inter / o.ngpu)?,
             shh: g.alloc_zeroed(tg * c.inter / o.ngpu * 2)?,
@@ -1411,6 +1415,7 @@ impl<'m> Shard<'m> {
             spark_ids: g.alloc_zeroed(2 * TMAX * 4)?,
             evs: [g.event()?, g.event()?, g.event()?, g.event()?],
             mevs: [g.event()?, g.event()?, g.event()?, g.event()?],
+            aevs: [g.event()?, g.event()?],
             m,
             // VOLTA_HEAD=q6 keeps the head in dsx's 6-bit planes (two GEMV passes per 16 tokens)
             head: if std::env::var("VOLTA_HEAD").is_ok_and(|v| v == "q6") || !v4_ok(&m.head) { Lin::D(up(&m.head)?) } else { Lin::V(upload_v4(&g, &m.head, 1)?) },
@@ -1493,14 +1498,16 @@ impl<'m> Shard<'m> {
         let (n, k, parts) = (v.rows / v.parts, v.cols, v.parts);
         let w = &self.w;
         let kx = k * parts;
-        ensure!(t * kx * 2 <= w.xh.bytes, "vmm: {t} x {kx} activations overflow the fp16 scratch");
+        let xh = if self.g.on_side() { &w.xh2 } else { &w.xh };
+        ensure!(!(prepped && self.g.on_side()), "a prepped vmm on the side stream");
+        ensure!(t * kx * 2 <= xh.bytes, "vmm: {t} x {kx} activations overflow the fp16 scratch");
         // FP8 inputs: the reference rounds them to FP8 (block 32) first
         let ny = n * parts;
         ensure!(!det || parts == 1, "a fixed-order vmm over one partition");
         let y = if det { w.zpart.ptr } else { y_out };
         ensure!(!(prepped && det), "a fixed-order vmm preps itself");
         if !prepped {
-            self.g.launch(self.k["vprep"], ((kx.max(ny) as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(w.xh.ptr), Arg::I(kx as i32), Arg::I(v.act_fp8 as i32 | (bf16_in as i32) << 1), Arg::P(y_out), Arg::I(ny as i32)])?;
+            self.g.launch(self.k["vprep"], ((kx.max(ny) as u32).div_ceil(256), t as u32, 1), 256, 0, &[Arg::P(x), Arg::I(ldx as i32), Arg::P(xh.ptr), Arg::I(kx as i32), Arg::I(v.act_fp8 as i32 | (bf16_in as i32) << 1), Arg::P(y_out), Arg::I(ny as i32)])?;
         }
         let nb = if t <= 8 { 1usize } else if t <= 16 { 2 } else { 4 };
         // one row group per warp, and the longest K chunk that still gives >= 3 blocks per SM (tests/dense_test.cu:
@@ -1529,7 +1536,7 @@ impl<'m> Shard<'m> {
             (rtiles as u32, parts as u32, (k as u32).div_ceil(kc as u32)),
             256,
             smem as u32,
-            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(work), Arg::P(rows_in), Arg::P(rows_out), Arg::P(0), Arg::P(w.xh.ptr), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(n as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(k as i32), Arg::P(0), Arg::P(zst)],
+            &[Arg::P(v.w.ptr), Arg::P(v.s.ptr), Arg::P(work), Arg::P(rows_in), Arg::P(rows_out), Arg::P(0), Arg::P(xh.ptr), Arg::P(y), Arg::I(n as i32), Arg::I(k as i32), Arg::I(kc as i32), Arg::I(n as i32), Arg::P(0), Arg::P(0), Arg::I(0), Arg::I(0), Arg::I(0), Arg::I(k as i32), Arg::P(0), Arg::P(zst)],
         )?;
         if zst > 0 {
             self.g.launch(self.k["vsum_z"], (((t * n) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.zpart.ptr), Arg::P(y_out), Arg::I(k.div_ceil(kc) as i32), Arg::I((t * n) as i32)])?;
@@ -1830,7 +1837,8 @@ impl<'m> Shard<'m> {
     }
 
     /// attention half of layer li for this GPU's tokens; leaves the output in w.a
-    fn attention(&mut self, toks: &[(usize, u32)], li: usize, st: &mut StepState) -> Result<()> {
+    /// side: fork to the side stream here and leave the attention's hc mixes there (mevs[1] records their end)
+    fn attention(&mut self, toks: &[(usize, u32)], li: usize, st: &mut StepState, side: bool) -> Result<()> {
         let m = self.m;
         let c = &m.cfg;
         let t = toks.len();
@@ -1838,7 +1846,31 @@ impl<'m> Shard<'m> {
         let (hd, nh, win) = (c.head_dim, if self.hp { c.n_heads / self.ngpu } else { c.n_heads }, c.window);
         let ratio = m.layers[li].ratio;
         let compressed = ratio > 0;
+        let (is_src, is_idx) = (compressed && c.kv_sources.contains(&li), compressed && c.index_sources.contains(&li));
         let x = std::mem::take(&mut self.lt[li]);
+        // the side stream: the compressor's and the indexer's work that reads only x, alongside qkv / q_b / the kv
+        // store, then (no compressor work) the indexer's queries once the q latent is out, then the hc mixes
+        let q_side = side && is_idx && !is_src;
+        if side {
+            self.g.record(self.mevs[0], false)?;
+            self.g.wait(self.mevs[0], true)?;
+            self.on_side(|sh| {
+                if is_idx {
+                    sh.indexer_w(li, t)?;
+                }
+                if is_src {
+                    sh.compress_kv(li, t, &x)?;
+                    if is_idx {
+                        sh.indexer_keys(li, t, &x)?;
+                    }
+                    sh.comp_store(li, t, &x)?;
+                }
+                Ok(())
+            })?;
+            if !q_side {
+                self.side_mixes(li, t, is_src || is_idx)?;
+            }
+        }
         let w = &self.w;
         let l = &self.layers[li];
         // megakernel dependencies: the kv store reads only qkv; the attention reads q and the stored kv
@@ -1864,6 +1896,13 @@ impl<'m> Shard<'m> {
             self.mm(l.kv.as_ref().unwrap(), w.x.ptr, w.kvv.ptr, t)?;
             (w.kvv.ptr, hd)
         };
+        if q_side {
+            self.g.record(self.aevs[0], false)?;
+            self.g.wait(self.aevs[0], true)?;
+            self.on_side(|sh| sh.indexer_q(li, t, &x))?;
+            self.side_mixes(li, t, true)?;
+        }
+        let (w, l) = (&self.w, &self.layers[li]);
         match &l.q_b {
             Lin::V(v) if q_prepped => self.vmm_z(v, w.qr.ptr, v.cols, w.q.ptr, t, false, false, true)?,
             qb => self.mm(qb, w.qr.ptr, w.q.ptr, t)?,
@@ -1880,34 +1919,28 @@ impl<'m> Shard<'m> {
         let kv_op = self.g.mega_mark();
         self.g.launch(self.k["vkv_store"], (t as u32, 1, 1), 1024, 0, &[Arg::P(kvp), Arg::P(l.kv_norm.ptr), Arg::I(hd as i32), Arg::F(c.eps), Arg::P(f.ptr), Arg::I(c.rope_dim as i32), Arg::P(x.pos), Arg::P(l.window.ptr), Arg::P(x.wrow), Arg::I(kvld as i32)])?;
         if compressed {
-            let is_src = c.kv_sources.contains(&li);
-            if is_src {
-                if ratio == 1 {
-                    self.mm(l.comp_kv.as_ref().unwrap(), w.x.ptr, w.lat.ptr, t)?;
-                    self.rms_rows(w.lat.ptr, l.comp_norm.as_ref().unwrap(), w.lat.ptr, hd, t, false)?;
-                } else {
-                    let (ks, ss) = l.comp_state.as_ref().unwrap();
-                    self.mm(l.comp_kv.as_ref().unwrap(), w.x.ptr, w.t1.ptr, t)?;
-                    self.mm(l.comp_gate.as_ref().unwrap(), w.x.ptr, w.t2.ptr, t)?;
-                    self.g.launch(self.k["vrows_scatter"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.t1.ptr), Arg::P(ks.ptr), Arg::P(x.srow), Arg::I(hd as i32)])?;
-                    self.g.launch(self.k["vrows_scatter"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.t2.ptr), Arg::P(ss.ptr), Arg::P(x.srow), Arg::I(hd as i32)])?;
-                    // every token, masked: those closing no group skip (lat_base -1) and store nothing below
-                    self.g.launch(self.k["vcompress"], (t as u32, 1, 1), 512, 0, &[Arg::P(ks.ptr), Arg::P(ss.ptr), Arg::P(x.lat_base), Arg::P(w.lat.ptr), Arg::I(ratio as i32), Arg::I(hd as i32)])?;
-                    self.rms_rows(w.lat.ptr, l.comp_norm.as_ref().unwrap(), w.lat.ptr, hd, t, false)?;
+            if !side {
+                if is_src {
+                    self.compress_kv(li, t, &x)?;
                 }
-            }
-            if c.index_sources.contains(&li) {
-                self.indexer(li, t, &x, st)?;
-            }
-            if is_src {
-                let (w, l) = (&self.w, &self.layers[li]);
-                self.rope_rows(w.lat.ptr, 1, hd, true, x.lat_pos, t, false)?;
-                if kv_fp4() {
-                    self.g.launch(self.k["vstore_fp4_rows"], (t as u32, 1, 1), hd as u32, 0, &[Arg::P(w.lat.ptr), Arg::P(l.comp_cache.as_ref().unwrap().ptr), Arg::P(x.comp_rows), Arg::I(hd as i32), Arg::I(16), Arg::I(1)])?;
-                } else {
-                    self.fake_fp4(w.lat.ptr, t * hd, 16, true)?;
-                    self.g.launch(self.k["vstore_bf16_rows"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.lat.ptr), Arg::P(l.comp_cache.as_ref().unwrap().ptr), Arg::P(x.comp_rows), Arg::I(hd as i32)])?;
+                if is_idx {
+                    if is_src {
+                        self.indexer_keys(li, t, &x)?;
+                    }
+                    self.indexer_q(li, t, &x)?;
+                    self.indexer_w(li, t)?;
                 }
+                if is_src {
+                    self.comp_store(li, t, &x)?;
+                }
+            } else if is_idx && !q_side {
+                self.indexer_q(li, t, &x)?;
+            }
+            if side && (is_src || is_idx) {
+                self.g.wait(self.aevs[1], false)?;
+            }
+            if is_idx {
+                self.indexer_select(li, t, &x, st)?;
             }
         }
         let kcomp = x.kcomp;
@@ -2001,33 +2034,94 @@ impl<'m> Shard<'m> {
         self.g.launch(self.k["vx_llreduce"], (blocks, 1, 1), 256, 0, &[Arg::P(table), Arg::I(self.gi as i32), Arg::P(src), Arg::I(words as i32), Arg::I(maxw as i32), Arg::P(a), Arg::I(mode), Arg::P(w.seqd.ptr), Arg::I(li as i32)])
     }
 
-    fn indexer(&mut self, li: usize, t: usize, x: &LTab, st: &mut StepState) -> Result<()> {
-        let m = self.m;
-        let c = &m.cfg;
+    /// run f's launches on the side stream
+    fn on_side(&mut self, f: impl FnOnce(&mut Self) -> Result<()>) -> Result<()> {
+        self.g.set_side(true);
+        let r = f(self);
+        self.g.set_side(false);
+        r
+    }
+
+    /// the side stream's tail: mark its attention work done (work: main waits for aevs[1]), then the hc mixes
+    fn side_mixes(&self, li: usize, t: usize, work: bool) -> Result<()> {
+        if work {
+            self.g.record(self.aevs[1], true)?;
+        }
+        let (w, l) = (&self.w, &self.layers[li]);
+        self.hc_mixes_on(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t, true)?;
+        self.g.record(self.mevs[1], true)
+    }
+
+    /// a kv source's compressor: the latent rows of the groups this step closes into lat (normalized, unroped)
+    fn compress_kv(&self, li: usize, t: usize, x: &LTab) -> Result<()> {
+        let (w, l, hd) = (&self.w, &self.layers[li], self.m.cfg.head_dim);
+        let ratio = self.m.layers[li].ratio;
+        if ratio == 1 {
+            self.mm(l.comp_kv.as_ref().unwrap(), w.x.ptr, w.lat.ptr, t)?;
+            return self.rms_rows(w.lat.ptr, l.comp_norm.as_ref().unwrap(), w.lat.ptr, hd, t, false);
+        }
+        let (ks, ss) = l.comp_state.as_ref().unwrap();
+        self.mm(l.comp_kv.as_ref().unwrap(), w.x.ptr, w.t1.ptr, t)?;
+        self.mm(l.comp_gate.as_ref().unwrap(), w.x.ptr, w.t2.ptr, t)?;
+        self.g.launch(self.k["vrows_scatter"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.t1.ptr), Arg::P(ks.ptr), Arg::P(x.srow), Arg::I(hd as i32)])?;
+        self.g.launch(self.k["vrows_scatter"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.t2.ptr), Arg::P(ss.ptr), Arg::P(x.srow), Arg::I(hd as i32)])?;
+        // every token, masked: those closing no group skip (lat_base -1) and store nothing below
+        self.g.launch(self.k["vcompress"], (t as u32, 1, 1), 512, 0, &[Arg::P(ks.ptr), Arg::P(ss.ptr), Arg::P(x.lat_base), Arg::P(w.lat.ptr), Arg::I(ratio as i32), Arg::I(hd as i32)])?;
+        self.rms_rows(w.lat.ptr, l.comp_norm.as_ref().unwrap(), w.lat.ptr, hd, t, false)
+    }
+
+    /// the latent rows roped and stored in the compressed cache (after the indexer's keys, which read them unroped)
+    fn comp_store(&self, li: usize, t: usize, x: &LTab) -> Result<()> {
+        let (w, l, hd) = (&self.w, &self.layers[li], self.m.cfg.head_dim);
+        self.rope_rows(w.lat.ptr, 1, hd, true, x.lat_pos, t, false)?;
+        if kv_fp4() {
+            self.g.launch(self.k["vstore_fp4_rows"], (t as u32, 1, 1), hd as u32, 0, &[Arg::P(w.lat.ptr), Arg::P(l.comp_cache.as_ref().unwrap().ptr), Arg::P(x.comp_rows), Arg::I(hd as i32), Arg::I(16), Arg::I(1)])
+        } else {
+            self.fake_fp4(w.lat.ptr, t * hd, 16, true)?;
+            self.g.launch(self.k["vstore_bf16_rows"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.lat.ptr), Arg::P(l.comp_cache.as_ref().unwrap().ptr), Arg::P(x.comp_rows), Arg::I(hd as i32)])
+        }
+    }
+
+    /// the indexer's per-head weights from x
+    fn indexer_w(&self, li: usize, t: usize) -> Result<()> {
+        let c = &self.m.cfg;
+        let (id, nh, w) = (c.idx_dim, c.idx_heads, &self.w);
+        self.gemv(self.layers[li].idx_proj.as_ref().unwrap(), w.x.ptr, w.iw.ptr, t)?;
+        let wscale = (id as f32).powf(-0.5) * (nh as f32).powf(-0.5);
+        self.g.launch(self.k["scale_bf16"], (((t * nh) as u32).div_ceil(32), 1, 1), 32, 0, &[Arg::P(w.iw.ptr), Arg::I((t * nh) as i32), Arg::F(wscale)])
+    }
+
+    /// the indexer's queries from the q latent
+    fn indexer_q(&self, li: usize, t: usize, x: &LTab) -> Result<()> {
+        let c = &self.m.cfg;
+        let (id, nh, w) = (c.idx_dim, c.idx_heads, &self.w);
+        self.mm(self.layers[li].idx_q_b.as_ref().unwrap(), w.qr.ptr, w.iq.ptr, t)?;
+        self.rope_rows(w.iq.ptr, nh, id, true, x.pos, t, false)?;
+        self.fake_fp4(w.iq.ptr, t * nh * id, 32, false)
+    }
+
+    /// a kv source's indexer keys (from the unroped latent rows) into its key cache
+    fn indexer_keys(&self, li: usize, t: usize, x: &LTab) -> Result<()> {
+        let (id, w, l) = (self.m.cfg.idx_dim, &self.w, &self.layers[li]);
+        // every token, masked by idx_rows (-1 = no latent this step)
+        self.mm(l.idx_k.as_ref().unwrap(), w.lat.ptr, w.t1.ptr, t)?;
+        self.rms_rows(w.t1.ptr, l.idx_k_norm.as_ref().unwrap(), w.t1.ptr, id, t, false)?;
+        self.rope_rows(w.t1.ptr, 1, id, true, x.lat_pos, t, false)?;
+        if kv_fp4() {
+            self.g.launch(self.k["vstore_fp4_rows"], (t as u32, 1, 1), id as u32, 0, &[Arg::P(w.t1.ptr), Arg::P(l.idx_cache.as_ref().unwrap().ptr), Arg::P(x.idx_rows), Arg::I(id as i32), Arg::I(32), Arg::I(0)])
+        } else {
+            self.fake_fp4(w.t1.ptr, t * id, 32, false)?;
+            self.g.launch(self.k["vstore_bf16_rows"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.t1.ptr), Arg::P(l.idx_cache.as_ref().unwrap().ptr), Arg::P(x.idx_rows), Arg::I(id as i32)])
+        }
+    }
+
+    /// the indexer's scores over the visible compressed rows and their top-k into comp_idx
+    fn indexer_select(&mut self, li: usize, t: usize, x: &LTab, st: &mut StepState) -> Result<()> {
+        let c = &self.m.cfg;
         let (id, nh) = (c.idx_dim, c.idx_heads);
         let w = &self.w;
-        if c.kv_sources.contains(&li) {
-            // every token, masked by idx_rows (-1 = no latent this step)
-            let l = &self.layers[li];
-            self.mm(l.idx_k.as_ref().unwrap(), w.lat.ptr, w.t1.ptr, t)?;
-            self.rms_rows(w.t1.ptr, l.idx_k_norm.as_ref().unwrap(), w.t1.ptr, id, t, false)?;
-            self.rope_rows(w.t1.ptr, 1, id, true, x.lat_pos, t, false)?;
-            if kv_fp4() {
-                self.g.launch(self.k["vstore_fp4_rows"], (t as u32, 1, 1), id as u32, 0, &[Arg::P(w.t1.ptr), Arg::P(l.idx_cache.as_ref().unwrap().ptr), Arg::P(x.idx_rows), Arg::I(id as i32), Arg::I(32), Arg::I(0)])?;
-            } else {
-                self.fake_fp4(w.t1.ptr, t * id, 32, false)?;
-                self.g.launch(self.k["vstore_bf16_rows"], (t as u32, 1, 1), 256, 0, &[Arg::P(w.t1.ptr), Arg::P(l.idx_cache.as_ref().unwrap().ptr), Arg::P(x.idx_rows), Arg::I(id as i32)])?;
-            }
-        }
         // scores over the bucketed width: a token's rows past its visible count are -inf (ends)
         let n_max = x.n_max;
-        let l = &self.layers[li];
-        self.mm(l.idx_q_b.as_ref().unwrap(), w.qr.ptr, w.iq.ptr, t)?;
-        self.rope_rows(w.iq.ptr, nh, id, true, x.pos, t, false)?;
-        self.fake_fp4(w.iq.ptr, t * nh * id, 32, false)?;
-        self.gemv(l.idx_proj.as_ref().unwrap(), w.x.ptr, w.iw.ptr, t)?;
-        let wscale = (id as f32).powf(-0.5) * (nh as f32).powf(-0.5);
-        self.g.launch(self.k["scale_bf16"], (((t * nh) as u32).div_ceil(32), 1, 1), 32, 0, &[Arg::P(w.iw.ptr), Arg::I((t * nh) as i32), Arg::F(wscale)])?;
         let kc = self.layers[x.idxk_src].idx_cache.as_ref().unwrap().ptr;
         if kv_fp4() && nh == 32 && id == 128 {
             // tensor cores, 128 keys per block (tests/indexer_test.cu)
@@ -2975,14 +3069,7 @@ fn layers(sh: &mut Shard, toks: &[(usize, u32)], counts: &[usize], prof: bool) -
             // the attention's hc mixes read h, which the attention does not write, and only the post step after it
             // reads them: on the side stream they run alongside the attention (their Sinkhorn is one serial warp)
             let me = sh.mevs;
-            if side_mix {
-                sh.g.record(me[0], false)?;
-                sh.g.wait(me[0], true)?;
-                let (w, l) = (&sh.w, &sh.layers[li]);
-                sh.hc_mixes_on(&l.hc_attn, w.h.ptr, w.mix_a.ptr, t, true)?;
-                sh.g.record(me[1], true)?;
-            }
-            sh.attention(toks, li, &mut st)?;
+            sh.attention(toks, li, &mut st, side_mix)?;
             if side_mix {
                 sh.g.wait(me[1], false)?;
             } else {

@@ -59,6 +59,8 @@ pub struct Gpu {
     pub stream: cu::CUstream,
     /// second stream for copies that overlap the main stream (prefill expert streaming)
     pub side: cu::CUstream,
+    /// set_side(true): launch / memset go to the side stream (a branch of work enqueued with the main stream's helpers)
+    redirect: Cell<bool>,
     module: cu::CUmodule,
     blas: Cell<cb::cublasHandle_t>,
     /// the megakernel recorder (kernels/mega.cuh)
@@ -139,7 +141,7 @@ impl Gpu {
             };
             let mut module = std::ptr::null_mut();
             check(cu::cuModuleLoadData(&mut module, image.as_ptr() as *const c_void), "cuModuleLoadData")?;
-            Ok(Gpu { ordinal, name, sms, arch: (major * 10 + minor) as u32, ctx, stream, side, module, blas: Cell::new(std::ptr::null_mut()), mk: Mega::default(), replay: RefCell::new(None) })
+            Ok(Gpu { ordinal, name, sms, arch: (major * 10 + minor) as u32, ctx, stream, side, redirect: Cell::new(false), module, blas: Cell::new(std::ptr::null_mut()), mk: Mega::default(), replay: RefCell::new(None) })
         }
     }
 
@@ -416,7 +418,20 @@ impl Gpu {
     pub fn memset(&self, ptr: u64, bytes: usize) -> Result<()> {
         self.mk_flush()?;
         self.bind();
-        unsafe { check(cu::cuMemsetD8Async(ptr, 0, bytes, self.stream), "cuMemsetD8Async") }
+        unsafe { check(cu::cuMemsetD8Async(ptr, 0, bytes, self.cur()), "cuMemsetD8Async") }
+    }
+
+    /// launch / memset on the side stream (true) or the main stream (false, the default) from here on
+    pub fn set_side(&self, on: bool) {
+        self.redirect.set(on);
+    }
+
+    pub fn on_side(&self) -> bool {
+        self.redirect.get()
+    }
+
+    fn cur(&self) -> cu::CUstream {
+        if self.redirect.get() { self.side } else { self.stream }
     }
 
     /// New buffer holding `data`, in stream order (a NULL-stream cuMemcpyHtoD from pageable memory can return before
@@ -547,7 +562,7 @@ impl Gpu {
     }
 
     pub fn launch(&self, k: Kernel, grid: (u32, u32, u32), block: u32, smem: u32, args: &[Arg]) -> Result<()> {
-        self.launch_on(self.stream, k, grid, block, smem, args)
+        self.launch_on(self.cur(), k, grid, block, smem, args)
     }
 
     /// launch on the side stream (background work that must not wait behind the main stream)
