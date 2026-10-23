@@ -722,9 +722,39 @@ extern "C" __global__ void __launch_bounds__(256) vx_alltoall(const VxPeers *Pp,
 // lab (8 GPUs, in-kernel loop): 20 KB in 7.2 us, 10 KB in 5.2 us, against 13.9 / 10.1 for vx_allgather
 __device__ __forceinline__ void vx_st2(uint2 *p, uint2 v) { asm volatile("st.volatile.global.v2.u32 [%0], {%1, %2};" ::"l"(p), "r"(v.x), "r"(v.y) : "memory"); }
 __device__ __forceinline__ uint2 vx_ld2(const uint2 *p) { uint2 v; asm volatile("ld.volatile.global.v2.u32 {%0, %1}, [%2];" : "=r"(v.x), "=r"(v.y) : "l"(p) : "memory"); return v; }
+// mode 2: mode 0 (f32) by quad sums (Volta Scout's ll lab: 20 KB in 4.8 us against 7.4, 8 tokens 27 against 36): our words to
+// the 3 quad-mates only; every GPU adds its quad's 4 blocks in GPU order and sends that sum to its twin, which holds
+// the other quad's; a = own quad sum + twin's (addition commutes exactly, so every GPU holds the same bits; against the
+// 8-block sum in order, a reassociation: ~1e-7 relative). rx[g] here: [2 parities][9 slots: 8 sources, the twin's sum][maxw]
+__device__ __forceinline__ void vx_llquad_b(VB vb, uint2 *const *rx, int me, const unsigned *src, int words, int maxw, float *a, unsigned seq) {
+  const int par = seq & 1, q = me & ~3, tw = me ^ 4;
+  const int tid = vb.x * blockDim.x + threadIdx.x, nt = vb.gx * blockDim.x;
+  const size_t blk = (size_t)maxw;
+  for (int i = tid; i < words; i += nt) {
+    const uint2 w = make_uint2(src[i], seq);
+    for (int k = 0; k < 4; k++) { const int d = q + k; if (d != me) vx_st2(rx[d] + (par * 9 + me) * blk + i, w); }
+  }
+  const uint2 *mine = rx[me] + par * 9 * blk;
+  uint2 *tws = rx[tw] + (par * 9 + 8) * blk;
+  for (int i = tid; i < words; i += nt) {
+    float s0 = 0.f;
+    for (int k = 0; k < 4; k++) {
+      const int g = q + k;
+      unsigned v;
+      if (g == me) v = src[i];
+      else { uint2 w; do { w = vx_ld2(mine + g * blk + i); } while (w.y != seq); v = w.x; }
+      s0 += __uint_as_float(v);
+    }
+    vx_st2(tws + i, make_uint2(__float_as_uint(s0), seq));
+    uint2 w;
+    do { w = vx_ld2(mine + 8 * blk + i); } while (w.y != seq);
+    a[i] = s0 + __uint_as_float(w.x);
+  }
+}
 __device__ __forceinline__ void vx_llreduce_b(VB vb, uint2 *const *rx, int me, const unsigned *src, int words, int maxw, float *a, int mode,
                                                               const unsigned *seqp, unsigned li) {
   const unsigned seq = *seqp + li;
+  if (mode == 2) { vx_llquad_b(vb, rx, me, src, words, maxw, a, seq); return; }
   const int par = seq & 1, q = me & ~3, tw = me ^ 4;
   const int tid = vb.x * blockDim.x + threadIdx.x, nt = vb.gx * blockDim.x;
   const size_t blk = (size_t)maxw;

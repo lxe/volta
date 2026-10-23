@@ -1357,7 +1357,8 @@ impl<'m> Shard<'m> {
             srcwork: g.upload(&(0..o.ngpu as u32).flat_map(|i| [0u32, 0, 0, i]).collect::<Vec<u32>>())?,
             srcoff: g.upload(&(0..o.ngpu as i32).map(|i| i * TMAX as i32).collect::<Vec<i32>>())?,
             router: fz(t * c.n_experts)?,
-            ll_a: g.alloc_zeroed(if o.heads { 16 * TMAX * d * 8 } else { 8 })?,
+            // [2 parities][9 slots: 8 sources and the twin's quad sum][TMAX * d] LL words (vx_llquad_b)
+            ll_a: g.alloc_zeroed(if o.heads { 18 * TMAX * d * 8 } else { 8 })?,
             ll_m: g.alloc_zeroed(if o.heads { 16 * TMAX * d / 2 * 8 } else { 8 })?,
             ll_t: g.alloc_zeroed(24 * 8)?,
             ll_x: g.alloc_zeroed(if o.heads { 16 * 2 * TMAX * 8 } else { 8 })?,
@@ -2046,7 +2047,9 @@ impl<'m> Shard<'m> {
     fn hp_reduce(&self, li: usize, t: usize) -> Result<()> {
         let (d, w, slot) = (self.m.cfg.dim, &self.w, self.hp_slot());
         if t * d * 4 <= LL_MAX {
-            return self.ll_reduce(self.hp_block(), t * d, TMAX * d, w.a.ptr, 0, li);
+            // quad sums (mode 2) unless VOLTA_LLQ=0
+            let mode = if std::env::var("VOLTA_LLQ").is_ok_and(|v| v == "0") { 0 } else { 2 };
+            return self.ll_reduce(self.hp_block(), t * d, TMAX * d, w.a.ptr, mode, li);
         }
         self.g.launch(self.k["vx_allgather"], (VX_BLOCKS as u32, 1, 1), 256, 0, &[Arg::P(w.vx_pa.ptr), Arg::I(self.gi as i32), Arg::P(slot as u64), Arg::P(w.vx_bytes.ptr), Arg::P(w.seqd.ptr), Arg::I(li as i32)])?;
         self.g.launch(self.k["vsum_parts_f"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.a.ptr), Arg::P(w.xg.ptr), Arg::I(self.ngpu as i32), Arg::I((slot / 4) as i32), Arg::I((t * d) as i32)])
@@ -2055,7 +2058,7 @@ impl<'m> Shard<'m> {
     /// vx_llreduce: `words` 4-byte words from src, maxw the receive areas' block, mode 0 (f32) or 1 (fp16 pairs)
     fn ll_reduce(&self, src: u64, words: usize, maxw: usize, a: u64, mode: i32, li: usize) -> Result<()> {
         let w = &self.w;
-        let table = w.ll_t.ptr + if mode == 0 { 0 } else { 64 };
+        let table = w.ll_t.ptr + if mode == 1 { 64 } else { 0 };
         let blocks = (words as u32).div_ceil(256).clamp(20, 80);
         self.g.launch(self.k["vx_llreduce"], (blocks, 1, 1), 256, 0, &[Arg::P(table), Arg::I(self.gi as i32), Arg::P(src), Arg::I(words as i32), Arg::I(maxw as i32), Arg::P(a), Arg::I(mode), Arg::P(w.seqd.ptr), Arg::I(li as i32)])
     }
