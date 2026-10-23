@@ -102,6 +102,9 @@ pub struct Volta {
     e: Engine,
     a: VoltaArgs,
     block: usize,
+    /// sampled steps choose their tokens on the GPU (vspec_sample) where they can: not head-parallel, and not with
+    /// VOLTA_GPU_SAMPLE=0
+    gpu_sample: bool,
 }
 
 // GPU state lives on the engine's own threads; this struct only holds their handles.
@@ -115,7 +118,9 @@ pub fn volta_engine(m: &'static Model, a: VoltaArgs) -> Result<Box<dyn BatchEngi
     // from here on `gpus` is what the scheduler places sessions on
     let a = VoltaArgs { spec_k: if block == 0 { 0 } else { a.spec_k.min(block) }, gpus: e.gpus(), ..a };
     tracing::info!(gpus = a.gpus, slots = a.slots, heads = a.heads, ctx = a.ctx, draft = block > 0, spec_k = a.spec_k, "volta engine up");
-    Ok(Box::new(Volta { e, a, block }))
+    let gpu_sample = !e.head_parallel() && std::env::var("VOLTA_GPU_SAMPLE").map_or(true, |v| v != "0");
+    tracing::info!(gpu_sample, "sampling");
+    Ok(Box::new(Volta { e, a, block, gpu_sample }))
 }
 
 impl BatchEngine for Volta {
@@ -253,7 +258,31 @@ impl Volta {
             // what each row set decides: (drafts kept, the next token). Greedy sessions compare the GPU's argmax with
             // their drafts; sampled ones run speculative sampling on the logits (exact for the target distribution)
             let sampled = rows.iter().any(|&(i, ..)| !seqs[i].greedy);
-            let dec: Vec<(usize, u32)> = if sampled {
+            // the tokens chosen on the GPU (vspec_sample) when every row allows it: no top-p, no hesitation penalty,
+            // at most 8 drafts, not head-parallel; VOLTA_GPU_SAMPLE=0 keeps the CPU path
+            let on_gpu = sampled
+                && self.gpu_sample
+                && rows.iter().all(|&(i, _, _, n)| {
+                    let q = &seqs[i];
+                    q.hes.is_none() && (q.greedy || q.job.params.top_p >= 1.0) && n <= 9
+                });
+            let dec: Vec<(usize, u32)> = if on_gpu {
+                let mut tabs: Vec<(Vec<i32>, Vec<f32>)> = vec![(vec![], vec![]); ng];
+                let mut at = Vec::with_capacity(rows.len()); // (gpu, row in its table)
+                for &(i, g, r0, n) in &rows {
+                    let q = &mut seqs[i];
+                    let (rb, nd) = if q.next.is_none() { (r0 + n - 1, 0) } else { (r0, n - 1) };
+                    let (ti, tf) = &mut tabs[g];
+                    at.push((g, ti.len() / 10));
+                    ti.extend([rb as i32, nd as i32]);
+                    ti.extend((0..8).map(|j| if j < nd { q.drafts[j] as i32 } else { -1 }));
+                    tf.push(if q.greedy { 0.0 } else { q.job.params.temperature });
+                    // uniforms in [0, 1): an f64 just under 1 rounds to 1.0 as f32
+                    tf.extend((0..9).map(|j| if j <= nd { (q.rng.next_f64() as f32).min(0.999_999_94) } else { 0.0 }));
+                }
+                let r = self.e.step_sample(plan, tabs)?;
+                at.into_iter().map(|(g, k)| r[g][k]).collect()
+            } else if sampled {
                 let lg = self.e.step(plan)?;
                 let v = self.e.vocab;
                 let mut work: Vec<(usize, Rng, Option<Hesitation>)> = rows.iter().map(|&(i, ..)| (i, seqs[i].rng.clone(), seqs[i].hes.clone())).collect();

@@ -1722,6 +1722,117 @@ extern "C" __global__ void __launch_bounds__(256) vx_llargmax(uint2 *const *rx, 
 }
 // greedy ids: out[r] = argmax of logits row r (lowest index on ties); grid R, block 1024
 // outv (optional): each row's max value too (head-parallel: the GPUs' slice maxima are compared on the host)
+// ---------------------------------------------------------------- vspec_sample
+// Speculative sampling on the GPU, one block per session: the server's CPU path (temperature, no top-p, no hesitation
+// penalty) without sending t x vocab logits to the host. Table row r: the session's first logits row rb, its nd <= 8
+// one-hot drafts, its temperature and nd + 1 uniforms. Draft j is kept with probability p(d_j) (greedy, temp <= 0:
+// when it is the argmax); at the first one dropped the token is drawn from p with d_j removed (greedy: the argmax
+// without it); with every draft kept, from p at row rb + nd. Each thread owns a contiguous slice of the vocabulary, so
+// a block prefix sum over the slices orders the weights by id. out[2 r] = drafts kept, out[2 r + 1] = the token.
+// tab: [rows][10] ints (rb, nd, d0..d7), ftab: [rows][10] floats (temp, u0..u8). grid rows, block 1024
+__device__ __forceinline__ void vs_max(float &v, int &i) {  // the larger value, then the lower index
+#pragma unroll
+  for (int o = 16; o; o >>= 1) {
+    const float ov = __shfl_xor_sync(0xffffffffu, v, o);
+    const int oi = __shfl_xor_sync(0xffffffffu, i, o);
+    if (ov > v || (ov == v && oi < i)) { v = ov; i = oi; }
+  }
+}
+extern "C" __global__ void __launch_bounds__(1024) vspec_sample(const float *logits, int vocab, const int *tab, const float *ftab, int *out) {
+  __shared__ float sv[32];
+  __shared__ int si[32];
+  __shared__ float bM, bT;
+  __shared__ int bI, pick;
+  const int r = blockIdx.x, tid = threadIdx.x, lane = tid & 31, w = tid >> 5, nw = blockDim.x >> 5;
+  const int *ti = tab + r * 10;
+  const float *tf = ftab + r * 10;
+  const int rb = ti[0], nd = ti[1];
+  const float temp = tf[0];
+  const int per = (vocab + blockDim.x - 1) / blockDim.x, v0 = min(vocab, tid * per), v1 = min(vocab, v0 + per);
+  // the block's (max, first index) of (val, idx) pairs, into bM / bI
+  auto bmax = [&](float m, int mi) {
+    vs_max(m, mi);
+    __syncthreads();
+    if (lane == 0) { sv[w] = m; si[w] = mi; }
+    __syncthreads();
+    if (w == 0) {
+      m = lane < nw ? sv[lane] : -INFINITY;
+      mi = lane < nw ? si[lane] : 0x7fffffff;
+      vs_max(m, mi);
+      if (lane == 0) { bM = m; bI = mi; }
+    }
+    __syncthreads();
+  };
+  for (int a = 0;; a++) {
+    const float *l = logits + (size_t)(rb + a) * vocab;
+    const int d = a < nd ? ti[2 + a] : -1;
+    float m = -INFINITY;
+    int mi = 0x7fffffff;
+    for (int v = v0; v < v1; v++) if (l[v] > m) { m = l[v]; mi = v; }
+    bmax(m, mi);
+    const float M = bM;
+    const int I = bI;
+    if (temp <= 0.f) {
+      if (d >= 0 && d == I) continue;  // kept: every thread sees the same bI
+      int tok = I;
+      if (d >= 0) {
+        m = -INFINITY;
+        mi = 0x7fffffff;
+        for (int v = v0; v < v1; v++) if (v != d && l[v] > m) { m = l[v]; mi = v; }
+        bmax(m, mi);
+        tok = bI;
+      }
+      if (tid == 0) { out[2 * r] = a; out[2 * r + 1] = tok; }
+      return;
+    }
+    const float it = 1.f / temp;
+    // this slice's weights exp((l - M) / temp) without d, and their block prefix sum
+    float c = 0.f;
+    for (int v = v0; v < v1; v++) if (v != d) c += __expf((l[v] - M) * it);
+    float x = c;
+#pragma unroll
+    for (int o = 1; o < 32; o <<= 1) { const float y = __shfl_up_sync(0xffffffffu, x, o); if (lane >= o) x += y; }
+    __syncthreads();
+    if (lane == 31) sv[w] = x;
+    __syncthreads();
+    if (w == 0) {
+      float y = lane < nw ? sv[lane] : 0.f;
+#pragma unroll
+      for (int o = 1; o < 32; o <<= 1) { const float z = __shfl_up_sync(0xffffffffu, y, o); if (lane >= o) y += z; }
+      sv[lane] = y;
+      if (lane == 31) bT = y;
+    }
+    __syncthreads();
+    const float pre = x - c + (w ? sv[w - 1] : 0.f), total = bT;
+    if (d >= 0) {
+      // p(d) = its weight over the whole mass (the residual's mass plus d's own)
+      const float wd = __expf((l[d] - M) * it);
+      if (tf[1 + a] * (total + wd) < wd) continue;
+    }
+    if (tid == 0) pick = -1;
+    __syncthreads();
+    const float target = tf[1 + nd] * total;
+    if (c > 0.f && pre <= target && target < pre + c) {
+      float acc = pre;
+      int last = -1;
+      for (int v = v0; v < v1; v++) {
+        if (v == d) continue;
+        const float wv = __expf((l[v] - M) * it);
+        if (wv > 0.f) last = v;
+        acc += wv;
+        if (acc > target) { last = v; break; }
+      }
+      pick = last;
+    }
+    __syncthreads();
+    if (tid == 0) {
+      out[2 * r] = a;
+      out[2 * r + 1] = pick >= 0 ? pick : (I != d ? I : (I + 1) % vocab);  // a rounding gap: the mode
+    }
+    return;
+  }
+}
+
 extern "C" __global__ void vargmax_rows(const float *logits, int vocab, int *out, float *outv) {
   __shared__ float bv[32];
   __shared__ int bi[32];

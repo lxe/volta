@@ -112,7 +112,7 @@ const KERNELS: &[&str] = &[
     "router_topk", "engram_gate_t", "sparse_attn_tile", "sparse_attn_merge", "fake_fp8_copy",
     "vkv_store", "vrows_scatter", "vcompress", "vstore_bf16_rows", "vindexer_score", "vidx_offset", "vswiglu_f32", "vsum_parts",
     "vswiglu", "vto_f16", "fwht_rows_f16", "vto_f16_rows", "vzero_rows", "vsrc_f16", "vpack_x", "vx_allgather", "vx_alltoall", "vattn_tile5", "vcompact", "vlut_pack", "vcb_quant", "fake_fp8_copy",
-    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vmarkov_part", "vmarkov_argmax2", "vx_llargmax", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vac_pro", "vattn2t", "vroute_hp", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
+    "vlut_fp4r1_n1", "vlut_fp4r1_n2", "vlut_cb3r1_n1", "vlut_cb3r1_n2", "vlut_cb2r1_n1", "vlut_cb2r1_n2", "vlut_fp4_n1", "vlut_fp4_n2", "vlut_fp4_n4", "vlut_cb3_n1", "vlut_cb3_n2", "vlut_cb3_n4", "vlut_cb2_n1", "vlut_cb2_n2", "vlut_cb2_n4", "vsum_parts_h", "vmoe_b4_n1_r1", "vmoe_b4_n2_r1", "vroute_count", "vroute_scan", "vroute_fill", "vbuckets", "vrouter_topk", "vroute_all", "vpack_xf", "vq16_rope", "vattn_merge_rope", "vsum_z", "vsum_parts_f", "vx_llreduce", "vmarkov_part", "vmarkov_argmax2", "vx_llargmax", "volta_mega", "vmoe_b4_pf", "vrms_xh", "vfp8_xh", "vattn2", "vmerge2", "vac_pro", "vattn2t", "vroute_hp", "vspec_sample", "vswiglu_c", "vfwht_c", "vzero_c", "vmoe_b2_n1", "vmoe_b2_n2", "vmoe_b2_n4", "vmoe_b4_n1", "vmoe_b4_n2", "vmoe_b4_n4",
 ];
 
 // ---------------------------------------------------------------- routed experts in the vmoe layout
@@ -1121,6 +1121,10 @@ struct Shard<'m> {
     spark: Option<spark::Spark>,
     /// this step returns greedy ids instead of logits (Engine::step_greedy)
     greedy: bool,
+    /// StepSample: the table rows uploaded to `samp` this step (vspec_sample in finish), 0 otherwise
+    sample_rows: usize,
+    /// vspec_sample's table: [TMAX][10] ints (rb, nd, drafts), then [TMAX][10] floats (temperature, uniforms)
+    samp: Buf,
     spark_ids: Buf,
     /// fork / join events for the side stream
     evs: [crate::gpu::Event; 4],
@@ -1430,6 +1434,8 @@ impl<'m> Shard<'m> {
             overlap: std::env::var("VOLTA_OVERLAP").map_or(true, |v| v != "0"),
             spark,
             greedy: false,
+            sample_rows: 0,
+            samp: g.alloc_zeroed(TMAX * 20 * 4)?,
             spark_ids: g.alloc_zeroed(2 * TMAX * 4)?,
             evs: [g.event()?, g.event()?, g.event()?, g.event()?],
             mevs: [g.event()?, g.event()?, g.event()?, g.event()?],
@@ -2641,6 +2647,13 @@ impl<'m> Shard<'m> {
             return self.g.download(w.logits.ptr, t * vs);
         }
         self.mm(&self.head, w.x.ptr, w.logits.ptr, t)?;
+        if self.sample_rows > 0 {
+            // (drafts kept, token) per table row, as f32 bit patterns on the result channel
+            let n = self.sample_rows;
+            self.g.launch(self.k["vspec_sample"], (n as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::I(c.vocab as i32), Arg::P(self.samp.ptr), Arg::P(self.samp.ptr + (TMAX * 40) as u64), Arg::P(self.spark_ids.ptr)])?;
+            let r: Vec<u32> = self.g.download(self.spark_ids.ptr, 2 * n)?;
+            return Ok(r.into_iter().map(f32::from_bits).collect());
+        }
         if self.greedy {
             // greedy ids only (as f32 bit patterns on the result channel), not t x vocab logits
             self.g.launch(self.k["vargmax_rows"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::I(c.vocab as i32), Arg::P(self.spark_ids.ptr), Arg::P(0)])?;
@@ -2687,6 +2700,8 @@ enum Cmd {
     Reset(usize),
     /// a main step that returns each token's greedy next id
     StepGreedy(Arc<Vec<Vec<(usize, u32)>>>),
+    /// a main step whose tokens are chosen on the GPU (vspec_sample): per GPU, the sampling table (ints, floats)
+    StepSample(Arc<Vec<Vec<(usize, u32)>>>, Arc<Vec<(Vec<i32>, Vec<f32>)>>),
     /// a draft step: per GPU (observed rows (slot, row, pos), drafts (slot, pos, next))
     Spark(Arc<SparkPlan>),
     /// drop slots' last tokens: (slot, n) per GPU
@@ -2837,6 +2852,22 @@ impl Engine {
                                 sh.greedy = false;
                                 rtx.send((gi, r)).ok();
                             }
+                            Cmd::StepSample(plan, tabs) => {
+                                let (ti, tf) = &tabs[gi];
+                                let n = ti.len() / 10;
+                                let up = (|| -> Result<()> {
+                                    anyhow::ensure!(n <= TMAX && tf.len() == 10 * n, "sampling table of {n} rows");
+                                    if n > 0 {
+                                        sh.g.htod_sync(sh.samp.ptr, ti)?;
+                                        sh.g.htod_sync(sh.samp.ptr + (TMAX * 40) as u64, tf)?;
+                                    }
+                                    Ok(())
+                                })();
+                                sh.sample_rows = n;
+                                let r = up.and_then(|_| run_step(&mut sh, &plan, &barrier));
+                                sh.sample_rows = 0;
+                                rtx.send((gi, r)).ok();
+                            }
                         }
                     }
                     Ok(())
@@ -2976,6 +3007,33 @@ impl Engine {
             return Ok(vec![ids]);
         }
         Ok(self.first(out))
+    }
+
+    /// a main step whose next tokens are chosen on the GPU (DP only): tabs[gpu] = (ints, floats), 10 of each per
+    /// row: rb, nd, nd drafts | temperature, nd + 1 uniforms (vspec_sample). Returns (drafts kept, token) per row
+    pub fn step_sample(&self, plan: Vec<Vec<(usize, u32)>>, tabs: Vec<(Vec<i32>, Vec<f32>)>) -> Result<Vec<Vec<(usize, u32)>>> {
+        ensure!(!self.opts.heads, "step_sample: not with --head-parallel (the head is split by vocabulary)");
+        ensure!(plan.len() == self.gpus() && tabs.len() == self.gpus() && plan.iter().all(|p| p.len() <= TMAX), "plan: one list per GPU, <= {TMAX} tokens each");
+        let (plan, tabs) = (Arc::new(plan), Arc::new(tabs));
+        for t in &self.tx {
+            t.send(Cmd::StepSample(plan.clone(), tabs.clone()))?;
+        }
+        let mut out = vec![vec![]; self.opts.ngpu];
+        for _ in 0..self.opts.ngpu {
+            let (gi, r) = self.rx.recv()?;
+            if let Err(e) = &r {
+                eprintln!("GPU{gi} step failed: {e:#}");
+                std::process::exit(1);
+            }
+            let v: Vec<u32> = r.with_context(|| format!("GPU{gi} step"))?.into_iter().map(f32::to_bits).collect();
+            out[gi] = v.chunks(2).map(|p| (p[0] as usize, p[1])).collect();
+        }
+        Ok(out)
+    }
+
+    /// head-parallel (the vocabulary is split over the GPUs)
+    pub fn head_parallel(&self) -> bool {
+        self.opts.heads
     }
 
     /// the draft block size, when a draft is loaded
