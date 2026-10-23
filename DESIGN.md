@@ -493,3 +493,44 @@ Stages, each measured against the graph path and checked for the same outputs:
 3. Whole layers in one kernel, then several layers; L2 prefetch of the next ops' dense weights by idle blocks.
 4. Counters instead of barriers; DP mode and larger t.
 
+
+The executor works (`VOLTA_MEGA=1`, outputs identical) but is slower than the CUDA graph, so it stays opt-in. In
+a megakernel each op waits on the one before it through counters, so the ops still run one after another, and a
+1-token matmul as an op takes longer than the same matmul as its own kernel: qkv_a 18.0 us against 11.7, q_b/8
+13.5 against 8.1 (tests/mm1_test.cu). The time went instead into fewer, shorter and overlapped kernels in the
+graph (below).
+
+### 2026-10-23: one session, continued
+
+Steady-state median step, one session, greedy, head-parallel (`VOLTA_HEADS=1 volta spec --k 0`):
+
+| Change | Why it was slow | Step |
+|---|---|---|
+| shared expert slice on the 1-token dense kernel | the bucketed expert path for one row | 14.4 -> 13.2 ms |
+| attention and merge from Volta Scout's lab (vattn2, vmerge2) | | 13.2 -> 13.1 ms |
+| routing chain: picks loaded once, lists bucketed in one pass | a 1-block chain re-reading the picks | 13.1 -> 12.9 ms |
+| the producers of three matmuls' inputs write their fp16 copy (vprep folded upstream) | a vprep node per matmul | 12.9 -> 12.7 ms |
+| hc mixes on the side stream | their Sinkhorn is one warp's serial chain, on the critical path | 12.7 -> 12.1 ms |
+| output head split by vocabulary (cross-GPU argmax) | one GPU read the whole head | 12.1 -> 11.6 ms |
+| indexer and compressor work on the side stream | a ~55 us serial chain before attention in 8 layers | 11.6 -> 11.3 ms |
+
+The draft's head and Markov chain are split by vocabulary the same way in head-parallel mode, and its argmax runs
+over many blocks per session (vmarkov_argmax2: 54 -> 5 us per Markov step at one session, lab).
+
+The side stream carries work that only a later step reads: the attention's and the FFN's hc mixes, the indexer's
+keys, weights and (in layers that are not kv sources) queries, the compressor chain and its cache store. The main
+stream waits for it only where its output is read (`Gpu::set_side` sends a branch's launches there; its matmuls
+prep into their own fp16 buffer). In DP at 64 sessions this is neutral (40.6 -> 40.5 ms).
+
+Where a head-parallel layer goes now, against what is reachable (labs in tests/ and Volta Scout's reports):
+
+| Part | us per layer | Reachable | Note |
+|---|---|---|---|
+| routed experts, gate/up + down | ~45 | ~29 | vlut2 (4-warp blocks, decode reordered) is 18.6 us for gate/up against 31.2 in the lab, bit-identical; it lost in the engine while the shared slice ran beside it on the side stream |
+| dense matmuls | ~42 | ~37 | within ~1.5 us of bytes / 690 GB/s plus a ~2 us launch ramp each (mm1_test) |
+| attention chain (kv store, q rope, attention, merge, FP8 round) | ~34 + 5 nodes | ~10 | five serial nodes for one token's 8 heads |
+| exchanges (LL), attention + MoE | ~14 | ~9 | the last GPU to arrive spends 8.2 / 6 us; GPUs arrive within 2-3 us of each other |
+
+One trace showed five GPUs 7-13% slower on every kernel, which no other trace and no isolated probe reproduced (all
+eight: 1535 MHz effective, 302 ns dependent DRAM load). Check that per-GPU kernel times agree before reading skew
+from a trace.
