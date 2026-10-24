@@ -1,0 +1,29 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running unittests src/lib.rs (target/debug/deps/dsx_core-80597bff2f5b871c)
+
+running 23 tests
+test formats::tests::q2_0_layout ... ok
+test formats::tests::iq2_xxs_layout ... ok
+test formats::tests::ptq1_0_roundtrip ... ok
+test numerics::tests::e2m1_ties ... ok
+test numerics::tests::e4m3_grid ... ok
+test numerics::tests::pow2 ... ok
+test server::auth::tests::compares_without_an_early_exit ... ok
+test numerics::fwht_tests::involution_and_norm ... ok
+test server::auth::tests::reads_the_key_from_either_header ... ok
+test vision::tests::grid_matches_reference ... ok
+test server::sample::tests::greedy_is_argmax ... ok
+test volta_quant::tests::production_index_sparse_open ... ignored, explicit bounded-memory large-index screening
+test vision::tests::data_urls ... ok
+test volta_quant::tests::all_tiers_match_cuda_layout_and_roundtrip ... ok
+test volta_quant::tests::reject_truncated_or_wrong_topology_pack ... ok
+test volta_quant::tests::verify_rejects_changed_payload_and_multiplier ... ok
+test server::sample::tests::seeded_is_deterministic ... ok
+test volta_quant::complete::tests::complete_preserves_typed_tensors_assets_and_hf_views ... ok
+test volta_quant::tests::pack_export_load_preserves_all_bytes_and_slice_multipliers ... ok
+test gguf::split_tests::u32_array_round_trip ... ok
+test server::sample::tests::top_p_truncates ... ok
+test server::sample::tests::temperature_matches_softmax ... ok
+test server::sample::tests::top_p_grows_past_initial_k ... ok
+
+test result: ok. 22 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 12.75s

@@ -1,0 +1,6 @@
+bits=2 rows=576 cols=5120 direction=load repeats=50 bytes_per_matrix=829440 seconds=0.380709 payload_MBps=108.933
+bits=2 rows=576 cols=5120 direction=export repeats=50 bytes_per_matrix=829440 seconds=0.372721 payload_MBps=111.268
+bits=3 rows=576 cols=5120 direction=load repeats=50 bytes_per_matrix=1198080 seconds=0.515144 payload_MBps=116.286
+bits=3 rows=576 cols=5120 direction=export repeats=50 bytes_per_matrix=1198080 seconds=0.539676 payload_MBps=111.000
+bits=4 rows=576 cols=5120 direction=load repeats=50 bytes_per_matrix=1566720 seconds=0.591964 payload_MBps=132.332
+bits=4 rows=576 cols=5120 direction=export repeats=50 bytes_per_matrix=1566720 seconds=0.554881 payload_MBps=141.176

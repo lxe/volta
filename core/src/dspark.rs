@@ -53,7 +53,7 @@ fn lin(w: &Mat, x: &[f32]) -> Vec<f32> {
 
 impl Dspark {
     pub fn load(m: &Model, st: &SafeTensors, dir: &std::path::Path) -> Result<Dspark> {
-        let cfg: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("config.json"))?)?;
+        let cfg: serde_json::Value = serde_json::from_slice(&if dir.is_file() { st.asset("config.json")?.to_vec() } else {std::fs::read(dir.join("config.json"))?})?;
         let t = &cfg["text_config"];
         let nl = t["num_nextn_predict_layers"].as_u64().unwrap_or(3) as usize;
         let ne = t["dspark_n_routed_experts"].as_u64().unwrap_or(128) as usize;

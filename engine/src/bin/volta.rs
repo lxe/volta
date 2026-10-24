@@ -117,6 +117,9 @@ fn load(model: &PathBuf, engram: Option<&std::path::Path>) -> Result<&'static Mo
     let t0 = Instant::now();
     // a directory is DeepSeek's HF checkpoint (FP8 dense, MXFP4 experts, Engram inside)
     let m = if model.is_dir() { Model::load_hf(model)? } else { Model::load(model, engram)? };
+    if model.is_file() && matches!(&m.src, dsx::model::Source::Hf(_)) {
+        unsafe {std::env::set_var("VOLTA_PACK",model);}
+    }
     eprintln!("model mapped in {:.1} s", t0.elapsed().as_secs_f64());
     Ok(Box::leak(Box::new(m)))
 }
@@ -242,6 +245,7 @@ fn main() -> Result<()> {
             println!("{{\"tokens\": {cnt}, \"ppl\": {:.4}, \"kl_top{topk}\": {:.6}, \"top1_agree\": {:.6}, \"wall_s\": {:.1}}}", (nll / cnt as f64).exp(), kl / cnt as f64, agree as f64 / cnt as f64, t0.elapsed().as_secs_f64());
         }
         Cmd::Spec { model, gpus, sessions, total, steps, prompt, text, k, adaptive } => {
+            if model.is_file() && std::env::var_os("VOLTA_SPARK").is_none() {unsafe {std::env::set_var("VOLTA_SPARK",&model);}}
             let m = load(&model, None)?;
             let (pg, gpus) = (gpus, if heads() { 1 } else { gpus });
             let corpus: Vec<u32> = std::fs::read(&text)?.chunks(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32).collect();

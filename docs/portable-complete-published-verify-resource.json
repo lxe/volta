@@ -1,0 +1,16 @@
+{
+  "command": [
+    "/home/lxe/volta-repack/target/release/volta-quant",
+    "verify-full",
+    "/home/lxe/volta-publish-20261024/source/pack-27.5gb-8xv100",
+    "/home/lxe/volta-publish-20261024/source/base",
+    "/home/lxe/volta-publish-20261024/output/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+    "5120",
+    "2304"
+  ],
+  "exit_code": 0,
+  "wall_s": 1033.8762800239492,
+  "user_s": 578.076269,
+  "system_s": 274.629163,
+  "max_rss_kib": 10134272
+}

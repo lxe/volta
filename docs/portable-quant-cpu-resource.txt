@@ -1,0 +1,8 @@
+UTC: 2026-10-24T22:37:43.560004+00:00
+CPU: Intel Core i7-13700
+Compiler: rustc 1.99.0, cargo release profile
+Repetitions: before=50, after=1000
+Maximum child RSS across two after runs: 18184 KiB
+Input: deterministic synthetic packed codes and scale bytes, exact roundtrip checked before timing
+Payload MB/s counts one copy of code+scale bytes, not sum of reads and writes
+No model I/O, GGUF parsing, multi-thread loader, or GPU upload in this screening receipt

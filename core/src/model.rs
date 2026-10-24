@@ -207,11 +207,12 @@ impl Config {
     /// From an HF checkpoint's config.json plus the Engram constants sidecar (dsx-engram.json, written by
     /// xolotl's v41_gguf_meta.engram_layout: tokenizer-derived token map, bucket primes, hash multipliers).
     pub fn from_hf(dir: &Path) -> Result<Config> {
-        let cfg: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("config.json"))?)?;
-        let t = &cfg["text_config"];
-        let e: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(dir.join("dsx-engram.json")).context("dsx-engram.json (engram constants) missing")?,
-        )?;
+        Self::from_hf_json(&crate::volta_quant::complete::read_asset(dir,"config.json")?, &crate::volta_quant::complete::read_asset(dir,"dsx-engram.json")?)
+    }
+    pub fn from_hf_json(config: &[u8], engram: &[u8]) -> Result<Config> {
+        let cfg: serde_json::Value=serde_json::from_slice(config)?;
+        let t=&cfg["text_config"];
+        let e: serde_json::Value=serde_json::from_slice(engram)?;
         let u = |v: &serde_json::Value, k: &str| -> Result<usize> { v[k].as_u64().map(|x| x as usize).with_context(|| k.to_string()) };
         let f = |v: &serde_json::Value, k: &str| -> Result<f32> { v[k].as_f64().map(|x| x as f32).with_context(|| k.to_string()) };
         let arr = |v: &serde_json::Value| -> Vec<u64> { v.as_array().map(|a| a.iter().filter_map(|x| x.as_u64()).collect()).unwrap_or_default() };
@@ -540,6 +541,7 @@ impl Model {
     /// A GGUF export (dense Q8_0/F16/F32, routed experts Q2_0/PTQ1_0/Q3_K); Engram rows from the HF checkpoint dir.
     pub fn load(gguf: &Path, engram_dir: Option<&Path>) -> Result<Model> {
         let g = Gguf::open(gguf)?;
+        if g.kv.contains_key("volta.base") {drop(g);return Self::load_hf(gguf);}
         let cfg = Config::from_gguf(&g)?;
         let m = |n: &str| -> Result<Mat> { Ok(Mat::from_gguf(&g, g.get(n)?)) };
         let om = |n: &str| -> Option<Mat> { g.tensors.get(n).map(|t| Mat::from_gguf(&g, t)) };
@@ -628,8 +630,8 @@ impl Model {
 
     /// DeepSeek's own checkpoint (FP8 dense, FP4 experts): the exact reference. Engram from the same dir.
     pub fn load_hf(dir: &Path) -> Result<Model> {
-        let cfg = Config::from_hf(dir)?;
         let st = SafeTensors::open(dir, &[])?;
+        let cfg = if dir.is_file() {Config::from_hf_json(st.asset("config.json")?,st.asset("dsx-engram.json")?)?} else {Config::from_hf(dir)?};
         let m = |n: &str| -> Result<Mat> { hf_mat(&st, n) };
         let om = |n: &str| -> Result<Option<Mat>> { if st.tensors.contains_key(n) { Ok(Some(hf_mat(&st, n)?)) } else { Ok(None) } };
         let v = |n: &str| -> Result<Vec<f32>> { Ok(mat_f32(&hf_mat(&st, n)?)) };

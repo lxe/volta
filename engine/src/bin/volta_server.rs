@@ -14,10 +14,10 @@ use tokenizers::Tokenizer;
 #[derive(Parser)]
 #[command(about = "OpenAI / Anthropic compatible API server for DeepSeek-V4.1-Flash on 8x V100 (volta)")]
 struct Cli {
-    /// checkpoint directory: the official one, or the Hugging Face repo's base/ with VOLTA_PACK set to its pack
+    /// Complete Volta GGUF file, or checkpoint directory with optional VOLTA_PACK
     #[arg(long)]
     model: PathBuf,
-    /// tokenizer.json (default: the model directory's)
+    /// Optional tokenizer.json override (default: embedded tokenizer, or model directory's)
     #[arg(long)]
     tokenizer: Option<PathBuf>,
     #[arg(long, default_value = "127.0.0.1")]
@@ -75,8 +75,12 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
     let cli = Cli::parse();
-    let tpath = cli.tokenizer.clone().unwrap_or_else(|| cli.model.join("tokenizer.json"));
-    let tok = Arc::new(Tokenizer::from_file(&tpath).map_err(|e| anyhow!("{}: {e}", tpath.display()))?);
+    let tok = Arc::new(if let Some(path)=&cli.tokenizer {
+        Tokenizer::from_file(path).map_err(|e|anyhow!("{}: {e}",path.display()))?
+    } else if cli.model.is_file() {
+        Tokenizer::from_bytes(dsx_core::volta_quant::complete::read_asset(&cli.model,"tokenizer.json")?).map_err(|e|anyhow!("embedded tokenizer: {e}"))?
+    } else {Tokenizer::from_file(cli.model.join("tokenizer.json")).map_err(|e|anyhow!("tokenizer: {e}"))?});
+    if cli.model.is_file() {unsafe {std::env::set_var("VOLTA_PACK",&cli.model);}}
     // graphs cost memory, and served traffic comes in many step shapes: keep a few (VOLTA_GRAPHS overrides)
     if std::env::var_os("VOLTA_GRAPHS").is_none() {
         unsafe { std::env::set_var("VOLTA_GRAPHS", "4") };

@@ -17,25 +17,46 @@ pub struct StTensor {
 
 pub struct SafeTensors {
     pub files: Vec<PathBuf>,
-    maps: Vec<Option<Mmap>>,
+    pub(crate) maps: Vec<Option<Mmap>>,
     pub tensors: HashMap<String, StTensor>,
+    pub(crate) assets: HashMap<String, StTensor>,
 }
 
 impl SafeTensors {
     /// Open only the shards that hold `wanted` tensors (all shards if `wanted` is empty).
     /// Only the tensors whose names start with `prefix` (and only their shards need to be present).
     pub fn open_prefix(dir: &Path, prefix: &str) -> Result<SafeTensors> {
-        let idx: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(dir.join("model.safetensors.index.json")).context("index json")?)?;
-        let names: Vec<String> = idx["weight_map"].as_object().context("weight_map")?.keys().filter(|k| k.starts_with(prefix)).cloned().collect();
-        anyhow::ensure!(!names.is_empty(), "no tensors named {prefix}* in {}", dir.display());
+        if dir.is_file() {
+            let mut st = Self::open(dir, &[])?;
+            st.tensors.retain(|n, _| n.starts_with(prefix));
+            return Ok(st);
+        }
+        let idx: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.join("model.safetensors.index.json")).context("index json")?,
+        )?;
+        let names: Vec<String> = idx["weight_map"]
+            .as_object()
+            .context("weight_map")?
+            .keys()
+            .filter(|k| k.starts_with(prefix))
+            .cloned()
+            .collect();
+        anyhow::ensure!(
+            !names.is_empty(),
+            "no tensors named {prefix}* in {}",
+            dir.display()
+        );
         let want: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
         Self::open(dir, &want)
     }
 
     pub fn open(dir: &Path, wanted: &[&str]) -> Result<SafeTensors> {
-        let idx: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(dir.join("model.safetensors.index.json")).context("index json")?)?;
+        if dir.is_file() {
+            return crate::volta_quant::complete::view(dir, wanted);
+        }
+        let idx: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.join("model.safetensors.index.json")).context("index json")?,
+        )?;
         let wm = idx["weight_map"].as_object().context("weight_map")?;
         let mut files: Vec<String> = vec![];
         for (name, f) in wm {
@@ -46,7 +67,12 @@ impl SafeTensors {
                 }
             }
         }
-        let mut st = SafeTensors { files: vec![], maps: vec![], tensors: HashMap::new() };
+        let mut st = SafeTensors {
+            files: vec![],
+            maps: vec![],
+            tensors: HashMap::new(),
+            assets: HashMap::new(),
+        };
         for f in &files {
             st.add_file(&dir.join(f))?;
         }
@@ -55,7 +81,12 @@ impl SafeTensors {
 
     /// One standalone .safetensors file.
     pub fn open_file(path: &Path) -> Result<SafeTensors> {
-        let mut st = SafeTensors { files: vec![], maps: vec![], tensors: HashMap::new() };
+        let mut st = SafeTensors {
+            files: vec![],
+            maps: vec![],
+            tensors: HashMap::new(),
+            assets: HashMap::new(),
+        };
         st.add_file(path)?;
         Ok(st)
     }
@@ -73,7 +104,12 @@ impl SafeTensors {
             let off = v["data_offsets"].as_array().context("offsets")?;
             let t = StTensor {
                 dtype: v["dtype"].as_str().unwrap_or("").to_string(),
-                shape: v["shape"].as_array().unwrap().iter().map(|d| d.as_u64().unwrap() as usize).collect(),
+                shape: v["shape"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|d| d.as_u64().unwrap() as usize)
+                    .collect(),
                 file: fi,
                 start: 8 + n + off[0].as_u64().unwrap() as usize,
                 end: 8 + n + off[1].as_u64().unwrap() as usize,
@@ -95,8 +131,23 @@ impl SafeTensors {
         }
     }
 
+    pub fn asset(&self, name: &str) -> Result<&[u8]> {
+        Ok(self.bytes(
+            self.assets
+                .get(name)
+                .with_context(|| format!("embedded asset {name}"))?,
+        ))
+    }
+    pub fn release(&self, t: &StTensor) -> Result<()> {
+        if let Some(m) = &self.maps[t.file] {
+            crate::volta_quant::release_pages(m, t.start, t.end - t.start)?;
+        }
+        Ok(())
+    }
     pub fn get(&self, name: &str) -> Result<&StTensor> {
-        self.tensors.get(name).with_context(|| format!("safetensors: no {name}"))
+        self.tensors
+            .get(name)
+            .with_context(|| format!("safetensors: no {name}"))
     }
 
     pub fn bytes(&self, t: &StTensor) -> &[u8] {

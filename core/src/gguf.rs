@@ -269,7 +269,7 @@ impl Gguf {
             let data = (c.p as u64).div_ceil(align) * align;
             for (name, dims, ty, off) in infos {
                 let n: u64 = dims.iter().product();
-                let bytes = (ty.row_bytes(dims[0] as usize) as u64) * (n / dims[0]);
+                let bytes = if n == 0 { 0 } else { (ty.row_bytes(dims[0] as usize) as u64) * (n / dims[0]) };
                 let ti = TensorInfo { name: name.clone(), dims, ty, shard, offset: data + off, bytes };
                 if ti.offset + ti.bytes > map.len() as u64 {
                     bail!("tensor {name} runs past the end of {}", p.display());

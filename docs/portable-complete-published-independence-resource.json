@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/home/lxe/volta-repack/target/release/volta-quant",
+    "smoke",
+    "/home/lxe/volta-publish-20261024/output/DeepSeek-V4.1-Flash-1017-Volta.gguf"
+  ],
+  "exit_code": 0,
+  "wall_s": 1.3656870459672064,
+  "user_s": 0.9876999999999999,
+  "system_s": 0.37579799999999997,
+  "max_rss_kib": 1557176
+}

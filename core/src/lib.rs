@@ -11,3 +11,5 @@ pub mod numerics;
 pub mod safetensors;
 pub mod server;
 pub mod vision;
+
+pub mod volta_quant;

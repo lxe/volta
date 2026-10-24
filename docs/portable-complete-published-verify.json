@@ -1,0 +1,47 @@
+{
+  "schema": "volta-complete-verify-v1",
+  "status": "exact",
+  "expert_verification": {
+    "schema": "volta-quant-verify-v1",
+    "status": "exact",
+    "source_pack": "/home/lxe/volta-publish-20261024/source/pack-27.5gb-8xv100",
+    "gguf_shards": [
+      "/home/lxe/volta-publish-20261024/output/DeepSeek-V4.1-Flash-1017-Volta.gguf"
+    ],
+    "dim": 5120,
+    "inter": 2304,
+    "ngpu": 8,
+    "etp": 8,
+    "layers": 40,
+    "experts_per_layer": 384,
+    "matrices": 245760,
+    "matrices_by_tier": [
+      0,
+      242752,
+      3008
+    ],
+    "code_bytes_compared": 203011522560,
+    "scale_bytes_compared": 16986931200,
+    "source_file_bytes": 220007301184,
+    "gguf_file_bytes": 441574130240,
+    "max_matrix_temporary_bytes": 1198080,
+    "source_manifest_sha256": "4c493501ca7a26342fbb1bd81974f691efbfaaf856009b4d2676f8cd0f504858",
+    "metadata_sha256": "7947191c961f1808ab16f3cba613f30a1c633d42d02b5c7b03977643e2f4c1a5",
+    "source_native_payload_sha256": "716e92ad8df3b90ada64a7786510b0fc0644bf51548f157c0bd7404595841947",
+    "reconstructed_native_payload_sha256": "716e92ad8df3b90ada64a7786510b0fc0644bf51548f157c0bd7404595841947",
+    "open_seconds": 0.634825308,
+    "compare_seconds": 652.816067065,
+    "total_seconds": 653.450892373,
+    "gpu_inference_verified": false
+  },
+  "base_tensors": 3925,
+  "assets": 20,
+  "base_tensor_bytes_compared": 221508192600,
+  "asset_bytes_compared": 7624809,
+  "source_base_payload_sha256": "3bd462b01d19604c773e42c1b5d8f212e724aa67820173da96381e8cfab2e1e5",
+  "embedded_base_payload_sha256": "3bd462b01d19604c773e42c1b5d8f212e724aa67820173da96381e8cfab2e1e5",
+  "base_metadata_sha256": "eff8fd075218517726d270fbfe2231df1b7fd90b0c6b4902c82ab2c1207413cd",
+  "io_chunk_bytes": 8388608,
+  "total_seconds": 1033.747421465,
+  "gpu_inference_verified": false
+}

@@ -33,10 +33,18 @@ that turns that bandwidth into throughput for many sessions at once.
 
 https://huggingface.co/lxe/DeepSeek-V4.1-Flash-1017-Volta
 
-Two folders. `base/` (221 GB) is the official checkpoint without its routed experts: the dense weights, the draft
-layers and the Engram tables, unchanged. `pack-27.5gb-8xv100/` (220 GB) holds the routed experts, re-quantized for
-this engine and already split across the 8 GPUs: 15,172 experts in cb3 (3.25 bits per weight) and 188 cold ones in
-cb2 (2.25), chosen by how often the router picks them.
+The Hugging Face repository contains one complete `DeepSeek-V4.1-Flash-1017-Volta.gguf` model file, about
+442 GB. It includes the unchanged base tensors, Engram tables, draft and vision weights, tokenizer and model
+configuration, together with the 220 GB of quantized main routed experts. No separate base directory or tokenizer
+file is required. The experts use cb3 (15,172 experts, 3.25 bits per weight) and cb2 (188 cold experts, 2.25 bits),
+chosen by how often the router picks them.
+
+The [GGUF format](docs/portable-quant.md) stores row-major expert codes and scale bytes. The engine reconstructs
+its kernel layout at load while preserving the quantized values and original eight-way source slices. The file
+uses custom Volta encoding metadata and requires this engine. It is not a llama.cpp quant type. Previously
+downloaded native expert packs and base directories remain supported.
+
+The quality and performance results below were measured with the original native pack, before the GGUF repack.
 
 Against the FP8 model on the [Lucebox](https://huggingface.co/Lucebox/DeepSeek-V4.1-Flash-1017-ROCMFP-GGUF) eval
 (8 x 1,024 tokens), it picks the same next token 84.1% of the time, with KL 0.127 and perplexity 8.88.
@@ -82,7 +90,7 @@ tok/s in total at most.
 
 ## Quick start
 
-Download the weights (base and pack, ~441 GB):
+Download the complete model (~442 GB):
 
 ```bash
 hf download lxe/DeepSeek-V4.1-Flash-1017-Volta --local-dir volta-weights
@@ -91,10 +99,10 @@ hf download lxe/DeepSeek-V4.1-Flash-1017-Volta --local-dir volta-weights
 Build and start the server:
 
 ```bash
-CUDA_ARCHS=70 cargo build --release -p dsx --features cuda --bin volta-server
+NVCC=/usr/local/cuda-12.9/bin/nvcc CUDA_ARCHS=70 cargo build --release -p dsx --features cuda --bin volta-server
 
-VOLTA_PACK=volta-weights/pack-27.5gb-8xv100 ./target/release/volta-server \
-  --model volta-weights/base \
+./target/release/volta-server \
+  --model volta-weights/DeepSeek-V4.1-Flash-1017-Volta.gguf \
   --host 0.0.0.0 --port 8090
 ```
 
@@ -106,7 +114,8 @@ heads, so the machine holds `--slots` sessions in total instead of `--slots` per
 without the draft. Every GPU keeps a copy of each session's KV cache, so `--slots` and `--ctx` share memory as
 they do without the flag.
 
-Loading takes ~2 minutes (the first start also maps the 196 GB Engram tables into RAM). Open `http://localhost:8090/`
+Loading reconstructs the expert kernel layout and maps the 196 GB Engram tables into RAM. Full-model startup
+time for the GGUF path has not been measured. Open `http://localhost:8090/`
 for the web UI, or point any OpenAI client at `http://localhost:8090/v1` (Anthropic clients at
 `http://localhost:8090`):
 
@@ -127,7 +136,7 @@ An admin dashboard runs on `http://localhost:8091/`: output and prompt throughpu
 sessions in use, speed per session, drafts kept, step time, and the active and recently finished requests. The same
 numbers are JSON at `/stats`.
 
-From the official checkpoint instead of the Hugging Face build, drop `VOLTA_PACK` and pass the checkpoint as
+To use the official checkpoint instead of the complete GGUF, pass the checkpoint directory as
 `--model`: the engine packs the experts on the GPUs at load (~3 minutes) and caches them in `/dev/shm/vcache`.
 
 ### Agents
@@ -194,7 +203,7 @@ With `--api-key`: drop `"authHeader": false`, set `"apiKey"` to the key and poin
 | GPUs | 8x V100 32 GB with NVLink in the DGX-1 layout (SXM2 or SXM3) |
 | CUDA | 12.9 (the last toolkit that builds for sm_70) |
 | RAM | ~400 GB (the Engram tables, 196 GB, are read from RAM) |
-| Disk | ~441 GB for the Hugging Face build; `/dev/shm` or fast disk for the 220 GB pack keeps loading short |
+| Disk | ~442 GB for the Hugging Face build; use fast storage for the model file |
 
 Other machines need other kernels and collectives; [DESIGN.md](DESIGN.md) lists what each would take.
 
@@ -206,8 +215,8 @@ Other machines need other kernels and collectives; [DESIGN.md](DESIGN.md) lists 
 
 | | |
 |---|---|
-| `--model` | the official checkpoint directory, or the Hugging Face build's `base/` with `VOLTA_PACK` set |
-| `VOLTA_PACK` | the pack directory (`pack-27.5gb-8xv100/`): the routed experts, already packed for the 8 GPUs |
+| `--model` | the complete Volta GGUF, or a checkpoint/base directory |
+| `VOLTA_PACK` | optional expert override for directory models: GGUF or native pack (original GPU topology required) |
 | `--tokenizer` | `tokenizer.json`; default: the model directory's |
 
 **Server**

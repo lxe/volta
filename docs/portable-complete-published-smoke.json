@@ -1,0 +1,42 @@
+{
+  "schema": "volta-complete-load-smoke-v1",
+  "status": "loaded",
+  "dim": 5120,
+  "inter": 2304,
+  "layers": 40,
+  "experts_per_layer": 384,
+  "base_tensors": 3925,
+  "assets": 20,
+  "vision_tensors": 266,
+  "draft_layers": 3,
+  "draft_block": 5,
+  "engram": [
+    {
+      "layer": 1,
+      "dim": 256,
+      "weight_bytes": 98305579008,
+      "scale_bytes": 3072049344
+    },
+    {
+      "layer": 14,
+      "dim": 256,
+      "weight_bytes": 98308270592,
+      "scale_bytes": 3072133456
+    }
+  ],
+  "tokenizer_vocab": 129280,
+  "tokenizer_sample_ids": [
+    19923
+  ],
+  "embedding_shape": [
+    129280,
+    5120
+  ],
+  "head_shape": [
+    129280,
+    5120
+  ],
+  "seconds": 1.369160382,
+  "peak_rss_proc_status": "VmHWM:\t 1555604 kB",
+  "gpu_inference_verified": false
+}

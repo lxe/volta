@@ -404,12 +404,29 @@ pub struct Pack {
     pub owner: Vec<Vec<u8>>,
 }
 
+// The GGUF tensor directory is large (one codes/scales pair per source slice).
+// Share its mmap and parsed metadata across GPU loader threads.
+fn portable_pack(path: &std::path::Path) -> Result<&'static dsx_core::volta_quant::Portable> {
+    static Q: std::sync::OnceLock<std::result::Result<(std::path::PathBuf, dsx_core::volta_quant::Portable), String>> = std::sync::OnceLock::new();
+    let loaded = Q.get_or_init(|| dsx_core::volta_quant::Portable::open(path)
+        .map(|q| (path.to_path_buf(), q)).map_err(|e| format!("{e:#}")));
+    match loaded {
+        Ok((p, q)) => { ensure!(p == path, "VOLTA_PACK changed after portable weights were opened"); Ok(q) }
+        Err(e) => bail!("portable expert load: {e}"),
+    }
+}
+
 impl Pack {
     pub fn dir() -> Option<std::path::PathBuf> {
         std::env::var_os("VOLTA_PACK").map(std::path::PathBuf::from)
     }
     pub fn open() -> Option<Pack> {
-        let b = std::fs::read(Self::dir()?.join("manifest.json")).ok()?;
+        let path = Self::dir()?;
+        if path.is_file() {
+            let q = portable_pack(&path).ok()?;
+            return serde_json::from_value(serde_json::to_value(q.pack()).ok()?).ok();
+        }
+        let b = std::fs::read(path.join("manifest.json")).ok()?;
         serde_json::from_slice(&b).ok()
     }
 }
@@ -554,6 +571,32 @@ impl Experts {
         let wbuf = g.alloc(wtot * 4)?;
         let sbuf = g.alloc(stot)?;
         let mut tab = HashMap::new();
+        // GGUF contains row-major codes. Recreate the unchanged kernel layout one matrix
+        // at a time; source quantization and its multiplier domains remain untouched.
+        if let Some(path) = Pack::dir().filter(|p| p.is_file()) {
+            let q = portable_pack(&path)?;
+            ensure!(q.dimensions() == (d, c.inter), "portable expert dimensions differ from model");
+            let (mut wo, mut so) = (0usize, 0usize);
+            for &(l, e) in &mine {
+                let kind = tier_kind(tiers[l][e]).0;
+                let mut slot = ExpSlot { bits: kind | (kind << 8), ..Default::default() };
+                for role in ["gu", "down"] {
+                    let matrix = q.matrix(l, e, part, role)?;
+                    let (words, scales) = q.native(matrix)?;
+                    ensure!(wo % 128 == 0 && wo + words.len() <= wtot * 4 && so + scales.len() <= stot, "portable expert arena overflow");
+                    let mul = f32::from_bits(matrix.mul_bits);
+                    if role == "gu" { (slot.gu_w, slot.gu_s, slot.gu_mul) = ((wo / 128) as u64, so as u64, mul); }
+                    else { (slot.dn_w, slot.dn_s, slot.dn_mul) = ((wo / 128) as u64, so as u64, mul); }
+                    g.htod_sync(wbuf.ptr + wo as u64, &words)?;
+                    g.htod_sync(sbuf.ptr + so as u64, &scales)?;
+                    wo += words.len(); so += scales.len();
+                    q.release_payload(matrix)?;
+                }
+                tab.insert((l, e), slot);
+            }
+            ensure!(wo == wtot * 4 && so == stot, "portable expert store size mismatch");
+            return Ok(Experts { w: wbuf, s: sbuf, tab });
+        }
         let cache = if let Some(dir) = Pack::dir() {
             Some(dir.join(format!("gpu{gi}.bin")))
         } else if std::env::var("VOLTA_CACHE").is_ok_and(|v| v == "0") {
@@ -2741,6 +2784,10 @@ impl Engine {
         // MXFP4 source (the HF checkpoint): tiers under VOLTA_EXPERT_GB per GPU (default 25), shrunk until the
         // placement fits every GPU
         let fp4 = fp4_source(m);
+        if let Some(path) = Pack::dir().filter(|p| p.is_file()) {
+            let q = portable_pack(&path)?;
+            q.validate_model(m.cfg.dim, m.cfg.inter, m.cfg.n_layers, m.cfg.n_experts, o.ngpu)?;
+        }
         let pack = Pack::open();
         if let Some(p) = &pack {
             ensure!(p.format == FORMAT && p.ngpu == o.ngpu, "pack: format {} for {} GPUs, this engine is format {FORMAT} on {}", p.format, p.ngpu, o.ngpu);

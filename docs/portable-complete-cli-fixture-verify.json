@@ -1,0 +1,47 @@
+{
+  "schema": "volta-complete-verify-v1",
+  "status": "exact",
+  "expert_verification": {
+    "schema": "volta-quant-verify-v1",
+    "status": "exact",
+    "source_pack": "target/complete-cli-fixture/pack",
+    "gguf_shards": [
+      "target/complete-cli-fixture/model.gguf"
+    ],
+    "dim": 32,
+    "inter": 64,
+    "ngpu": 2,
+    "etp": 2,
+    "layers": 1,
+    "experts_per_layer": 1,
+    "matrices": 4,
+    "matrices_by_tier": [
+      0,
+      4,
+      0
+    ],
+    "code_bytes_compared": 2304,
+    "scale_bytes_compared": 192,
+    "source_file_bytes": 2656,
+    "gguf_file_bytes": 73632,
+    "max_matrix_temporary_bytes": 832,
+    "source_manifest_sha256": "1725503246d99ab6723ab1d2fd8ba9b34fa4f02716b7fcb1ad83606e7c6006b0",
+    "metadata_sha256": "ca39f3cc94bb5cfe62fa352f34774c2efd452e9c7608c63796d0c3cd669d665b",
+    "source_native_payload_sha256": "30e67688966e20be4cfb7fe0024519e31accce1fff4852cfcae219049819443b",
+    "reconstructed_native_payload_sha256": "30e67688966e20be4cfb7fe0024519e31accce1fff4852cfcae219049819443b",
+    "open_seconds": 0.000199214,
+    "compare_seconds": 0.000048294999999999984,
+    "total_seconds": 0.000247509,
+    "gpu_inference_verified": false
+  },
+  "base_tensors": 61,
+  "assets": 5,
+  "base_tensor_bytes_compared": 53620,
+  "asset_bytes_compared": 5706,
+  "source_base_payload_sha256": "1fd40dc61791037134c03d54318b68f6d4f4c1a024ef6010d8122b550c5366aa",
+  "embedded_base_payload_sha256": "1fd40dc61791037134c03d54318b68f6d4f4c1a024ef6010d8122b550c5366aa",
+  "base_metadata_sha256": "c333eca5de6830daf6d81533c0a4bd8cdac99689745d839f2f0b9b1bb9a2bc3f",
+  "io_chunk_bytes": 8388608,
+  "total_seconds": 0.000911157,
+  "gpu_inference_verified": false
+}

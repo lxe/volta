@@ -1,0 +1,33 @@
+{
+  "schema": "volta-quant-verify-v1",
+  "status": "exact",
+  "source_pack": "target/verify-cli-fixture",
+  "gguf_shards": [
+    "target/verify-cli-fixture/experts.gguf"
+  ],
+  "dim": 32,
+  "inter": 64,
+  "ngpu": 2,
+  "etp": 2,
+  "layers": 1,
+  "experts_per_layer": 1,
+  "matrices": 4,
+  "matrices_by_tier": [
+    0,
+    4,
+    0
+  ],
+  "code_bytes_compared": 2304,
+  "scale_bytes_compared": 192,
+  "source_file_bytes": 2656,
+  "gguf_file_bytes": 3712,
+  "max_matrix_temporary_bytes": 832,
+  "source_manifest_sha256": "1725503246d99ab6723ab1d2fd8ba9b34fa4f02716b7fcb1ad83606e7c6006b0",
+  "metadata_sha256": "ca39f3cc94bb5cfe62fa352f34774c2efd452e9c7608c63796d0c3cd669d665b",
+  "source_native_payload_sha256": "30e67688966e20be4cfb7fe0024519e31accce1fff4852cfcae219049819443b",
+  "reconstructed_native_payload_sha256": "30e67688966e20be4cfb7fe0024519e31accce1fff4852cfcae219049819443b",
+  "open_seconds": 0.000044016,
+  "compare_seconds": 0.000023211,
+  "total_seconds": 0.000067227,
+  "gpu_inference_verified": false
+}
