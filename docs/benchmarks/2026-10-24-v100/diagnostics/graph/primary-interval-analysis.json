@@ -1,0 +1,1178 @@
+{
+  "evidence": "ACTUAL_V2_HOST_TRACE_ONLY",
+  "run": "diag-v2-001",
+  "original_eight_replacement_gate": "failed; retained original receipts/diag-v2-001-graph-analysis.json",
+  "alignment": "server UTC admission/done timestamps versus header wall epoch + per-step monotonic elapsed; approximate host record alignment",
+  "phases": {
+    "fixed": {
+      "start_utc": "2026-10-25T03:05:43.350973+00:00",
+      "end_utc": "2026-10-25T03:05:59.668994+00:00",
+      "api_wall_s": 16.605593063053675,
+      "output_tokens": 2048,
+      "cached_tokens_delta": 0,
+      "gpus": [
+        {
+          "gpu": 0,
+          "seq_min": 98,
+          "seq_max": 405,
+          "steps": 308,
+          "visible_end_utc": "2026-10-25T03:05:59.649530+00:00",
+          "uncovered_tail_s": 0,
+          "decisions": {
+            "hit": 8,
+            "budget": 300
+          },
+          "small_t_steps": 208,
+          "small_t_budget_miss_fraction": 1.0,
+          "repeated_hot_miss_keys": [
+            {
+              "key": [
+                2,
+                8192
+              ],
+              "misses": 34
+            },
+            {
+              "key": [
+                3,
+                8192
+              ],
+              "misses": 68
+            },
+            {
+              "key": [
+                4,
+                8192
+              ],
+              "misses": 53
+            },
+            {
+              "key": [
+                5,
+                8192
+              ],
+              "misses": 24
+            },
+            {
+              "key": [
+                6,
+                8192
+              ],
+              "misses": 29
+            }
+          ],
+          "persistently_resident_never_replayed_in_small_t_phase": [
+            [
+              2,
+              64
+            ],
+            [
+              3,
+              64
+            ],
+            [
+              64,
+              64
+            ],
+            [
+              64,
+              128
+            ],
+            [
+              64,
+              256
+            ],
+            [
+              64,
+              512
+            ]
+          ],
+          "phase_admission_evidence_gate": true,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 8,
+              "mean_ms": 0.36120825,
+              "median_ms": 0.3424485,
+              "p95_ms": 0.468306,
+              "sum_ms": 2.889666
+            },
+            "warm": null,
+            "capture": null,
+            "budget": {
+              "n": 300,
+              "mean_ms": 9.459705696666667,
+              "median_ms": 6.2033190000000005,
+              "p95_ms": 24.171868,
+              "sum_ms": 2837.911709
+            },
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "eager": 182,
+            "hit": 121,
+            "replacement_capture": 5
+          },
+          "original8_simulated_phase_hit_gain_pp": 36.688311688311686
+        },
+        {
+          "gpu": 1,
+          "seq_min": 98,
+          "seq_max": 405,
+          "steps": 308,
+          "visible_end_utc": "2026-10-25T03:05:59.644268+00:00",
+          "uncovered_tail_s": 0,
+          "decisions": {
+            "hit": 25,
+            "budget": 283
+          },
+          "small_t_steps": 226,
+          "small_t_budget_miss_fraction": 1.0,
+          "repeated_hot_miss_keys": [
+            {
+              "key": [
+                2,
+                8192
+              ],
+              "misses": 65
+            },
+            {
+              "key": [
+                3,
+                8192
+              ],
+              "misses": 67
+            },
+            {
+              "key": [
+                4,
+                8192
+              ],
+              "misses": 48
+            },
+            {
+              "key": [
+                6,
+                8192
+              ],
+              "misses": 34
+            }
+          ],
+          "persistently_resident_never_replayed_in_small_t_phase": [
+            [
+              0,
+              64
+            ],
+            [
+              3,
+              1024
+            ],
+            [
+              4,
+              1024
+            ],
+            [
+              51,
+              1024
+            ],
+            [
+              64,
+              64
+            ],
+            [
+              64,
+              128
+            ],
+            [
+              64,
+              256
+            ],
+            [
+              64,
+              512
+            ]
+          ],
+          "phase_admission_evidence_gate": true,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 25,
+              "mean_ms": 0.24877212,
+              "median_ms": 0.163572,
+              "p95_ms": 0.448494,
+              "sum_ms": 6.219303
+            },
+            "warm": null,
+            "capture": null,
+            "budget": {
+              "n": 283,
+              "mean_ms": 9.695252406360423,
+              "median_ms": 6.274512,
+              "p95_ms": 24.223771,
+              "sum_ms": 2743.756431
+            },
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 116,
+            "eager": 187,
+            "replacement_capture": 5
+          },
+          "original8_simulated_phase_hit_gain_pp": 29.545454545454547
+        },
+        {
+          "gpu": 2,
+          "seq_min": 98,
+          "seq_max": 405,
+          "steps": 308,
+          "visible_end_utc": "2026-10-25T03:05:59.644225+00:00",
+          "uncovered_tail_s": 0,
+          "decisions": {
+            "hit": 63,
+            "budget": 245
+          },
+          "small_t_steps": 188,
+          "small_t_budget_miss_fraction": 1.0,
+          "repeated_hot_miss_keys": [
+            {
+              "key": [
+                3,
+                8192
+              ],
+              "misses": 54
+            },
+            {
+              "key": [
+                4,
+                8192
+              ],
+              "misses": 52
+            },
+            {
+              "key": [
+                5,
+                8192
+              ],
+              "misses": 35
+            },
+            {
+              "key": [
+                6,
+                8192
+              ],
+              "misses": 35
+            }
+          ],
+          "persistently_resident_never_replayed_in_small_t_phase": [
+            [
+              0,
+              64
+            ],
+            [
+              3,
+              1024
+            ],
+            [
+              4,
+              1024
+            ],
+            [
+              51,
+              1024
+            ],
+            [
+              64,
+              64
+            ],
+            [
+              64,
+              128
+            ],
+            [
+              64,
+              256
+            ],
+            [
+              64,
+              512
+            ]
+          ],
+          "phase_admission_evidence_gate": true,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 63,
+              "mean_ms": 0.14221260317460316,
+              "median_ms": 0.127698,
+              "p95_ms": 0.244045,
+              "sum_ms": 8.959394
+            },
+            "warm": null,
+            "capture": null,
+            "budget": {
+              "n": 245,
+              "mean_ms": 10.278847624489796,
+              "median_ms": 6.199876,
+              "p95_ms": 24.292601,
+              "sum_ms": 2518.317668
+            },
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 108,
+            "eager": 195,
+            "replacement_capture": 5
+          },
+          "original8_simulated_phase_hit_gain_pp": 14.61038961038961
+        },
+        {
+          "gpu": 3,
+          "seq_min": 98,
+          "seq_max": 405,
+          "steps": 308,
+          "visible_end_utc": "2026-10-25T03:05:59.649197+00:00",
+          "uncovered_tail_s": 0,
+          "decisions": {
+            "hit": 9,
+            "budget": 299
+          },
+          "small_t_steps": 242,
+          "small_t_budget_miss_fraction": 1.0,
+          "repeated_hot_miss_keys": [
+            {
+              "key": [
+                2,
+                8192
+              ],
+              "misses": 79
+            },
+            {
+              "key": [
+                3,
+                8192
+              ],
+              "misses": 81
+            },
+            {
+              "key": [
+                4,
+                8192
+              ],
+              "misses": 53
+            }
+          ],
+          "persistently_resident_never_replayed_in_small_t_phase": [
+            [
+              0,
+              64
+            ],
+            [
+              3,
+              1024
+            ],
+            [
+              4,
+              1024
+            ],
+            [
+              51,
+              1024
+            ],
+            [
+              64,
+              64
+            ],
+            [
+              64,
+              128
+            ],
+            [
+              64,
+              256
+            ],
+            [
+              64,
+              512
+            ]
+          ],
+          "phase_admission_evidence_gate": true,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 9,
+              "mean_ms": 0.3564698888888889,
+              "median_ms": 0.359512,
+              "p95_ms": 0.429035,
+              "sum_ms": 3.208229
+            },
+            "warm": null,
+            "capture": null,
+            "budget": {
+              "n": 299,
+              "mean_ms": 9.430648070234113,
+              "median_ms": 6.24058,
+              "p95_ms": 24.350592,
+              "sum_ms": 2819.763773
+            },
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 152,
+            "eager": 152,
+            "replacement_capture": 4
+          },
+          "original8_simulated_phase_hit_gain_pp": 46.42857142857143
+        },
+        {
+          "gpu": 4,
+          "seq_min": 98,
+          "seq_max": 405,
+          "steps": 308,
+          "visible_end_utc": "2026-10-25T03:05:59.644264+00:00",
+          "uncovered_tail_s": 0,
+          "decisions": {
+            "hit": 308
+          },
+          "small_t_steps": 0,
+          "small_t_budget_miss_fraction": 0.0,
+          "repeated_hot_miss_keys": [],
+          "persistently_resident_never_replayed_in_small_t_phase": [],
+          "phase_admission_evidence_gate": false,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 308,
+              "mean_ms": 0.1720895487012987,
+              "median_ms": 0.1644095,
+              "p95_ms": 0.205603,
+              "sum_ms": 53.003581
+            },
+            "warm": null,
+            "capture": null,
+            "budget": null,
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 308
+          },
+          "original8_simulated_phase_hit_gain_pp": 0.0
+        },
+        {
+          "gpu": 5,
+          "seq_min": 98,
+          "seq_max": 405,
+          "steps": 308,
+          "visible_end_utc": "2026-10-25T03:05:59.644266+00:00",
+          "uncovered_tail_s": 0,
+          "decisions": {
+            "hit": 308
+          },
+          "small_t_steps": 0,
+          "small_t_budget_miss_fraction": 0.0,
+          "repeated_hot_miss_keys": [],
+          "persistently_resident_never_replayed_in_small_t_phase": [],
+          "phase_admission_evidence_gate": false,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 308,
+              "mean_ms": 0.16154725649350649,
+              "median_ms": 0.1599815,
+              "p95_ms": 0.225425,
+              "sum_ms": 49.756555
+            },
+            "warm": null,
+            "capture": null,
+            "budget": null,
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 308
+          },
+          "original8_simulated_phase_hit_gain_pp": 0.0
+        },
+        {
+          "gpu": 6,
+          "seq_min": 98,
+          "seq_max": 405,
+          "steps": 308,
+          "visible_end_utc": "2026-10-25T03:05:59.644274+00:00",
+          "uncovered_tail_s": 0,
+          "decisions": {
+            "hit": 308
+          },
+          "small_t_steps": 0,
+          "small_t_budget_miss_fraction": 0.0,
+          "repeated_hot_miss_keys": [],
+          "persistently_resident_never_replayed_in_small_t_phase": [],
+          "phase_admission_evidence_gate": false,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 308,
+              "mean_ms": 0.15175762987012986,
+              "median_ms": 0.159568,
+              "p95_ms": 0.170629,
+              "sum_ms": 46.74135
+            },
+            "warm": null,
+            "capture": null,
+            "budget": null,
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 308
+          },
+          "original8_simulated_phase_hit_gain_pp": 0.0
+        },
+        {
+          "gpu": 7,
+          "seq_min": 98,
+          "seq_max": 405,
+          "steps": 308,
+          "visible_end_utc": "2026-10-25T03:05:59.644242+00:00",
+          "uncovered_tail_s": 0,
+          "decisions": {
+            "hit": 308
+          },
+          "small_t_steps": 0,
+          "small_t_budget_miss_fraction": 0.0,
+          "repeated_hot_miss_keys": [],
+          "persistently_resident_never_replayed_in_small_t_phase": [],
+          "phase_admission_evidence_gate": false,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 308,
+              "mean_ms": 0.13996766883116882,
+              "median_ms": 0.1308335,
+              "p95_ms": 0.167287,
+              "sum_ms": 43.110042
+            },
+            "warm": null,
+            "capture": null,
+            "budget": null,
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 308
+          },
+          "original8_simulated_phase_hit_gain_pp": 0.0
+        }
+      ]
+    },
+    "mixed": {
+      "start_utc": "2026-10-25T03:06:00.495451+00:00",
+      "end_utc": "2026-10-25T03:06:27.159876+00:00",
+      "api_wall_s": 26.97778848197777,
+      "output_tokens": 2048,
+      "cached_tokens_delta": 0,
+      "gpus": [
+        {
+          "gpu": 0,
+          "seq_min": 406,
+          "seq_max": 768,
+          "steps": 363,
+          "visible_end_utc": "2026-10-25T03:06:25.884169+00:00",
+          "uncovered_tail_s": 1.275707016,
+          "decisions": {
+            "hit": 8,
+            "budget": 355
+          },
+          "small_t_steps": 234,
+          "small_t_budget_miss_fraction": 1.0,
+          "repeated_hot_miss_keys": [
+            {
+              "key": [
+                2,
+                8192
+              ],
+              "misses": 75
+            },
+            {
+              "key": [
+                3,
+                8192
+              ],
+              "misses": 75
+            },
+            {
+              "key": [
+                4,
+                8192
+              ],
+              "misses": 44
+            },
+            {
+              "key": [
+                6,
+                8192
+              ],
+              "misses": 23
+            }
+          ],
+          "persistently_resident_never_replayed_in_small_t_phase": [
+            [
+              2,
+              64
+            ],
+            [
+              3,
+              64
+            ],
+            [
+              64,
+              64
+            ],
+            [
+              64,
+              128
+            ],
+            [
+              64,
+              256
+            ],
+            [
+              64,
+              512
+            ]
+          ],
+          "phase_admission_evidence_gate": true,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 8,
+              "mean_ms": 0.66154075,
+              "median_ms": 0.5039585,
+              "p95_ms": 1.78628,
+              "sum_ms": 5.292326
+            },
+            "warm": null,
+            "capture": null,
+            "budget": {
+              "n": 355,
+              "mean_ms": 14.237643428169013,
+              "median_ms": 21.255531,
+              "p95_ms": 22.071648,
+              "sum_ms": 5054.363417
+            },
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "eager": 155,
+            "replacement_capture": 2,
+            "hit": 206
+          },
+          "original8_simulated_phase_hit_gain_pp": 54.54545454545455
+        },
+        {
+          "gpu": 1,
+          "seq_min": 406,
+          "seq_max": 768,
+          "steps": 363,
+          "visible_end_utc": "2026-10-25T03:06:25.878971+00:00",
+          "uncovered_tail_s": 1.280904511,
+          "decisions": {
+            "hit": 112,
+            "budget": 251
+          },
+          "small_t_steps": 194,
+          "small_t_budget_miss_fraction": 1.0,
+          "repeated_hot_miss_keys": [
+            {
+              "key": [
+                2,
+                8192
+              ],
+              "misses": 26
+            },
+            {
+              "key": [
+                3,
+                8192
+              ],
+              "misses": 48
+            },
+            {
+              "key": [
+                4,
+                8192
+              ],
+              "misses": 62
+            },
+            {
+              "key": [
+                5,
+                8192
+              ],
+              "misses": 29
+            },
+            {
+              "key": [
+                6,
+                8192
+              ],
+              "misses": 29
+            }
+          ],
+          "persistently_resident_never_replayed_in_small_t_phase": [
+            [
+              0,
+              64
+            ],
+            [
+              3,
+              1024
+            ],
+            [
+              4,
+              1024
+            ],
+            [
+              51,
+              1024
+            ],
+            [
+              64,
+              64
+            ],
+            [
+              64,
+              128
+            ],
+            [
+              64,
+              256
+            ],
+            [
+              64,
+              512
+            ]
+          ],
+          "phase_admission_evidence_gate": true,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 112,
+              "mean_ms": 0.22099191964285714,
+              "median_ms": 0.16383599999999998,
+              "p95_ms": 0.363367,
+              "sum_ms": 24.751095
+            },
+            "warm": null,
+            "capture": null,
+            "budget": {
+              "n": 251,
+              "mean_ms": 17.809250270916333,
+              "median_ms": 21.723886,
+              "p95_ms": 22.109355,
+              "sum_ms": 4470.121818
+            },
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 200,
+            "eager": 161,
+            "replacement_capture": 2
+          },
+          "original8_simulated_phase_hit_gain_pp": 24.242424242424242
+        },
+        {
+          "gpu": 2,
+          "seq_min": 406,
+          "seq_max": 768,
+          "steps": 363,
+          "visible_end_utc": "2026-10-25T03:06:25.878985+00:00",
+          "uncovered_tail_s": 1.280891218,
+          "decisions": {
+            "hit": 76,
+            "budget": 287
+          },
+          "small_t_steps": 230,
+          "small_t_budget_miss_fraction": 1.0,
+          "repeated_hot_miss_keys": [
+            {
+              "key": [
+                2,
+                8192
+              ],
+              "misses": 67
+            },
+            {
+              "key": [
+                3,
+                8192
+              ],
+              "misses": 72
+            },
+            {
+              "key": [
+                4,
+                8192
+              ],
+              "misses": 46
+            },
+            {
+              "key": [
+                6,
+                8192
+              ],
+              "misses": 28
+            }
+          ],
+          "persistently_resident_never_replayed_in_small_t_phase": [
+            [
+              0,
+              64
+            ],
+            [
+              3,
+              1024
+            ],
+            [
+              4,
+              1024
+            ],
+            [
+              51,
+              1024
+            ],
+            [
+              64,
+              64
+            ],
+            [
+              64,
+              128
+            ],
+            [
+              64,
+              256
+            ],
+            [
+              64,
+              512
+            ]
+          ],
+          "phase_admission_evidence_gate": true,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 76,
+              "mean_ms": 0.20712782894736842,
+              "median_ms": 0.1585215,
+              "p95_ms": 0.539344,
+              "sum_ms": 15.741715
+            },
+            "warm": null,
+            "capture": null,
+            "budget": {
+              "n": 287,
+              "mean_ms": 16.301412341463415,
+              "median_ms": 21.643604,
+              "p95_ms": 22.122023,
+              "sum_ms": 4678.505342
+            },
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 102,
+            "eager": 259,
+            "replacement_capture": 2
+          },
+          "original8_simulated_phase_hit_gain_pp": 7.162534435261708
+        },
+        {
+          "gpu": 3,
+          "seq_min": 406,
+          "seq_max": 768,
+          "steps": 363,
+          "visible_end_utc": "2026-10-25T03:06:25.883761+00:00",
+          "uncovered_tail_s": 1.276114539,
+          "decisions": {
+            "hit": 83,
+            "budget": 280
+          },
+          "small_t_steps": 159,
+          "small_t_budget_miss_fraction": 1.0,
+          "repeated_hot_miss_keys": [
+            {
+              "key": [
+                2,
+                16384
+              ],
+              "misses": 40
+            },
+            {
+              "key": [
+                3,
+                16384
+              ],
+              "misses": 37
+            },
+            {
+              "key": [
+                4,
+                16384
+              ],
+              "misses": 38
+            },
+            {
+              "key": [
+                6,
+                16384
+              ],
+              "misses": 26
+            }
+          ],
+          "persistently_resident_never_replayed_in_small_t_phase": [
+            [
+              0,
+              64
+            ],
+            [
+              3,
+              1024
+            ],
+            [
+              4,
+              1024
+            ],
+            [
+              51,
+              1024
+            ],
+            [
+              64,
+              64
+            ],
+            [
+              64,
+              128
+            ],
+            [
+              64,
+              256
+            ],
+            [
+              64,
+              512
+            ]
+          ],
+          "phase_admission_evidence_gate": true,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 83,
+              "mean_ms": 0.20150220481927708,
+              "median_ms": 0.129485,
+              "p95_ms": 0.475689,
+              "sum_ms": 16.724683
+            },
+            "warm": null,
+            "capture": null,
+            "budget": {
+              "n": 280,
+              "mean_ms": 11.179349928571428,
+              "median_ms": 6.2932415,
+              "p95_ms": 19.081922,
+              "sum_ms": 3130.21798
+            },
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "eager": 245,
+            "replacement_capture": 3,
+            "hit": 115
+          },
+          "original8_simulated_phase_hit_gain_pp": 8.81542699724518
+        },
+        {
+          "gpu": 4,
+          "seq_min": 406,
+          "seq_max": 768,
+          "steps": 363,
+          "visible_end_utc": "2026-10-25T03:06:25.878970+00:00",
+          "uncovered_tail_s": 1.280905678,
+          "decisions": {
+            "hit": 363
+          },
+          "small_t_steps": 0,
+          "small_t_budget_miss_fraction": 0.0,
+          "repeated_hot_miss_keys": [],
+          "persistently_resident_never_replayed_in_small_t_phase": [],
+          "phase_admission_evidence_gate": false,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 363,
+              "mean_ms": 0.16876675206611572,
+              "median_ms": 0.16284,
+              "p95_ms": 0.195314,
+              "sum_ms": 61.262331
+            },
+            "warm": null,
+            "capture": null,
+            "budget": null,
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 363
+          },
+          "original8_simulated_phase_hit_gain_pp": 0.0
+        },
+        {
+          "gpu": 5,
+          "seq_min": 406,
+          "seq_max": 768,
+          "steps": 363,
+          "visible_end_utc": "2026-10-25T03:06:25.878995+00:00",
+          "uncovered_tail_s": 1.280880786,
+          "decisions": {
+            "hit": 363
+          },
+          "small_t_steps": 0,
+          "small_t_budget_miss_fraction": 0.0,
+          "repeated_hot_miss_keys": [],
+          "persistently_resident_never_replayed_in_small_t_phase": [],
+          "phase_admission_evidence_gate": false,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 363,
+              "mean_ms": 0.1701680826446281,
+              "median_ms": 0.163288,
+              "p95_ms": 0.204179,
+              "sum_ms": 61.771014
+            },
+            "warm": null,
+            "capture": null,
+            "budget": null,
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 363
+          },
+          "original8_simulated_phase_hit_gain_pp": 0.0
+        },
+        {
+          "gpu": 6,
+          "seq_min": 406,
+          "seq_max": 768,
+          "steps": 363,
+          "visible_end_utc": "2026-10-25T03:06:25.878981+00:00",
+          "uncovered_tail_s": 1.280894688,
+          "decisions": {
+            "hit": 363
+          },
+          "small_t_steps": 0,
+          "small_t_budget_miss_fraction": 0.0,
+          "repeated_hot_miss_keys": [],
+          "persistently_resident_never_replayed_in_small_t_phase": [],
+          "phase_admission_evidence_gate": false,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 363,
+              "mean_ms": 0.17150476308539944,
+              "median_ms": 0.164419,
+              "p95_ms": 0.198347,
+              "sum_ms": 62.256229
+            },
+            "warm": null,
+            "capture": null,
+            "budget": null,
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 363
+          },
+          "original8_simulated_phase_hit_gain_pp": 0.0
+        },
+        {
+          "gpu": 7,
+          "seq_min": 406,
+          "seq_max": 768,
+          "steps": 363,
+          "visible_end_utc": "2026-10-25T03:06:25.878925+00:00",
+          "uncovered_tail_s": 1.280951097,
+          "decisions": {
+            "hit": 363
+          },
+          "small_t_steps": 0,
+          "small_t_budget_miss_fraction": 0.0,
+          "repeated_hot_miss_keys": [],
+          "persistently_resident_never_replayed_in_small_t_phase": [],
+          "phase_admission_evidence_gate": false,
+          "host_enqueue_by_decision": {
+            "hit": {
+              "n": 363,
+              "mean_ms": 0.1320753002754821,
+              "median_ms": 0.129166,
+              "p95_ms": 0.137789,
+              "sum_ms": 47.943334
+            },
+            "warm": null,
+            "capture": null,
+            "budget": null,
+            "full": null,
+            "failure": null,
+            "forced": null
+          },
+          "capture_host_time": null,
+          "original8_simulated_phase_decisions": {
+            "hit": 363
+          },
+          "original8_simulated_phase_hit_gain_pp": 0.0
+        }
+      ]
+    }
+  },
+  "limits": [
+    "record timestamp is after enqueue, not GPU completion",
+    "mixed final1.28s absent from768-step completed snapshots; interval statistics cover visible prefix only",
+    "enqueue costs are host backpressure observations, not GPU elapsed or causal saved time",
+    "whole-prefix simulation starts at first smoke; no phase cache reset"
+  ],
+  "input_sha256": {
+    "graph-traces/diag-v2-001/server.log": "67203669d5b231017a9d55c98bf71aa59a743f5e7196190d2554a447b369205e",
+    "graph-traces/diag-v2-001/gpu0.jsonl": "d805e469e5aeda0137765e4f72c696d9d93fec3e35cdeb47ef5d1c516fa31a08",
+    "graph-traces/diag-v2-001/gpu1.jsonl": "2f40c3beb9b0f48fc52ce09f5d3151b0d29fd107e66ed8d8499665ab23fca467",
+    "graph-traces/diag-v2-001/gpu2.jsonl": "693ec78dc426225d1d91f059b403b293bfa8d1196e92a886be26b236b421fb18",
+    "graph-traces/diag-v2-001/gpu3.jsonl": "e7639e9579cd427fe80fc36c37a9c319057a62b33e5e0b2eff85f067131e0d2e",
+    "graph-traces/diag-v2-001/gpu4.jsonl": "c8d3bdac3a85582e0010a918cd1e8e81dbf215143a4550bb1ea8a14a6761c84e",
+    "graph-traces/diag-v2-001/gpu5.jsonl": "e67e7095189d7e930277a62fa6a09f796d86d5a16d5353327ab67ec27ef62e9e",
+    "graph-traces/diag-v2-001/gpu6.jsonl": "8124580eb4eaadb17277c7fc4527feb2327999b7010a8465a0e89944de781a06",
+    "graph-traces/diag-v2-001/gpu7.jsonl": "7c9a451fdb51ef919f7789eb1348102920494410feac869f0ab8c75530e73adb"
+  }
+}

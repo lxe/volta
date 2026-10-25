@@ -1,0 +1,24 @@
+{
+  "label": "graph-diag-diag-v2-001",
+  "clients": 4,
+  "mixed": true,
+  "wall_s": 26.97778848197777,
+  "monitor_wall_s": 27.09861724404618,
+  "completed": 4,
+  "requested_output_tokens": 2048,
+  "output_tokens": 2048,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 75.9143026630276,
+  "prompt_tokens": 20677,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 2048,
+  "ttft_s": [
+    7.723091276013292,
+    7.629083881038241,
+    7.722937915008515,
+    13.003139924025163
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.5268530847758545
+}

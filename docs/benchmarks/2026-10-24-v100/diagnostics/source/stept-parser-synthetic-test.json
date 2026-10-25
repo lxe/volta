@@ -1,0 +1,15 @@
+{
+  "evidence": "SYNTHETIC_CPU_FIXTURE_ONLY",
+  "status": "passed",
+  "actual_log_analyzed": false,
+  "checks": [
+    "existing STEPT regex",
+    "per-GPU durations/shares",
+    "standalone log remains unknown_t",
+    "trace join requires provenance",
+    "same-process join skips t0 correctly",
+    "t64/small-t grouping",
+    "per-step maximum finish bound"
+  ],
+  "parser_sha256": "34eb542f7f46dcdda9eb8ef1e9c956af30c8471542d25bd3c66a27d20f940323"
+}

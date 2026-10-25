@@ -1,0 +1,1731 @@
+{
+  "evidence": "ACTUAL_TRACE_CPU_SIMULATION; no policy/GPU implementation",
+  "hypothesis": "separately budgeted16 replacements; original8gate failed and is preserved",
+  "budget_note": "graph-policy-16-replacement-hypothesis.md written before this revised simulation",
+  "gpus": [
+    {
+      "gpu": 0,
+      "original8": {
+        "steps": 768,
+        "decisions": {
+          "eager": 406,
+          "capture": 4,
+          "hit": 350,
+          "replacement_capture": 8
+        },
+        "hit_fraction": 0.4557291666666667,
+        "small_t_1_6_hits": 289,
+        "replacement_limit": 8,
+        "replacement_count": 8,
+        "replacement_limit_blocked_observations": 63,
+        "replacement_events": [
+          {
+            "seq": 45,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 113,
+            "key": [
+              64,
+              1024
+            ],
+            "victim": [
+              3,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 177,
+            "key": [
+              6,
+              8192
+            ],
+            "victim": [
+              2,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 241,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 18,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 305,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 378,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              1024
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 445,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              6,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 523,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 12,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            2,
+            8192
+          ],
+          [
+            3,
+            8192
+          ],
+          [
+            4,
+            8192
+          ],
+          [
+            64,
+            4096
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "revised16": {
+        "steps": 768,
+        "decisions": {
+          "eager": 353,
+          "capture": 4,
+          "hit": 401,
+          "replacement_capture": 10
+        },
+        "hit_fraction": 0.5221354166666666,
+        "small_t_1_6_hits": 294,
+        "replacement_limit": 16,
+        "replacement_count": 10,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [
+          {
+            "seq": 45,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 113,
+            "key": [
+              64,
+              1024
+            ],
+            "victim": [
+              3,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 177,
+            "key": [
+              6,
+              8192
+            ],
+            "victim": [
+              2,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 241,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 18,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 305,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 378,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              1024
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 445,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              6,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 523,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 12,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 658,
+            "key": [
+              6,
+              8192
+            ],
+            "victim": [
+              64,
+              4096
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 722,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              6,
+              8192
+            ],
+            "candidate_window_count": 18,
+            "victim_window_count": 5
+          }
+        ],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ],
+          [
+            2,
+            8192
+          ],
+          [
+            3,
+            8192
+          ],
+          [
+            4,
+            8192
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "phases": {
+        "fixed": {
+          "steps": 308,
+          "actual_hits": 8,
+          "original8_hits": 121,
+          "revised16_hits": 121,
+          "original8_gain_pp": 36.688311688311686,
+          "revised16_gain_pp": 36.688311688311686,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 5,
+          "revised16_phase_replacements": 5
+        },
+        "mixed": {
+          "steps": 363,
+          "actual_hits": 8,
+          "original8_hits": 206,
+          "revised16_hits": 257,
+          "original8_gain_pp": 54.54545454545455,
+          "revised16_gain_pp": 68.59504132231405,
+          "additional_gain_vs8_pp": 14.049586776859504,
+          "original8_phase_replacements": 2,
+          "revised16_phase_replacements": 4
+        }
+      }
+    },
+    {
+      "gpu": 1,
+      "original8": {
+        "steps": 768,
+        "decisions": {
+          "eager": 382,
+          "capture": 4,
+          "hit": 374,
+          "replacement_capture": 8
+        },
+        "hit_fraction": 0.4869791666666667,
+        "small_t_1_6_hits": 209,
+        "replacement_limit": 8,
+        "replacement_count": 8,
+        "replacement_limit_blocked_observations": 16,
+        "replacement_events": [
+          {
+            "seq": 53,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 124,
+            "key": [
+              64,
+              2048
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 10,
+            "victim_window_count": 6
+          },
+          {
+            "seq": 188,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 252,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 25,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 321,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 20,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 397,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              2048
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 461,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              4,
+              8192
+            ],
+            "candidate_window_count": 23,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 525,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              2,
+              8192
+            ],
+            "candidate_window_count": 23,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ],
+          [
+            3,
+            8192
+          ],
+          [
+            4,
+            8192
+          ],
+          [
+            64,
+            4096
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "revised16": {
+        "steps": 768,
+        "decisions": {
+          "eager": 424,
+          "capture": 4,
+          "hit": 329,
+          "replacement_capture": 11
+        },
+        "hit_fraction": 0.4283854166666667,
+        "small_t_1_6_hits": 222,
+        "replacement_limit": 16,
+        "replacement_count": 11,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [
+          {
+            "seq": 53,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 124,
+            "key": [
+              64,
+              2048
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 10,
+            "victim_window_count": 6
+          },
+          {
+            "seq": 188,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 252,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 25,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 321,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 20,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 397,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              2048
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 461,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              4,
+              8192
+            ],
+            "candidate_window_count": 23,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 525,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              2,
+              8192
+            ],
+            "candidate_window_count": 23,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 590,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 13,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 659,
+            "key": [
+              5,
+              8192
+            ],
+            "victim": [
+              64,
+              4096
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 723,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              2,
+              8192
+            ],
+            "candidate_window_count": 58,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ],
+          [
+            3,
+            8192
+          ],
+          [
+            4,
+            8192
+          ],
+          [
+            5,
+            8192
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "phases": {
+        "fixed": {
+          "steps": 308,
+          "actual_hits": 25,
+          "original8_hits": 116,
+          "revised16_hits": 116,
+          "original8_gain_pp": 29.545454545454547,
+          "revised16_gain_pp": 29.545454545454547,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 5,
+          "revised16_phase_replacements": 5
+        },
+        "mixed": {
+          "steps": 363,
+          "actual_hits": 112,
+          "original8_hits": 200,
+          "revised16_hits": 155,
+          "original8_gain_pp": 24.242424242424242,
+          "revised16_gain_pp": 11.845730027548209,
+          "additional_gain_vs8_pp": -12.396694214876034,
+          "original8_phase_replacements": 2,
+          "revised16_phase_replacements": 5
+        }
+      }
+    },
+    {
+      "gpu": 2,
+      "original8": {
+        "steps": 768,
+        "decisions": {
+          "eager": 496,
+          "capture": 4,
+          "hit": 260,
+          "replacement_capture": 8
+        },
+        "hit_fraction": 0.3385416666666667,
+        "small_t_1_6_hits": 171,
+        "replacement_limit": 8,
+        "replacement_count": 8,
+        "replacement_limit_blocked_observations": 148,
+        "replacement_events": [
+          {
+            "seq": 57,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 122,
+            "key": [
+              64,
+              2048
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 1
+          },
+          {
+            "seq": 186,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 250,
+            "key": [
+              6,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 18,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 315,
+            "key": [
+              5,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 16,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 379,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              2048
+            ],
+            "candidate_window_count": 28,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 446,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              3,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 510,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 14,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            4,
+            8192
+          ],
+          [
+            5,
+            8192
+          ],
+          [
+            6,
+            8192
+          ],
+          [
+            64,
+            4096
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "revised16": {
+        "steps": 768,
+        "decisions": {
+          "eager": 376,
+          "capture": 4,
+          "hit": 377,
+          "replacement_capture": 11
+        },
+        "hit_fraction": 0.4908854166666667,
+        "small_t_1_6_hits": 238,
+        "replacement_limit": 16,
+        "replacement_count": 11,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [
+          {
+            "seq": 57,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 122,
+            "key": [
+              64,
+              2048
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 1
+          },
+          {
+            "seq": 186,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 250,
+            "key": [
+              6,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 18,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 315,
+            "key": [
+              5,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 16,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 379,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              2048
+            ],
+            "candidate_window_count": 28,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 446,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              3,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 510,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 14,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 574,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              64,
+              4096
+            ],
+            "candidate_window_count": 14,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 654,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              5,
+              8192
+            ],
+            "candidate_window_count": 14,
+            "victim_window_count": 8
+          },
+          {
+            "seq": 718,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              6,
+              8192
+            ],
+            "candidate_window_count": 17,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ],
+          [
+            2,
+            8192
+          ],
+          [
+            3,
+            8192
+          ],
+          [
+            4,
+            8192
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "phases": {
+        "fixed": {
+          "steps": 308,
+          "actual_hits": 63,
+          "original8_hits": 108,
+          "revised16_hits": 108,
+          "original8_gain_pp": 14.61038961038961,
+          "revised16_gain_pp": 14.61038961038961,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 5,
+          "revised16_phase_replacements": 5
+        },
+        "mixed": {
+          "steps": 363,
+          "actual_hits": 76,
+          "original8_hits": 102,
+          "revised16_hits": 219,
+          "original8_gain_pp": 7.162534435261708,
+          "revised16_gain_pp": 39.39393939393939,
+          "additional_gain_vs8_pp": 32.231404958677686,
+          "original8_phase_replacements": 2,
+          "revised16_phase_replacements": 5
+        }
+      }
+    },
+    {
+      "gpu": 3,
+      "original8": {
+        "steps": 768,
+        "decisions": {
+          "eager": 431,
+          "capture": 4,
+          "hit": 325,
+          "replacement_capture": 8
+        },
+        "hit_fraction": 0.4231770833333333,
+        "small_t_1_6_hits": 140,
+        "replacement_limit": 8,
+        "replacement_count": 8,
+        "replacement_limit_blocked_observations": 122,
+        "replacement_events": [
+          {
+            "seq": 74,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 4
+          },
+          {
+            "seq": 138,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 4
+          },
+          {
+            "seq": 202,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 12,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 266,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 22,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 331,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 19,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 413,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              4096
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 496,
+            "key": [
+              64,
+              1024
+            ],
+            "victim": [
+              2,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 560,
+            "key": [
+              64,
+              8192
+            ],
+            "victim": [
+              3,
+              8192
+            ],
+            "candidate_window_count": 16,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ],
+          [
+            4,
+            8192
+          ],
+          [
+            64,
+            1024
+          ],
+          [
+            64,
+            8192
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "revised16": {
+        "steps": 768,
+        "decisions": {
+          "eager": 395,
+          "capture": 4,
+          "hit": 358,
+          "replacement_capture": 11
+        },
+        "hit_fraction": 0.4661458333333333,
+        "small_t_1_6_hits": 173,
+        "replacement_limit": 16,
+        "replacement_count": 11,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [
+          {
+            "seq": 74,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 4
+          },
+          {
+            "seq": 138,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 4
+          },
+          {
+            "seq": 202,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 12,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 266,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 22,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 331,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 19,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 413,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              4096
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 496,
+            "key": [
+              64,
+              1024
+            ],
+            "victim": [
+              2,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 560,
+            "key": [
+              64,
+              8192
+            ],
+            "victim": [
+              3,
+              8192
+            ],
+            "candidate_window_count": 16,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 636,
+            "key": [
+              6,
+              16384
+            ],
+            "victim": [
+              4,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 700,
+            "key": [
+              4,
+              16384
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 20,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 764,
+            "key": [
+              2,
+              16384
+            ],
+            "victim": [
+              64,
+              1024
+            ],
+            "candidate_window_count": 35,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            2,
+            16384
+          ],
+          [
+            4,
+            16384
+          ],
+          [
+            6,
+            16384
+          ],
+          [
+            64,
+            8192
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "phases": {
+        "fixed": {
+          "steps": 308,
+          "actual_hits": 9,
+          "original8_hits": 152,
+          "revised16_hits": 152,
+          "original8_gain_pp": 46.42857142857143,
+          "revised16_gain_pp": 46.42857142857143,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 4,
+          "revised16_phase_replacements": 4
+        },
+        "mixed": {
+          "steps": 363,
+          "actual_hits": 83,
+          "original8_hits": 115,
+          "revised16_hits": 148,
+          "original8_gain_pp": 8.81542699724518,
+          "revised16_gain_pp": 17.90633608815427,
+          "additional_gain_vs8_pp": 9.090909090909092,
+          "original8_phase_replacements": 3,
+          "revised16_phase_replacements": 6
+        }
+      }
+    },
+    {
+      "gpu": 4,
+      "original8": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_limit": 8,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "revised16": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_limit": 16,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "phases": {
+        "fixed": {
+          "steps": 308,
+          "actual_hits": 308,
+          "original8_hits": 308,
+          "revised16_hits": 308,
+          "original8_gain_pp": 0.0,
+          "revised16_gain_pp": 0.0,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 0,
+          "revised16_phase_replacements": 0
+        },
+        "mixed": {
+          "steps": 363,
+          "actual_hits": 363,
+          "original8_hits": 363,
+          "revised16_hits": 363,
+          "original8_gain_pp": 0.0,
+          "revised16_gain_pp": 0.0,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 0,
+          "revised16_phase_replacements": 0
+        }
+      }
+    },
+    {
+      "gpu": 5,
+      "original8": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_limit": 8,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "revised16": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_limit": 16,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "phases": {
+        "fixed": {
+          "steps": 308,
+          "actual_hits": 308,
+          "original8_hits": 308,
+          "revised16_hits": 308,
+          "original8_gain_pp": 0.0,
+          "revised16_gain_pp": 0.0,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 0,
+          "revised16_phase_replacements": 0
+        },
+        "mixed": {
+          "steps": 363,
+          "actual_hits": 363,
+          "original8_hits": 363,
+          "revised16_hits": 363,
+          "original8_gain_pp": 0.0,
+          "revised16_gain_pp": 0.0,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 0,
+          "revised16_phase_replacements": 0
+        }
+      }
+    },
+    {
+      "gpu": 6,
+      "original8": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_limit": 8,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "revised16": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_limit": 16,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "phases": {
+        "fixed": {
+          "steps": 308,
+          "actual_hits": 308,
+          "original8_hits": 308,
+          "revised16_hits": 308,
+          "original8_gain_pp": 0.0,
+          "revised16_gain_pp": 0.0,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 0,
+          "revised16_phase_replacements": 0
+        },
+        "mixed": {
+          "steps": 363,
+          "actual_hits": 363,
+          "original8_hits": 363,
+          "revised16_hits": 363,
+          "original8_gain_pp": 0.0,
+          "revised16_gain_pp": 0.0,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 0,
+          "revised16_phase_replacements": 0
+        }
+      }
+    },
+    {
+      "gpu": 7,
+      "original8": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_limit": 8,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "revised16": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_limit": 16,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ]
+      },
+      "phases": {
+        "fixed": {
+          "steps": 308,
+          "actual_hits": 308,
+          "original8_hits": 308,
+          "revised16_hits": 308,
+          "original8_gain_pp": 0.0,
+          "revised16_gain_pp": 0.0,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 0,
+          "revised16_phase_replacements": 0
+        },
+        "mixed": {
+          "steps": 363,
+          "actual_hits": 363,
+          "original8_hits": 363,
+          "revised16_hits": 363,
+          "original8_gain_pp": 0.0,
+          "revised16_gain_pp": 0.0,
+          "additional_gain_vs8_pp": 0.0,
+          "original8_phase_replacements": 0,
+          "revised16_phase_replacements": 0
+        }
+      }
+    }
+  ],
+  "capture_pause_proxy": {
+    "fixed": {
+      "distinct_global_steps_with_replacement": 19,
+      "at100ms_per_step_seconds": 1.9000000000000001,
+      "fraction_of_api_wall": 0.11441927986464825,
+      "limit": "conditional proxy, not measured destroy/capture/reclaim latency",
+      "measured_active_capture_median_proxy_seconds": 0.571693161,
+      "measured_active_capture_median_proxy_fraction_of_wall": 0.03442774725534969,
+      "measured_proxy_method": "sameGPU/same-t successful capture median where available; otherwise sameGPU active capture median; max per global replacement step; no measured sync/destroy cost"
+    },
+    "mixed": {
+      "distinct_global_steps_with_replacement": 20,
+      "at100ms_per_step_seconds": 2.0,
+      "fraction_of_api_wall": 0.07413506119436289,
+      "limit": "conditional proxy, not measured destroy/capture/reclaim latency",
+      "measured_active_capture_median_proxy_seconds": 0.6011058285,
+      "measured_active_capture_median_proxy_fraction_of_wall": 0.022281508690067852,
+      "measured_proxy_method": "sameGPU/same-t successful capture median where available; otherwise sameGPU active capture median; max per global replacement step; no measured sync/destroy cost"
+    }
+  },
+  "revised_gate_result": "REJECTED: GPU1mixed11.85pp and GPU2fixed14.61pp below15pp; GPU1mixed worsens12.40pp versus8; no cap pressure at16. Capture charges remain proxies."
+}

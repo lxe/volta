@@ -1,0 +1,116 @@
+{
+  "evidence": "ACTUAL_SAME_PROCESS_V2_AND_VOLTA_STEPT",
+  "run": "diag-v2-stept-001",
+  "phases": {
+    "fixed": {
+      "seq_interval": [
+        100,
+        393
+      ],
+      "gpus": [
+        {
+          "gpu": 0,
+          "expected_uncached_prompt_tokens": 4145,
+          "observed_eligible_prompt_tokens": 4145,
+          "eligible_chunks": 65,
+          "last_eligible_seq": 164,
+          "all_eligible_prefill_covered": true
+        },
+        {
+          "gpu": 1,
+          "expected_uncached_prompt_tokens": 4145,
+          "observed_eligible_prompt_tokens": 4145,
+          "eligible_chunks": 65,
+          "last_eligible_seq": 164,
+          "all_eligible_prefill_covered": true
+        },
+        {
+          "gpu": 2,
+          "expected_uncached_prompt_tokens": 4145,
+          "observed_eligible_prompt_tokens": 4145,
+          "eligible_chunks": 65,
+          "last_eligible_seq": 165,
+          "all_eligible_prefill_covered": true
+        },
+        {
+          "gpu": 3,
+          "expected_uncached_prompt_tokens": 4145,
+          "observed_eligible_prompt_tokens": 4145,
+          "eligible_chunks": 65,
+          "last_eligible_seq": 165,
+          "all_eligible_prefill_covered": true
+        }
+      ],
+      "finish_upper_bound": {
+        "potential_t32_through64_steps": 66,
+        "sum_per_step_max_t32_through64_finish_ms": 247.15,
+        "scope": "upper bound only for selected t32..64 candidate GPUs; other tail sizes and unknown records excluded",
+        "dp_slots1_configuration": true,
+        "caller_supplied_matching_interval_wall_s": 16.236005696002394,
+        "fraction_of_matching_wall": 0.015222340064887568,
+        "below_five_percent_for_covered_steps": true,
+        "denominator_warning": "Caller must match this exact selected profile interval; omitted tail/prefill sizes or truncated coverage prevent a whole-trace kill conclusion."
+      },
+      "result": "REJECT_HEAD_CANDIDATE;complete eligible finish upper bound<5%"
+    },
+    "mixed": {
+      "seq_interval": [
+        394,
+        768
+      ],
+      "gpus": [
+        {
+          "gpu": 0,
+          "expected_uncached_prompt_tokens": 4145,
+          "observed_eligible_prompt_tokens": 4145,
+          "eligible_chunks": 65,
+          "last_eligible_seq": 458,
+          "all_eligible_prefill_covered": true
+        },
+        {
+          "gpu": 1,
+          "expected_uncached_prompt_tokens": 4145,
+          "observed_eligible_prompt_tokens": 4145,
+          "eligible_chunks": 65,
+          "last_eligible_seq": 459,
+          "all_eligible_prefill_covered": true
+        },
+        {
+          "gpu": 2,
+          "expected_uncached_prompt_tokens": 4145,
+          "observed_eligible_prompt_tokens": 4145,
+          "eligible_chunks": 65,
+          "last_eligible_seq": 459,
+          "all_eligible_prefill_covered": true
+        },
+        {
+          "gpu": 3,
+          "expected_uncached_prompt_tokens": 8242,
+          "observed_eligible_prompt_tokens": 8242,
+          "eligible_chunks": 129,
+          "last_eligible_seq": 608,
+          "all_eligible_prefill_covered": true
+        }
+      ],
+      "finish_upper_bound": {
+        "potential_t32_through64_steps": 195,
+        "sum_per_step_max_t32_through64_finish_ms": 702.48,
+        "scope": "upper bound only for selected t32..64 candidate GPUs; other tail sizes and unknown records excluded",
+        "dp_slots1_configuration": true,
+        "caller_supplied_matching_interval_wall_s": 27.216533008031547,
+        "fraction_of_matching_wall": 0.025810781990222617,
+        "below_five_percent_for_covered_steps": true,
+        "denominator_warning": "Caller must match this exact selected profile interval; omitted tail/prefill sizes or truncated coverage prevent a whole-trace kill conclusion."
+      },
+      "result": "REJECT_HEAD_CANDIDATE;complete eligible finish upper bound<5%"
+    }
+  },
+  "conclusion": "No last-row projection implementation; even removing full eligible finish cannot satisfy5%primary threshold",
+  "limits": [
+    "finish is an upper bound containing norm/head/sampler/download,not isolated head GPU time",
+    "profile synchronization perturbs serving; rates are diagnostic only",
+    "final~1.33s ofmixeddecode lacks detailed trace,butall eligibleprefill completed byseq608before768snapshot",
+    "unsupported CPU/greedy/HP/multislot/below32-row head paths outside candidate scope"
+  ],
+  "model_or_gpu_launched_by_analysis": false
+}

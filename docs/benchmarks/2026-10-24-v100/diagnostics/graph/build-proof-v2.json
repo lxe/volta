@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "checked_utc": "2026-10-25T02:43:09.368786+00:00",
+  "build_started_utc": "2026-10-25T02:41:56Z",
+  "build_finished_utc": "2026-10-25T02:42:36Z",
+  "cargo_seconds": 39.12,
+  "exit_code": 0,
+  "source_base": "cc54d97568adb3d9438a8692c3415cb72ac18957",
+  "source_archive_sha256": "6f37f2316d61364560c0a87b0f68c437c86f03dccc9d73a4a2f4aef478ca4aa6",
+  "binary": "/root/volta-graph-diag-v2/target-v2/release/volta-server",
+  "binary_sha256": "fd6c71b58683a113b2b4746526c32681dd43933af5fcd5e37eb81500e7f593e1",
+  "v1_binary_sha256": "ed8f49d69688ba2f4f64857fc0850ae35b03192887a567506b568a9915a1507f",
+  "v1_source_matches_preserved_archive": true,
+  "v1_preserved_archive_sha256": "c23866b3b0a33099e617f1992efd9ec236d385c8da041363d564ff7d3ff12b70",
+  "frozen_fatbin_sha256": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5",
+  "output_fatbins": {
+    "/root/volta-graph-diag-v2/target-v2/release/build/dsx-b2944b73405876f5/out/dsx.fatbin": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5"
+  },
+  "compiler_processes_remaining": [],
+  "model_launched": false,
+  "policy_changed": false,
+  "kernels_identical": true
+}
