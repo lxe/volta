@@ -1,0 +1,24 @@
+{
+  "label": "loop-prof-hp4-loop-prof-001",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 5.68643845396582,
+  "monitor_wall_s": 5.922635526978411,
+  "completed": 4,
+  "requested_output_tokens": 256,
+  "output_tokens": 256,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 45.01939167590237,
+  "prompt_tokens": 2252,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 256,
+  "ttft_s": [
+    3.391480976017192,
+    1.3074717249255627,
+    2.297267341054976,
+    4.513634904986247
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.553763440860215
+}

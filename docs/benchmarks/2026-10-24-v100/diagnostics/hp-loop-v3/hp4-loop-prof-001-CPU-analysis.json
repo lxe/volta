@@ -1,0 +1,123 @@
+{
+  "evidence": "ACTUAL_INSTRUMENTED_V3_HOST_TIMING",
+  "phases": {
+    "fixed": {
+      "admitted_utc": "2026-10-25T03:35:26.461876Z",
+      "done_utc": "2026-10-25T03:36:06.941846Z",
+      "profile_first_utc": "2026-10-25T03:35:26.561800Z",
+      "profile_last_utc": "2026-10-25T03:36:06.941797Z",
+      "profile_records": 485,
+      "SSE_wall_s": 40.85808403394185,
+      "cpu_sample_sum_ms": 8906.3,
+      "cpu_sample_wall_fraction": 0.2179813422626795,
+      "cpu_sum_rounding_bound_ms": 2.4250000000000003,
+      "cpu_wall_fraction_rounding_bounds": [
+        0.21792199048304184,
+        0.21804069404231716
+      ],
+      "cpu_distribution_5percent_gate": true,
+      "step_sum_ms": 30048.829999999998,
+      "cpu_sample_median_ms": 17.64,
+      "max_counter_accounting_rounding_error_ms": 0.020000000000010232,
+      "output_tokens": 2048,
+      "cached_tokens_delta": 0
+    },
+    "mixed": {
+      "admitted_utc": "2026-10-25T03:36:07.830038Z",
+      "done_utc": "2026-10-25T03:36:55.615338Z",
+      "profile_first_utc": "2026-10-25T03:36:07.955404Z",
+      "profile_last_utc": "2026-10-25T03:36:55.615282Z",
+      "profile_records": 574,
+      "SSE_wall_s": 48.13226938806474,
+      "cpu_sample_sum_ms": 10235.97,
+      "cpu_sample_wall_fraction": 0.21266335724735622,
+      "cpu_sum_rounding_bound_ms": 2.87,
+      "cpu_wall_fraction_rounding_bounds": [
+        0.21260372989056442,
+        0.21272298460414799
+      ],
+      "cpu_distribution_5percent_gate": true,
+      "step_sum_ms": 35842.2,
+      "cpu_sample_median_ms": 17.34,
+      "max_counter_accounting_rounding_error_ms": 0.020000000000010232,
+      "output_tokens": 2048,
+      "cached_tokens_delta": 0
+    }
+  },
+  "limits": [
+    "CPU distribution Rayon work is timed once around join; no per-thread sum.",
+    "Source logs loop profile before the final retire/done; each record is assigned to request IDs active at that line. No completed phase is carried into the next phase.",
+    "iter_ms includes idle queue waits and is never the phase denominator.",
+    "step_ms includes HP GPU work/download and host vocabulary merge; cpu_sample_ms excludes that work.",
+    "Rounded per-pass ms fields have at most 0.005ms error per record per field.",
+    "STEPT synchronization and logging perturb runtime; this is an attribution screen, not primary throughput."
+  ],
+  "configuration": {
+    "engine": "loop-prof",
+    "ctx": 262144,
+    "chunk": 64,
+    "slots": 4,
+    "graphs": 4,
+    "head_parallel": true,
+    "profile": true,
+    "loop_profile": 1,
+    "graph_trace": false,
+    "name": "hp4-loop-prof-001",
+    "binary": "/root/volta-loop-prof-v3/target-v3/release/volta-server",
+    "model": "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+    "log": "/root/server-hp4-loop-prof-001.log",
+    "pid": 19770,
+    "command": [
+      "/root/volta-loop-prof-v3/target-v3/release/volta-server",
+      "--model",
+      "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+      "--gpus",
+      "8",
+      "--slots",
+      "4",
+      "--ctx",
+      "262144",
+      "--chunk",
+      "64",
+      "--spec-k",
+      "5",
+      "--theta",
+      "0.35",
+      "--temperature",
+      "0.7",
+      "--top-p",
+      "1",
+      "--max-tokens",
+      "16384",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8090",
+      "--admin-port",
+      "8091",
+      "--head-parallel"
+    ],
+    "binary_sha256": "c50eb1df6dc084b116dfe26a07a750ceb9e8b7db3797c38e2f4e956637de5972",
+    "volta_environment": {
+      "VOLTA_GRAPHS": "4",
+      "VOLTA_GPU_SAMPLE": "1",
+      "VOLTA_MEGA": "0",
+      "VOLTA_KV": "fp4",
+      "VOLTA_OVERLAP": "1",
+      "VOLTA_SHARED_TP": "1",
+      "VOLTA_SHARED_EARLY": "0",
+      "VOLTA_STEPT": "1",
+      "VOLTA_LOOP_PROF": "1"
+    },
+    "started_epoch": 1792899154.4071662,
+    "stopped_pids": [
+      19137
+    ]
+  },
+  "input_sha256": {
+    "server-runs/hp4-loop-prof-001/configuration.json": "9b1c15cda3519fafa4e07af3832be6d0d224148deb474ca3767773d5116e6cf3",
+    "screens/hp4-loop-prof-001/server.log": "108a2e3ddab4487f80516ebedd808eee0985d877ef0a30eeef13056dd10c6dca",
+    "screens/hp4-loop-prof-001/fixed/summary.json": "890739bc51f4aa038d1bb8395bb3814d2eb6862ebcbcd475c49123c3e00d6d49",
+    "screens/hp4-loop-prof-001/mixed/summary.json": "c07885df3881f93dd448370c241df351f499be0beab79d1664d45d071dbf1cf5"
+  }
+}

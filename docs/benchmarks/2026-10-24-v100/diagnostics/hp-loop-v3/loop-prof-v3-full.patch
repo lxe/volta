@@ -1,0 +1,220 @@
+diff --git a/engine/src/lib.rs b/engine/src/lib.rs
+index 6ba55ef..34405e8 100644
+--- a/engine/src/lib.rs
++++ b/engine/src/lib.rs
+@@ -31,3 +31,6 @@ pub mod server {
+     #[cfg(feature = "cuda")]
+     pub mod volta;
+ }
++
++#[cfg(any(feature = "cuda", test))]
++mod graph_trace;
+diff --git a/engine/src/server/volta.rs b/engine/src/server/volta.rs
+index bfb59fe..58a2431 100644
+--- a/engine/src/server/volta.rs
++++ b/engine/src/server/volta.rs
+@@ -270,7 +270,8 @@ impl Volta {
+                 && self.gpu_sample
+                 && rows.iter().all(|&(i, _, _, n)| {
+                     let q = &seqs[i];
+-                    q.hes.is_none() && (q.greedy || q.job.params.top_p >= 1.0) && n <= 9
++                    // Prefill samples its last row with no drafts, regardless of chunk length.
++                    q.hes.is_none() && (q.greedy || q.job.params.top_p >= 1.0) && (q.next.is_none() || n <= 9)
+                 });
+             let dec: Vec<(usize, u32)> = if on_gpu {
+                 let mut tabs: Vec<(Vec<i32>, Vec<f32>)> = vec![(vec![], vec![]); ng];
+@@ -291,7 +292,10 @@ impl Volta {
+                 pf[1] += tc.elapsed().as_secs_f64();
+                 at.into_iter().map(|(g, k)| r[g][k]).collect()
+             } else if sampled {
++                let tc = Instant::now();
+                 let lg = self.e.step(plan)?;
++                pf[1] += tc.elapsed().as_secs_f64();
++                let tc = Instant::now();
+                 let v = self.e.vocab;
+                 let mut work: Vec<(usize, Rng, Option<Hesitation>)> = rows.iter().map(|&(i, ..)| (i, seqs[i].rng.clone(), seqs[i].hes.clone())).collect();
+                 let out: Vec<(usize, u32)> = work
+@@ -347,6 +351,7 @@ impl Volta {
+                         q.hes = None;
+                     }
+                 }
++                pf[3] += tc.elapsed().as_secs_f64();
+                 out
+             } else {
+                 let tc = Instant::now();
+@@ -424,7 +429,7 @@ impl Volta {
+                 if pf_i == prof_n {
+                     let all = t_iter.elapsed().as_secs_f64();
+                     let ms = |x: f64| x * 1e3 / prof_n as f64;
+-                    tracing::info!(iter_ms = format!("{:.2}", ms(all)), spark_ms = format!("{:.2}", ms(pf[0])), step_ms = format!("{:.2}", ms(pf[1])), rewind_ms = format!("{:.2}", ms(pf[2])), rest_ms = format!("{:.2}", ms(all - pf[0] - pf[1] - pf[2])), "loop profile");
++                    tracing::info!(iter_ms = format!("{:.2}", ms(all)), spark_ms = format!("{:.2}", ms(pf[0])), step_ms = format!("{:.2}", ms(pf[1])), rewind_ms = format!("{:.2}", ms(pf[2])), cpu_sample_ms = format!("{:.2}", ms(pf[3])), rest_ms = format!("{:.2}", ms(all - pf[0] - pf[1] - pf[2] - pf[3])), "loop profile");
+                     (pf, pf_i, t_iter) = ([0f64; 4], 0, Instant::now());
+                 }
+             }
+diff --git a/engine/src/volta.rs b/engine/src/volta.rs
+index 02a1a5a..e649d78 100644
+--- a/engine/src/volta.rs
++++ b/engine/src/volta.rs
+@@ -1212,6 +1212,7 @@ struct Shard<'m> {
+     graphs: HashMap<(usize, usize), Option<crate::gpu::GraphExec>>,
+     /// a graph failed to instantiate (out of memory): capture no more
+     graph_full: bool,
++    graph_trace: Option<crate::graph_trace::GraphTrace>,
+     /// head-parallel (Opts::heads)
+     hp: bool,
+ }
+@@ -1514,6 +1515,7 @@ impl<'m> Shard<'m> {
+             eng_ids: vec![],
+             graphs: HashMap::new(),
+             graph_full: false,
++            graph_trace: crate::graph_trace::GraphTrace::from_env(gi),
+             hp: o.heads,
+             g,
+         })
+@@ -3164,12 +3166,19 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
+     let key = (t, sh.bucket);
+     // graphs cost device memory: past VOLTA_GRAPHS shapes (default 6), new shapes run without one
+     let limit = std::env::var("VOLTA_GRAPHS").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(6);
++    let forced = eager;
++    let mut decision = if forced { "forced" } else if sh.graph_full { "full" } else { "budget" };
++    let mut capture_ns = 0;
+     let eager = eager || (!sh.graphs.contains_key(&key) && (sh.graph_full || sh.graphs.values().filter(|g| g.is_some()).count() >= limit));
++    let enqueue_start = sh.graph_trace.as_ref().map(|_| std::time::Instant::now());
+     if eager {
+         layers(sh, toks, &counts, prof)?;
+     } else if let Some(Some(g)) = sh.graphs.get(&key).map(|g| g.as_ref()) {
++        decision = "hit";
+         sh.g.launch_graph(g)?;
+     } else if sh.graphs.contains_key(&key) {
++        decision = "capture";
++        let capture_start = sh.graph_trace.as_ref().map(|_| std::time::Instant::now());
+         // second time this shape comes up: capture it (the first run warmed cuBLAS and the kernel attributes)
+         // attention consumes the step tables while recording: keep a copy to rerun the step if capture fails
+         let lt = sh.lt.clone();
+@@ -3181,6 +3190,7 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
+                 sh.graphs.insert(key, Some(g));
+             }
+             Err(e) => {
++                decision = "failure";
+                 // usually out of memory for one more graph: run this shape without one, and capture no more
+                 if !sh.graph_full {
+                     eprintln!("GPU{}: no more step graphs ({e:#}); new shapes run without one", sh.gi);
+@@ -3191,10 +3201,17 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
+                 sh.graphs.insert(key, None);
+             }
+         }
++        capture_ns = capture_start.map_or(0, |start| start.elapsed().as_nanos());
+     } else {
++        decision = "warm";
+         layers(sh, toks, &counts, false)?;
+         sh.graphs.insert(key, None);
+     }
++    let enqueue_ns = enqueue_start.map_or(0, |start| start.elapsed().as_nanos());
++    if let Some(trace) = &mut sh.graph_trace {
++        let residents = sh.graphs.iter().filter(|(_, g)| g.is_some()).map(|(&(t,b), _)| [t,b]).collect();
++        trace.record(key, decision, residents, sh.graph_full, limit, capture_ns, enqueue_ns);
++    }
+     if t == 0 {
+         return Ok(vec![]);
+     }
+diff --git a/engine/src/graph_trace.rs b/engine/src/graph_trace.rs
+new file mode 100644
+index 0000000..879037c
+--- /dev/null
++++ b/engine/src/graph_trace.rs
+@@ -0,0 +1,95 @@
++//! Opt-in, CPU-only main graph admission diagnostics. No cache policy changes.
++use std::collections::BTreeMap;
++use std::fs::{File, OpenOptions};
++use std::io::{BufWriter, Write};
++use std::path::Path;
++use std::time::{Instant, SystemTime, UNIX_EPOCH};
++
++const STEPS: u64 = 4096;
++const BYTES: usize = 4 * 1024 * 1024;
++const KEYS: usize = 1024;
++const LABELS: [&str; 7] = ["hit", "warm", "capture", "budget", "full", "failure", "forced"];
++
++pub(crate) struct GraphTrace {
++    gpu: usize,
++    origin: Instant,
++    out: BufWriter<File>,
++    bytes: usize,
++    steps: u64,
++    counts: BTreeMap<(usize, usize), [u64; 7]>,
++    pending: Vec<String>,
++    failed: bool,
++}
++impl GraphTrace {
++    /// Value is a fresh output directory; absent, empty or 0 leaves this fully off.
++    pub(crate) fn from_env(gpu: usize) -> Option<Self> {
++        let dir = std::env::var_os("VOLTA_GRAPH_TRACE")?;
++        if dir.is_empty() || dir == "0" { return None; }
++        match Self::open(Path::new(&dir), gpu) {
++            Ok(x) => Some(x),
++            Err(e) => { eprintln!("GPU{gpu}: graph trace disabled: {e}"); None }
++        }
++    }
++    fn open(dir: &Path, gpu: usize) -> std::io::Result<Self> {
++        std::fs::create_dir_all(dir)?;
++        let out = OpenOptions::new().write(true).create_new(true).open(dir.join(format!("gpu{gpu}.jsonl")))?;
++        let wall_epoch_ns = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
++        let origin = Instant::now();
++        let mut x = Self { gpu, origin, out: BufWriter::with_capacity(64 * 1024, out), bytes: 0, steps: 0,
++            counts: BTreeMap::new(), pending: Vec::with_capacity(256), failed: false };
++        x.line(&format!("{{\"kind\":\"header\",\"version\":2,\"wall_epoch_ns\":{wall_epoch_ns},\"gpu\":{gpu},\"step_limit\":{STEPS},\"file_byte_limit\":{BYTES},\"labels\":{LABELS:?},\"phase_hint_only\":true}}"));
++        Ok(x)
++    }
++    fn line(&mut self, s: &str) {
++        if self.failed || self.bytes + s.len() + 1 > BYTES { return; }
++        if writeln!(self.out, "{s}").is_err() { self.failed = true; } else { self.bytes += s.len() + 1; }
++    }
++    pub(crate) fn record(&mut self, key: (usize, usize), decision: &'static str,
++        mut residents: Vec<[usize; 2]>, full: bool, limit: usize, capture_ns: u128, host_enqueue_backpressure_ns: u128) {
++        self.steps += 1;
++        let ix = LABELS.iter().position(|&s| s == decision).expect("graph trace label");
++        if self.counts.contains_key(&key) || self.counts.len() < KEYS {
++            self.counts.entry(key).or_default()[ix] += 1;
++        }
++        if self.steps <= STEPS {
++            residents.sort_unstable();
++            let resident_count = residents.len();
++            residents.truncate(16);
++            let (t, bucket) = key;
++            let elapsed_ns = self.origin.elapsed().as_nanos();
++            self.pending.push(format!("{{\"kind\":\"step\",\"gpu\":{},\"seq\":{},\"t\":{t},\"bucket\":{bucket},\"decision\":\"{decision}\",\"small_t_hint\":{},\"resident_count\":{resident_count},\"resident_keys\":{residents:?},\"resident_keys_truncated\":{},\"full\":{full},\"limit\":{limit},\"capture_ns\":{capture_ns},\"elapsed_ns\":{elapsed_ns},\"host_enqueue_backpressure_ns\":{host_enqueue_backpressure_ns}}}", self.gpu, self.steps, (1..=9).contains(&t), resident_count > 16));
++        }
++        if self.steps % 64 == 0 && self.steps <= STEPS { self.snapshot(); }
++    }
++    fn snapshot(&mut self) {
++        for s in std::mem::take(&mut self.pending) { self.line(&s); }
++        // Fixed key cap and file byte cap keep both memory and output bounded.
++        let rows: Vec<_> = self.counts.iter().map(|(&(t,b), c)| format!("[{t},{b},{c:?}]")).collect();
++        self.line(&format!("{{\"kind\":\"summary\",\"gpu\":{},\"observed_steps\":{},\"trace_steps\":{},\"trace_truncated\":{},\"counter_key_limit\":{KEYS},\"counts\":[{}]}}", self.gpu, self.steps, self.steps.min(STEPS), self.steps > STEPS, rows.join(",")));
++        if self.out.flush().is_err() { self.failed = true; }
++    }
++}
++impl Drop for GraphTrace { fn drop(&mut self) { self.snapshot(); } }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn bounded_records_and_final_counts() {
++        let dir = std::env::temp_dir().join(format!("volta-graph-trace-{}", std::process::id()));
++        let _ = std::fs::remove_dir_all(&dir);
++        let mut trace = GraphTrace::open(&dir, 3).unwrap();
++        assert!(GraphTrace::open(&dir, 3).is_err()); // Never overwrite a receipt.
++        for i in 0..5000 { trace.record((6,8192), if i%2==0 {"hit"} else {"budget"}, vec![[64,256],[64,512],[64,1024],[64,2048]], false, 4, 0, 123); }
++        assert!(trace.pending.is_empty());
++        assert_eq!(trace.counts[&(6,8192)][0], 2500);
++        drop(trace);
++        let raw = std::fs::read_to_string(dir.join("gpu3.jsonl")).unwrap();
++        assert_eq!(raw.lines().filter(|s|s.contains("\"kind\":\"step\"")).count(), 4096);
++        assert!(raw.contains("\"observed_steps\":5000"));
++        assert!(raw.contains("\"trace_truncated\":true"));
++        assert!(raw.len() < BYTES);
++        if let Some(p) = std::env::var_os("VOLTA_TRACE_TEST_RECEIPT") { std::fs::write(p, &raw).unwrap(); }
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++}

@@ -1,0 +1,56 @@
+{
+  "evidence": "SYNTHETIC_PARSER_VALIDATION_ONLY",
+  "source_order": "profile before final retire/done",
+  "cases": [
+    "ANSI removal",
+    "exact17requests",
+    "profile beforedone counted",
+    "idleiter_ms excluded",
+    "no phase carry from prefix/fixed"
+  ],
+  "passed": true,
+  "actual": {
+    "fixed": {
+      "admitted_utc": "2026-10-25T03:40:00.370000Z",
+      "done_utc": "2026-10-25T03:40:00.520000Z",
+      "profile_first_utc": "2026-10-25T03:40:00.380000Z",
+      "profile_last_utc": "2026-10-25T03:40:00.510000Z",
+      "profile_records": 8,
+      "SSE_wall_s": 1,
+      "cpu_sample_sum_ms": 16.0,
+      "cpu_sample_wall_fraction": 0.016,
+      "cpu_sum_rounding_bound_ms": 0.04,
+      "cpu_wall_fraction_rounding_bounds": [
+        0.015960000000000002,
+        0.01604
+      ],
+      "cpu_distribution_5percent_gate": false,
+      "step_sum_ms": 24.0,
+      "cpu_sample_median_ms": 2.0,
+      "max_counter_accounting_rounding_error_ms": 0.0,
+      "output_tokens": 2048,
+      "cached_tokens_delta": 0
+    },
+    "mixed": {
+      "admitted_utc": "2026-10-25T03:40:00.530000Z",
+      "done_utc": "2026-10-25T03:40:00.680000Z",
+      "profile_first_utc": "2026-10-25T03:40:00.540000Z",
+      "profile_last_utc": "2026-10-25T03:40:00.670000Z",
+      "profile_records": 8,
+      "SSE_wall_s": 1,
+      "cpu_sample_sum_ms": 16.0,
+      "cpu_sample_wall_fraction": 0.016,
+      "cpu_sum_rounding_bound_ms": 0.04,
+      "cpu_wall_fraction_rounding_bounds": [
+        0.015960000000000002,
+        0.01604
+      ],
+      "cpu_distribution_5percent_gate": false,
+      "step_sum_ms": 24.0,
+      "cpu_sample_median_ms": 2.0,
+      "max_counter_accounting_rounding_error_ms": 0.0,
+      "output_tokens": 2048,
+      "cached_tokens_delta": 0
+    }
+  }
+}
