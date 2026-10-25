@@ -1,0 +1,16 @@
+{
+  "source_matches_built_receipt": {
+    "engine/src/gpu.rs": true,
+    "engine/src/volta.rs": true,
+    "engine/src/server/volta.rs": true
+  },
+  "kernel_fatbin_unchanged": true,
+  "worker_readiness_and_owner_lifetime_reviewed": true,
+  "separate_gather_buffer_and_audit_aliasing_reviewed": true,
+  "eight_way_only_support_guard_present": true,
+  "default_DP_sampling_eligibility_unchanged": true,
+  "uniform_clamp_matches_table_validation": true,
+  "hardware_validation": "Parent authorized exactly one bounded hp-gpu-audit1 after clean speculation terminal marker; wrapper tool47084 waiting, no candidate model launched yet.",
+  "independent_review": "hp-sampling-independent-review.md: no blocking source bugs identified; hardware validation required",
+  "source_commit": "acf798786b1962f5ea45ecbebc6cf114f2126b81"
+}

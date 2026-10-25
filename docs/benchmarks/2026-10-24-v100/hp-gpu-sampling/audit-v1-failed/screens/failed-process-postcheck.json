@@ -1,0 +1,1 @@
+{"known_live_servers": [], "gpu_memory": "0, 32495, 0\n1, 32495, 0\n2, 32495, 0\n3, 32495, 0\n4, 32495, 0\n5, 32495, 0\n6, 32495, 0\n7, 32495, 0\n", "disk": "Filesystem      Size  Used Avail Use% Mounted on\noverlay         800G  423G  378G  53% /\n"}

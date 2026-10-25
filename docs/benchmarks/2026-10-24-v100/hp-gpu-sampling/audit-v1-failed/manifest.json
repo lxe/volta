@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "scope": "Actual failed v1 hardware attempt; no parity audit or gain; postfailure GPU memory reclaimed",
+  "files": {
+    "README.md": {
+      "bytes": 4046,
+      "sha256": "d06aae44d38cb3a9a21a04c1e96ff241881608d0c82653fb8b57960473fb3a1e"
+    },
+    "hp-gpu-audit1-controller.log": {
+      "bytes": 3285,
+      "sha256": "90f265bb5ee4265256b00358d5f9554ddbba2219761b21f0ae3997c59e1a6ad3"
+    },
+    "hp-gpu-audit1-failed-analysis.json": {
+      "bytes": 2964,
+      "sha256": "164951721d3583a984822144df5dd4bf4a530069269556e8f2abf4c6fd84395c"
+    },
+    "hp-sampling-independent-review.md": {
+      "bytes": 6610,
+      "sha256": "c280936a0d4fe394ba89c5271e9eb6735295bb845afea7b461826160e79648c9"
+    },
+    "hp-sampling-parent-source-review.json": {
+      "bytes": 821,
+      "sha256": "5c80700d43a8d58924267b40a97ed957bb3ac9215d783af5f02c5da7670227cd"
+    },
+    "hp-sampling-parser-source-proof.json": {
+      "bytes": 1098,
+      "sha256": "aff57ee0c877b2f86428b667ad2d14a08e05c1c8df14a5d055ba91b8fdab717d"
+    },
+    "hp-sampling-prototype-plan.md": {
+      "bytes": 6006,
+      "sha256": "97bd41522053552b1f05276e48278bf16bbc07f5d619ee64bae4c94f7d1ca5d4"
+    },
+    "hp-sampling-source-v1.json": {
+      "bytes": 672,
+      "sha256": "6967669797ee0dc8d45b933d1c5bd4388113a8bbd9b698addd4d75e40845915f"
+    },
+    "hp-sampling-v1-build-console.log": {
+      "bytes": 391,
+      "sha256": "5d0e5aec1f42937ed23ed78c8da6acd576111e7eb09721e11bfc8af2b7313da5"
+    },
+    "hp-sampling-v1-build-proof.json": {
+      "bytes": 2228,
+      "sha256": "28d3f3c99e59036e33f4a2e1ebcf9600ea2adcbaf363aed6327c792a10b9e864"
+    },
+    "hp-sampling-validation-protocol.md": {
+      "bytes": 4338,
+      "sha256": "5e6fe1be76e856d337d88e5c22db97f5005851b8ce9483d4971187880e1a6c35"
+    },
+    "hp-sampling.patch": {
+      "bytes": 26198,
+      "sha256": "6bb164b9406be8dd33ab6b36f807253979befc3a81026ef7b06d1d769e0d4408"
+    },
+    "memory-guard/configuration.json": {
+      "bytes": 728,
+      "sha256": "714eea76458d48f00d23b693183f5fd48f9bd3f80dc911c7524fdc4a52805746"
+    },
+    "memory-guard/launch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "memory-guard/observations-through-failure.jsonl": {
+      "bytes": 255,
+      "sha256": "478b467e07190b1c518282b3e5a5010add817996837a38fcf4a986cc05ac4225"
+    },
+    "screens/audit/sampled-prefill-decode/initial-stats.json": {
+      "bytes": 15082,
+      "sha256": "f155724c8ba3a32e7b2c92062a37cbb539248c9c6577036a6c55a5301a9cd247"
+    },
+    "screens/audit/sampled-prefill-decode/requests.json": {
+      "bytes": 2329,
+      "sha256": "ce764bfabd2cabac8e9641322881acb984322b38b144abd5a522e9d5a1f75918"
+    },
+    "screens/client-source-v1.py": {
+      "bytes": 3830,
+      "sha256": "876669125d3cfdda3f5dfb89bd1d04eea5e2602a93299a70737160d5de364a7d"
+    },
+    "screens/controller-source-v1.py": {
+      "bytes": 2346,
+      "sha256": "ba87c22a0e5b9512f7e4f23d63e079e9aeccb59967fcba7f4ef4c52580e188d1"
+    },
+    "screens/failed-process-postcheck.json": {
+      "bytes": 252,
+      "sha256": "7ea90652e63cb2e791c71be3475386cf14bfba49fbc474daa2142a31cff18af2"
+    },
+    "screens/server.log": {
+      "bytes": 3117,
+      "sha256": "fcaaecefc4052114ec13719c93cb6f9df618fac009de165d3db9621260cf1c43"
+    },
+    "server-run/configuration.json": {
+      "bytes": 1457,
+      "sha256": "93d2ad57fd688e76e2abf6d3345e4cc79748f868ac85adb635a320c7d9850427"
+    },
+    "server-run/previous-stats.json": {
+      "bytes": 27968,
+      "sha256": "044905da0f7c7db7caa65384756573a2a80e03a0f1d49908edef11d4a0d11ae7"
+    },
+    "server-run/ready-gpus.csv": {
+      "bytes": 605,
+      "sha256": "5300a9d1a39247cb1584e48daf8e07c84698d7f3cf94c7719349c82dc88c835a"
+    },
+    "server-run/ready-stats.json": {
+      "bytes": 14906,
+      "sha256": "1cd8874f214d208af8c2c2277349a90e57a12448bb9b5eb3bdcffef393263115"
+    },
+    "server-run/switch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

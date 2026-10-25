@@ -1,0 +1,49 @@
+# Bounded real-weight vlut2 confirmation budget
+
+Decision: **kill for this window unless an already captured real routed-input snapshot is available.** The exact archived kernel and the real packed weights are recoverable, but the local receipts inspected here contain no exact consumed FP16 routed-input matrix together with its actual expert routing/count/offset lists. Generating activations or reconstructing them from residual dumps would not satisfy this confirmation. The parent should retain the already scheduled HP audit, quality, timing and gauntlet work. This document grants no build or GPU launch and claims no gain.
+
+## Recovered source and narrow integration surface
+
+Use only the recovered CB3 gate/up n1 variant `vlut2_cb3r1_n1_p2_a1_x1_w4` from `/home/lxe/volta-box-archive/scout/expert_lab.cu:43-243`; exact source SHA256 is3d7f9d8f10e6b2917ca3a1751f4a81b966ef7c71dcc5e84810f416b6c7d4b61a. Compare against the current frozen `vlut_cb3r1_n1`, not the entire old ref snapshot. Keep CB2, FP4, n2/n4 and every down projection unchanged. No GGUF change, quantization, TP change or shared-stream reorder is bundled.
+
+The candidate has the same pointer/table interface and native code/scales layout. Required launch changes are128threads, rtiles=ceil(N/128), dynamic shared memory23,936bytes at KC1024, and its existing flattened task scheduling over actual nwork. The baseline uses256threads, rtiles=ceil(N/256),17,280bytes. Both use real gate/up N576,K5120,KC1024 with five K chunks. The candidate's extra6656bytes of shared storage is per block, not persistent GPU memory. Preserve actual compacted work order, count/offset arrays, pair-row maps, offsets, multipliers and launch-grid policy. No speculative adaptation of unsupported formats is needed.
+
+## Real data bridge and present blocker
+
+Weights can be extracted without GPU work from the local complete GGUF using its existing logical-to-native reconstruction, or from the preserved original `source/pack-27.5gb-8xv100/gpuN.bin` whose complete logical payload was already compared byte-exactly against the GGUF. `core/src/volta_quant.rs:357-438` gives the checked native header/arena offsets, including multiplier bits and TP part identity. Extract only the actual layer/GPU/expert identities in the snapshot, retain SHA256 of each code/scales region and identity metadata, and compare them against GGUF reconstruction. This is a read-only extraction, not requantization. One CB3 gate/up matrix is1,105,920code bytes plus92,160scale bytes=1,198,080bytes.
+
+The matching activation/routing input must contain the actual FP16 exchanged xg rows consumed by those gate/up kernels, row stride, token-pair mapping, expert IDs, counts/offsets, compacted work entries and any rotated-input status from a specific real inference pass. It must bind model/source/binary, layer, GPU, session/prompt positions and source weight hashes. Prefer several already captured representative DP decode passes with local T2..6, collective T<=24 and small-expert counts<=8. The old six-expert generated lab cannot substitute for them.
+
+No such input was found under the current lab or local box archive. Existing DSX_DUMP hooks (`engine/src/volta.rs:3285-3287,3326-3329`) write residual h; they do not capture the exact normalized, converted/possibly rotated xg and routing lists. Obtaining a new exact snapshot would require separately reviewed observer code and a parent-owned model inference run, which is extra work beyond this quick standalone confirmation. Do not read the live model's pointers or fabricate a route/activation proxy to evade this blocker.
+
+## Conditional resource ceiling
+
+If the exact snapshot already exists, restrict to one standalone process on one chosen GPU while the HP model is idle and API active=queued=0. No peer contexts, resets, model pointers or second server are used. Require at least1536MiB free before creating a context and at least512MiB free after every admission phase. All other GPUs stay untouched. Keep the parent's exact model PID check and continuous guard active.
+
+| Resource | Budget |
+|---|---|
+| Real CB3 weight arenas | At most144distinct gate/up matrices, two separate address copies:345,047,040bytes total. Count only identities actually present; preserve physical addresses across swapped A/B within a pair. |
+| Activations/maps/results | For at most24source rows and144token/expert pairs, FP16 inputs245,760bytes; separate per-K outputs for both variants3,317,760bytes, whole outputs663,552bytes, plus bounded maps/tables. Cap all non-weight payload at16MiB. |
+| All explicit GPU buffers | Hard384MiB cap, enough for the above weights plus bounded outputs, tables, input and a small observed-shape ledger. No full model allocations. |
+| CUDA context | Prior same-rental standalone observations measured308MiB per GPU before payload. Budget512MiB and stop if observed context delta exceeds it. This measurement is not a promise for another module/process. |
+| Driver/module/code | Additional128MiB hard observed admission cap, including module/JIT allocations above context and buffers; synchronize and recheck before timing. No cuBLAS or entire engine module is required for two kernels and tiny helpers. If module overhead cannot be distinguished or kept in this cap, reject. |
+| Total incremental device use | At most1024MiB including context, module and payload. With1536MiB admission this leaves at least512MiB, stricter than the model's192MiB guard. Actual observed free memory governs. |
+| Host payload | At most512MiB including two code/scales arenas, real inputs, paired outputs and metadata. Read source weights in bounded ranges; do not mmap-prefault the whole model or load all experts. |
+| CPU build | One isolated target, CUDA12.9/sm70, at most2jobs and120seconds wall. Include only the fully reviewed baseline/candidate/dependencies, no kernel sweep. Check ptxas registers, spills and requested shared memory. Kill on timeout or compile error. |
+| GPU run | One external60second hard timeout,55second cooperative deadline. Single launch attempt, no retries or parameter sweep. RAII teardown and post-exit memory/PID/API checks are mandatory. |
+
+The module/context budgets are hard admission ceilings, not measured sizes of an unbuilt artifact. If the baseline snapshot is too large for these limits, use fewer real captured passes, not invented weights or activations. Two copied arenas should exceed L2 for sufficiently many experts, but cache behavior must be described honestly; it is not automatic proof of cold HBM on every launch.
+
+## Numerical contract before timing
+
+Keep all FP16 multiplication, codebook lookup, scale rounding and A1 per-warp MMA accumulation order unchanged. Check each of the five real KC1024 partials separately against the frozen kernel with identical real inputs, preserving all576 outputs for every token/expert pair. Store partials into separate buffers, or mask other input chunks outside timing as in the old lab. Require exact u32 equality for every partial, including special-value classification; reject immediately on any mismatch. No A2/A4 reassociation is allowed.
+
+The ordinary whole launch uses five atomicAdd producers per output. Changing block scheduling can change their final rounding order even when every partial is bit-identical. Therefore do not promise whole-output bit identity from the partial check. Require either actual whole-output bit identity across paired and self-repeat launches, or an explicitly reviewed numerical tolerance bound before any hardware run. A safe conservative roundoff envelope for finite values can be expressed in terms of the measured sum of absolute partials and FP32 summation error, but selecting a final model tolerance requires parent review; no unspecified epsilon is admitted here. Nonfinite values, signed-zero handling and any output beyond an approved bound cause immediate rejection. Full teacher/layer tests would still be necessary before engine integration. This unresolved whole-atomic numerical contract is a second admission blocker if exact equality does not hold.
+
+## Confirming timing and decision
+
+Only after the real-data and numerical gates pass, graph-time baseline/candidate over the same captured pass set in A/B then B/A order with matched weight addresses and actual route multiplicities, separate zeroing outside the event interval, and enough bounded repetitions to report min/median/p95. Do not time correctness downloads or fabrication of weights. Keep actual per-pass row/expert counts beside every result. Retain any self-drift and outlier evidence. Run no concurrent model request or GPU experiment.
+
+The historical31.2→18.6us improvement is generated CB3/six-expert evidence from another window; it is not a prediction for today's complete-GGUF DP route union. At six experts, the gate/up streaming bytes7,188,480 imply8.28us at the report's868GB/s, while the proposed decode/prologue path still costs materially more. Repeating its12.6us saving over40layers would save0.504ms, only1.47% of the approximate34.35ms current DP pass in that restricted workload. A5% DP target requires at least1.72ms net saving/pass after shared overlap and all unchanged costs. Without actual per-layer critical time and real bucket coverage, no positive primary gain is budgeted.
+
+Kill on missing real data/provenance, any numerical failure, nonfinite output, resource breach, timeout, material swapped-order disagreement, loss under real routing, or an optimistic covered critical-path saving below5% of primary wall. A fast standalone result permits only a later separately budgeted integration decision; it does not authorize a new kernel in the engine or support a model tokens/s claim. With the current data bridge absent, the correct action is to stop at this written budget.
