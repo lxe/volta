@@ -1,0 +1,98 @@
+{
+  "decision": "DEFER_NO_NEW_TRACE_BUILD_OR_GPU_RUN",
+  "scope": "Conditional old-trajectory screening bound; not a proven bound on production B arms",
+  "copy_standalone_event_ms": {
+    "t1_median": 0.076384,
+    "t3_median": 0.12312,
+    "t12_median": 0.384304,
+    "t64_median": 1.842944,
+    "t64_observed_max": 1.848576
+  },
+  "old_trace": {
+    "fixed": {
+      "old_record_count": 485,
+      "old_wall_s": 40.85808403394185,
+      "conditional_all_copies_t64_cost_s": 0.8965593599999999,
+      "new_timing_denominators": [
+        {
+          "arm": "hp-gpu-b1",
+          "wall_s": 27.162822259939276,
+          "required_wall_removal_for_5pct_tps_s": 1.293467726663775,
+          "conditional_copy_fraction": 0.033006855893699914,
+          "conditional_TPS_gain_percent": 3.4133495252652635,
+          "full64_passes_needed_at_observed_max": 700
+        },
+        {
+          "arm": "hp-gpu-b2",
+          "wall_s": 27.270288003026508,
+          "required_wall_removal_for_5pct_tps_s": 1.2985851430012623,
+          "conditional_copy_fraction": 0.032876783695885356,
+          "conditional_TPS_gain_percent": 3.399441057937258,
+          "full64_passes_needed_at_observed_max": 703
+        }
+      ]
+    },
+    "mixed": {
+      "old_record_count": 574,
+      "old_wall_s": 48.13226938806474,
+      "conditional_all_copies_t64_cost_s": 1.061082624,
+      "new_timing_denominators": [
+        {
+          "arm": "hp-gpu-b1",
+          "wall_s": 32.96167649398558,
+          "required_wall_removal_for_5pct_tps_s": 1.5696036425707418,
+          "conditional_copy_fraction": 0.03219140337699791,
+          "conditional_TPS_gain_percent": 3.3262158953045295,
+          "full64_passes_needed_at_observed_max": 850
+        },
+        {
+          "arm": "hp-gpu-b2",
+          "wall_s": 32.87769393599592,
+          "required_wall_removal_for_5pct_tps_s": 1.5656044731426628,
+          "conditional_copy_fraction": 0.032273632879046936,
+          "conditional_TPS_gain_percent": 3.334995715272604,
+          "full64_passes_needed_at_observed_max": 847
+        }
+      ]
+    }
+  },
+  "audit_row_opportunity": {
+    "source_sha256": "aa18432ffe1e2e4afe922695dd328ca89c08ea5f600f891fc766a28cd4368a8c",
+    "records": 598,
+    "full_rows": 17467,
+    "sampler_needed_unique_rows": 5020,
+    "removed_rows_if_compacted": 12447,
+    "records_with_unused_rows": 232,
+    "full64_records": 228,
+    "full64_needed_rows_histogram": {
+      "1": 24,
+      "2": 2,
+      "4": 5,
+      "5": 7,
+      "6": 5,
+      "7": 8,
+      "8": 8,
+      "9": 18,
+      "10": 28,
+      "11": 28,
+      "12": 26,
+      "13": 25,
+      "14": 20,
+      "15": 15,
+      "16": 5,
+      "17": 3,
+      "18": 1
+    },
+    "speculative_records": 571,
+    "speculative_records_with_unused_rows": 205,
+    "all_rows_needed_records": 366,
+    "note": "These are six audit API workloads, not matched B timing row/pass counts. Needed rows are potential sampler accesses rb..rb+nd, not only actually accepted prefix rows."
+  },
+  "limits": [
+    "Old HP profile graph_trace=false; STEPT text has no T field. Its loop record counts are available, per-pass row counts are not.",
+    "Production matched B logs have no per-iteration/row counters. Old CPU and new GPU trajectories differ; counts cannot be transferred as fact.",
+    "Standalone observed max across20t64samples is not a universal upper latency bound on model-context copies.",
+    "No interpolation across row counts was used.",
+    "Complete copy removal is more optimistic than row compaction; decode speculative rows and source-readiness synchronization remain necessary."
+  ]
+}
