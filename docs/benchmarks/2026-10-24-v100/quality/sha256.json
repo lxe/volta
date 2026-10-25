@@ -1,0 +1,14 @@
+{
+  "files_sha256": {
+    "README.md": "f78315f40f8e65cd62f2f057567c50af21024b86dcfd2c1666551705906dfe0a",
+    "comparison.json": "29e5bf48608e312e0952cb4e2064918f4ddedcb69dc78218776dc49764be5b2f",
+    "dp/runner.sh.txt": "3009a34cb71619a770af9a6bc09904297a0563fe68bf52423e6356a4779fc275",
+    "dp/teacher.jsonl": "cd6fce1487e02759db916565bc339a1ab447891c610e58a4d3a909cfd7ea40e8",
+    "dp/teacher.log": "0b52ef50daf6321f86b2956a334928b2aff6ba609f758ea019a5cf932f75a8e9",
+    "hp/configuration.json": "b3caa371695890bed9186c3f2b4243957cf8ea2c6cc1eaa35c010832ab7cdbe5",
+    "hp/metrics.json": "f0535f9d696f1c5cfdb7c76a03a5e7878ad3288ba91897390c1d4928d3f92a40",
+    "hp/runner.py.txt": "573e66b5210e2d1b5fc66c512afb285b7ab036e81cd9851f05fbf23e35b5e614",
+    "hp/teacher.jsonl": "eefcaed01f9000ccd778cf35f5ef03b82ad12d4ae5c15628c9ddba3175b5dd3c",
+    "hp/teacher.log": "ef86d7f0860c05cc666fdebb720273b5738c20c5e887572275aa4c50159d933d"
+  }
+}
