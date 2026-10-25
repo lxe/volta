@@ -1,0 +1,24 @@
+{
+  "label": "hp-sample-hp-gpu-b2",
+  "clients": 4,
+  "mixed": true,
+  "wall_s": 32.87769393599592,
+  "monitor_wall_s": 32.93716503796168,
+  "completed": 4,
+  "requested_output_tokens": 2048,
+  "output_tokens": 2048,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 62.29147348311315,
+  "prompt_tokens": 20685,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 2048,
+  "ttft_s": [
+    15.87452207703609,
+    10.22259529598523,
+    4.988179045030847,
+    11.654566242010333
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.5326633165829145
+}

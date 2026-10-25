@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 41.67719762690831,
+    "start_monotonic": 980715.119650157,
+    "end_monotonic": 980756.796847784,
+    "ttft_s": 22.062859746976756,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "73437f93f36e956e3222f54917a4da2232d6794456d9060db598fe81892acfc2",
+    "output": "# Code Review: `hp-gpu-01-mixed` (client 0)\n\n## Summary\n\nThis module contains 107 (or more \u2014 the paste is truncated mid-`record_107`) near-identical functions named `record_0` through `record_107+`. Each function takes a `values` iterable, computes `sum(v * k for v in values)` where `k` is a function-specific constant, and returns a dict `{\"record\": N, \"total\": total, \"count\": len(values)}`.\n\nThe pattern is mechanical, repetitive, and almost certainly generated rather than hand-written. It is functionally correct in isolation but has significant structural, performance, and maintainability problems. Below are numbered findings, followed by a revised implementation.\n\n---\n\n## Findings\n\n### 1. Massive code duplication (107+ copies of the same function)\n\nEvery function is identical except for two numbers: the `record` index and the multiplier. This is the textbook definition of copy-paste code. Any bug fix (e.g., a change to the return shape, an added validation, a rounding rule) must be applied 107+ times, and any missed copy becomes a silent inconsistency. This is the single most important issue in the module.\n\n**Severity:** High (maintainability).\n\n### 2. No shared helper / no single source of truth\n\nBecause each function is self-contained, there is no place to enforce invariants (e.g., \"`record` must equal `index`\", \"`total` must be an int\", \"`count` must equal `len(values)`\"). If the contract changes \u2014 say the caller wants `\"mean\"` added, or `\"total\"` renamed to `\"weighted_sum\"` \u2014 you must edit every function.\n\n**Severity:** High.\n\n### 3. Multipliers are off-by-one relative to the record index\n\nLook carefully:\n\n- `record_0` multiplies by `1`\n- `record_1` multiplies by `2`\n- `record_N` multiplies by `N + 1`\n\nSo the function named `record_0` does **not** use weight `0`; it uses weight `1`. This is either (a) an intentional 1-based weighting scheme that is undocumented, or (b) an off-by-one bug introduced when the functions were generated in a loop (e.g., `for i in range(107): ... v * (i + 1)`).",
+    "decode_tokens_per_s": 26.05237062439057
+  },
+  {
+    "wall_s": 37.58158103202004,
+    "start_monotonic": 980715.12001826,
+    "end_monotonic": 980752.701599292,
+    "ttft_s": 14.086267556995153,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "d85c71838f44aa9e414e075cebf961ee222ea6cd4216db7da2737785dcd0b99a",
+    "output": "# Code Review: `hp-gpu-01-mixed` (client 1)\n\n## Summary\n\nThis module consists of 108 (or more \u2014 the file is truncated mid-function at `record_107`) nearly identical functions named `record_0` through `record_N`. Each function takes a `values` iterable, computes `sum(v * k for v in values)` where `k` is a function-specific constant equal to the function index plus one, and returns a dict `{\"record\": index, \"total\": total, \"count\": len(values)}`.\n\nThe module is a textbook example of **copy-paste duplication**, and while each individual function is correct in isolation, the module as a whole has serious maintainability, performance, and design problems. Below are numbered findings, ordered roughly by severity.\n\n---\n\n## Numbered Findings\n\n### 1. **Massive code duplication (violates DRY)**\nEvery function is structurally identical except for two numbers: the `record` index and the multiplier `k = index + 1`. This is 100+ copies of the same 3-line body. Any bug fix (e.g., handling of non-numeric input, changing the output schema) must be applied 100+ times, and any missed copy introduces inconsistency. This is the single biggest problem in the module.\n\n### 2. **No single source of truth for the multiplier**\nThe multiplier is implicit in each function's position in the file (`record_N` uses `N+1`). There is no data structure, constant table, or registry that expresses \"record N multiplies by N+1.\" If someone renames, reorders, or inserts a function, the invariant silently breaks. A reader cannot verify correctness without manually checking every line.\n\n### 3. **`sum(v * 1 for v in values)` is a no-op multiplication**\nIn `record_0`, the expression `v * 1` is pointless. It costs a multiplication per element and obscures intent. It should just be `sum(values)`. This is a micro-inefficiency but also a readability smell that signals the code was mechanically generated rather than written.\n\n### 4. **`values` is consumed twice**\nEach function iterates `values` once inside the generator (`sum(... for v in values)`) and then calls `len(values)` afterwards. If `values` is a **generator or iterator** (not a `list`/`tuple`/`range`), the",
+    "decode_tokens_per_s": 21.749018183697963
+  },
+  {
+    "wall_s": 28.75620251300279,
+    "start_monotonic": 980715.119852867,
+    "end_monotonic": 980743.87605538,
+    "ttft_s": 6.445535180042498,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "6fbdef573dcec421a5b274b5a67da8290d6423da5f8eaae16dff7b0e37a45d83",
+    "output": "# Code Review: `hp-gpu-01-mixed` (Client 2)\n\n## Overview\n\nThe module under review consists of 108 nearly identical functions, `record_0` through `record_107`. Each function accepts a single argument `values`, computes `sum(v * k for v in values)` where `k` is a per-function constant (`1` for `record_0`, `2` for `record_1`, ..., `108` for `record_107`), and returns a dictionary of the form `{\"record\": i, \"total\": total, \"count\": len(values)}`.\n\nThe file is truncated mid-way through `record_107` (the return statement is incomplete), which is itself a finding. Below is a detailed, numbered review followed by a revised implementation.\n\n---\n\n## Detailed Findings\n\n### Finding 1 \u2014 Massive Code Duplication (DRY Violation)\n\nEvery function is structurally identical. The only differences are:\n- the function name suffix `i`,\n- the `\"record\": i` literal,\n- the multiplier `i + 1`.\n\nThis is a textbook violation of the Don't Repeat Yourself principle. Approximately 108 \u00d7 5 = 540 lines of code express exactly one behavior parameterized by a single integer. Any bug fix (e.g., changing the return shape, adding validation, handling non-numeric inputs) must be applied 108 times, and any missed copy-paste is a latent defect. The code is not maintainable, not reviewable at a glance, and not testable in a meaningful way (you cannot easily assert \"all 108 behave consistently\" without writing 108 tests or reflecting over the module).\n\n**Recommendation:** Replace with a single parameterized function plus a small dispatch layer (a factory, a `dict` of callables, or a `__getattr__`-based module-level dispatcher).\n\n---\n\n### Finding 2 \u2014 Redundant Multiplication by `1` in `record_0`\n\n`record_0` contains `sum(v * 1 for v in values)`. Multiplying by `1` is a no-op and adds a generator overhead for no benefit. More importantly, it reveals that the pattern was generated mechanically rather than reasoned about \u2014 the author did not notice that the first case degenerates to `sum(values)`. This is a minor performance nit but a meaningful signal about the quality of the code as a whole.\n\n---\n\n### Finding 3 \u2014 File Is Truncated / Syntactically Invalid\n\nThe",
+    "decode_tokens_per_s": 22.903842022021575
+  },
+  {
+    "wall_s": 26.4293184960261,
+    "start_monotonic": 980737.29046458,
+    "end_monotonic": 980763.719783076,
+    "ttft_s": 17.009751113015227,
+    "usage": {
+      "prompt_tokens": 8244,
+      "completion_tokens": 512,
+      "total_tokens": 8756,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 8244
+    },
+    "finish_reason": "length",
+    "output_sha256": "de2aa0128bc64cf629bd4ae3d9f3afe5b97ff2dda0291c97d3be3b15bf5fedc5",
+    "output": "# Code Review: `hp-gpu-01-mixed` (client 3)\n\n## Summary of what the module does\n\nThe module contains 216 (and apparently more, truncated at `record_215`) near-identical functions named `record_0` through `record_N`. Each function:\n\n1. Takes a single argument `values` (presumably an iterable of numbers).\n2. Computes `total = sum(v * k for v in values)` where `k` is a per-function constant equal to `function_index + 1`.\n3. Returns a dict `{\"record\": index, \"total\": total, \"count\": len(values)}`.\n\nThe functions differ only in two literals: the multiplier (`v * (index + 1)`) and the `\"record\"` value (the index itself). This is textbook copy-paste duplication.\n\n---\n\n## Numbered findings\n\n### Finding 1 \u2014 Massive copy-paste duplication (structural)\nEvery function is a mechanical clone of the previous one with two constants changed. 216+ copies of the same 3-line body is a maintenance liability: a bug fix or behavior change must be applied in every copy, and any missed copy silently diverges. This is the single most important issue in the module.\n\n**Severity:** High (maintainability, correctness risk on future edits).\n\n### Finding 2 \u2014 No single source of truth for the mapping `index -> multiplier`\nThe multiplier is implicitly `index + 1`, but this relationship is only encoded by hand across 216 functions. There is no data structure, constant table, or formula expressing it. If the intended multiplier ever changes (e.g., becomes `2*index + 1`, or a lookup table), the whole file must be rewritten.\n\n**Severity:** High.\n\n### Finding 3 \u2014 `\"record\"` field is redundant with the function name\nEach function embeds its own index as a literal in the returned dict. The caller already knows which function it invoked; embedding the index again is redundant and creates a second place where the index can drift out of sync (e.g., if someone copies `record_42` and forgets to change `\"record\": 42`).\n\n**Severity:** Medium.\n\n### Finding 4 \u2014 `sum(v * 1 for v in values)` is a no-op multiplication\nIn `record_0`, `v * 1` is identity. It is harmless but signals the generator was produced mechanically rather than written with intent",
+    "decode_tokens_per_s": 54.24877589618812
+  }
+]

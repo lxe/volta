@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 27.269961389014497,
+    "start_monotonic": 980428.452494993,
+    "end_monotonic": 980455.722456382,
+    "ttft_s": 21.808166011003777,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "de126a982b42e02a93ccbeaf81ab468d14f7c0b1c10e774a1b3305908142b5c4",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 0)\n\n## Context\n\nThe module under review consists of 108+ near-identical functions, `record_0` through `record_107` (and the file appears truncated mid-definition at `record_107`). Each function:\n\n1. Accepts a single argument `values`.\n2. Computes `total = sum(v * K for v in values)` where `K` is a per-function constant equal to `record_index + 1`.\n3. Returns a dict `{\"record\": index, \"total\": total, \"count\": len(values)}`.\n\nThe pattern is fully mechanical: for function `record_N`, the multiplier is `N + 1`, the `\"record\"` key is `N`, and everything else is identical. This is a textbook case of generated code that should be collapsed into a single data-driven function.\n\nBelow, I enumerate findings in roughly descending order of severity/importance, then provide a revised implementation.\n\n---\n\n## Findings\n\n### Finding 1 \u2014 Massive duplication (DRY violation), the dominant issue\n\nThere are 108 functions whose bodies differ only in two integer literals (`N` and `N + 1`). This is the single most important problem in the module. Consequences:\n\n- **Maintenance hazard.** Any change to the return shape (e.g., adding a `\"mean\"` key, renaming `\"total\"`, clamping negative values) requires editing 108 functions in lockstep. A single missed edit silently produces an inconsistent module.\n- **Review hazard.** Reviewers cannot meaningfully inspect 108 copies; a subtle typo in one (see Finding 2) hides in the noise.\n- **Import/parse/compile cost.** 108 function definitions bloat the module and slow import and bytecode caching for zero behavioral benefit.\n- **Test surface.** 108 functions imply 108 test entry points, yet they exercise one code path. Tests will be redundant and coverage metrics will be misleading.\n\n**Recommendation:** Replace the entire family with one function parameterized by the record index, plus a thin dispatch table (or `__getattr__`-based generation) if callers need `record_N`-style names.\n\n### Finding 2 \u2014 Off-by-one risk baked into the naming convention\n\nThe convention is `record_N` uses multiplier `N + 1`. That is, `record_0` multiplies by 1, `record_1`",
+    "decode_tokens_per_s": 93.55897916961419
+  },
+  {
+    "wall_s": 21.971037977025844,
+    "start_monotonic": 980428.452168379,
+    "end_monotonic": 980450.423206356,
+    "ttft_s": 4.942490939982235,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "9693920fd60d2475e35e2cd256738752b2fb679b8eca93de68b7f531a237dc79",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 1)\n\n## Summary\n\nThe module contains 108 nearly identical functions (`record_0` through `record_107`) that differ only in two constants: the record index and the multiplier (`index + 1`). Each function computes a weighted sum over an input iterable and returns a small dict. The file is truncated mid-function at `record_107`, so it also fails to parse as written. Below are the findings, numbered, followed by a revised implementation.\n\n---\n\n## Findings\n\n### 1. Massive copy-paste duplication (critical)\nEvery function is structurally identical. This is the textbook case for a single parameterized function or a factory. The duplication means:\n- Any bug fix must be applied 108 times.\n- The file is ~500+ lines for what should be ~15.\n- Reviewers cannot verify correctness at a glance.\n\n### 2. Truncated file \u2014 does not parse (critical)\n`record_107` ends with `\"total\":` and no value, no closing brace. The module as submitted raises `SyntaxError` on import. Whatever produced this file (likely a generator or manual copy) must be fixed before any runtime use.\n\n### 3. Off-by-one semantics are implicit and fragile (high)\nInside `record_N`, the multiplier is `N + 1` (e.g., `record_0` multiplies by 1, `record_99` multiplies by 100). This is only discoverable by reading every function. A caller cannot derive the multiplier from the function name without knowing the convention. If anyone ever renumbers or reorders functions, behavior silently changes.\n\n### 4. No dispatch mechanism (high)\nThere is no `records` list, dict, or `dispatch(index)` helper. Callers that need \"record K\" must construct the name dynamically (`globals()[f\"record_{k}\"]`) or write a 108-branch `if` chain. Dynamic `globals()` lookup is brittle: it breaks under name mangling, breaks if functions are moved to another module, and defeats static analysis/linting.\n\n### 5. No validation of input (medium)\n- `values` is assumed iterable of numbers. If it contains non-numeric items, `sum` raises `TypeError` with no context about which record failed.\n- If `values` is `None`, the error is opaque.\n- No handling of generators being consumed",
+    "decode_tokens_per_s": 30.008432245474577
+  },
+  {
+    "wall_s": 25.838641070993617,
+    "start_monotonic": 980428.45286292,
+    "end_monotonic": 980454.291503991,
+    "ttft_s": 15.79688563698437,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "83915364890056ea020c4a4f8f91e47fd4fefe51cff717f1fe35ae8376aceea0",
+    "output": "# Code Review: `hp-gpu-01-fixed` (Client 2)\n\n## Overview\n\nThe module consists of 108 nearly identical functions (`record_0` through `record_107`). Each function accepts a `values` iterable, computes a weighted sum where the weight is `index + 1`, and returns a dictionary containing the record index, the total, and the count. The final function (`record_107`) is truncated mid-expression, meaning the file as shown is syntactically incomplete.\n\nBelow is a detailed, numbered review. Findings are grouped by severity: **Critical**, **High**, **Medium**, **Low**, and **Style/Design**.\n\n---\n\n## Critical Findings\n\n### 1. The module does not parse \u2014 `record_107` is truncated\nThe last function ends with:\n\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\n\nThis is a `SyntaxError`. Any import of this module will fail with `SyntaxError: unexpected EOF while parsing` (or similar, depending on Python version). **Nothing in the module can be used until this is fixed.** This is the single most important finding: the deliverable is not shippable.\n\n### 2. No module docstring, no package-level documentation\nThere is no docstring explaining what this module is for, what `values` is expected to contain (numbers? ints? floats? `Decimal`? `Fraction`?), what the return contract is, or why records are numbered 0\u2013107. For a work item labeled `hp-gpu-01-fixed`, one would expect at least a header comment describing the GPU/HP context. Absent.\n\n### 3. No `__all__`, no public API boundary\nWith 108 top-level functions and no `__all__`, `from module import *` will export all 108 names plus any future helpers. Callers cannot tell which functions are intended for public use. There is also no dispatcher (e.g., `record(n, values)`) that would let callers select a record dynamically \u2014 every call site must hardcode a function name.\n\n---\n\n## High Findings\n\n### 4. Massive duplication (108 copies of the same body)\nEvery function is the same algorithm with a different literal multiplier and a different `\"record\"` literal. This is textbook copy-paste code. Consequences:\n\n- **Maintenance hazard:**",
+    "decode_tokens_per_s": 50.88751696435007
+  },
+  {
+    "wall_s": 24.41404656600207,
+    "start_monotonic": 980428.452308598,
+    "end_monotonic": 980452.866355164,
+    "ttft_s": 10.158004148979671,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "33ab3a58ab816464506bf390e4825673beff3b2793326333440503f4d75fbf01",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 3)\n\n## Overview\n\nThe module defines 108 (or more \u2014 the listing is truncated mid-`record_107`) nearly identical functions named `record_0` through `record_N`, each of which computes a weighted sum of an input iterable and returns a dictionary with three keys: `record` (a constant index), `total` (the weighted sum), and `count` (the length of the input).\n\nWhile the code is *correct* in the narrow sense \u2014 each function does exactly what it appears to do \u2014 it exhibits a severe and systematic anti-pattern: **massive copy-paste duplication with a single varying parameter**. This is the textbook case for a data-driven or higher-order-function refactor. Below is a detailed, numbered review.\n\n---\n\n## Findings\n\n### 1. Massive duplication (the dominant issue)\n\nEvery function is structurally identical. The only differences are:\n\n- the function name suffix `N`,\n- the literal `N` in the returned dict's `\"record\"` field,\n- the multiplier `N + 1` applied to each element.\n\nThis is 108 functions \u00d7 ~3 lines = ~324 lines of code that could be expressed in ~6 lines. The duplication is not incidental; it is the entire design. Any bug fix or semantic change (e.g., adding a `\"mean\"` field, switching from `sum` to `math.fsum`, handling non-numeric inputs) would have to be replicated 108+ times, guaranteeing drift and inconsistency.\n\n**Severity: Critical (maintainability).**\n\n### 2. Truncated / incomplete module\n\nThe listing ends mid-line at `record_107`:\n\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\n\nThis is syntactically invalid Python (`SyntaxError: unexpected EOF`). Whatever produced this file \u2014 code generation, a copy-paste loop, a merge conflict \u2014 has left the module unimportable. If `record_107` was meant to be the last function, the file must be closed out; if more were intended, the generation was interrupted.\n\n**Severity: Critical (correctness \u2014 module will not import).**\n\n### 3. No dispatch mechanism / no public API\n\nThere is no registry, no `get_record(n)` accessor, no `__all__`, and",
+    "decode_tokens_per_s": 35.844450027017416
+  }
+]

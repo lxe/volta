@@ -1,0 +1,24 @@
+{
+  "label": "sampler-hp-cpu-a2",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 5.864379688980989,
+  "monitor_wall_s": 6.297613129019737,
+  "completed": 4,
+  "requested_output_tokens": 256,
+  "output_tokens": 256,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 43.65338084793812,
+  "prompt_tokens": 2260,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 256,
+  "ttft_s": [
+    4.615312005975284,
+    2.427395151928067,
+    3.40105379500892,
+    1.3789501830469817
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.540046149510322
+}

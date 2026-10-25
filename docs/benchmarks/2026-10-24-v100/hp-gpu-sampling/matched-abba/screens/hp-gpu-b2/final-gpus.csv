@@ -1,0 +1,9 @@
+index, memory.used [MiB], memory.free [MiB], power.draw [W], clocks.current.sm [MHz]
+0, 30784 MiB, 1711 MiB, 73.50 W, 1530 MHz
+1, 30752 MiB, 1743 MiB, 77.49 W, 1530 MHz
+2, 30752 MiB, 1743 MiB, 71.63 W, 1530 MHz
+3, 30752 MiB, 1743 MiB, 74.00 W, 1530 MHz
+4, 30752 MiB, 1743 MiB, 72.96 W, 1530 MHz
+5, 30752 MiB, 1743 MiB, 79.96 W, 1530 MHz
+6, 30752 MiB, 1743 MiB, 75.57 W, 1530 MHz
+7, 30752 MiB, 1743 MiB, 74.00 W, 1530 MHz
