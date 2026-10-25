@@ -1,0 +1,179 @@
+{
+  "evidence": "CPU_REVALIDATION_OF_ACTUAL_COMPLETED_ABBA_RECEIPTS",
+  "verified_utc": "2026-10-25T04:18:21.657539+00:00",
+  "arms": {
+    "spec-a1": {
+      "theta": 0.35,
+      "PID": 22364,
+      "phases": {
+        "fixed": {
+          "prompt_tokens": 16588,
+          "output_tokens": 2048,
+          "wall_s": 16.592294216970913,
+          "output_tokens_per_wall_s": 123.4307910177525,
+          "cached_tokens_delta": 0
+        },
+        "mixed": {
+          "prompt_tokens": 20685,
+          "output_tokens": 2048,
+          "wall_s": 27.76842947595287,
+          "output_tokens_per_wall_s": 73.75282069061714,
+          "cached_tokens_delta": 0
+        },
+        "long": {
+          "prompt_tokens": 16584,
+          "output_tokens": 4096,
+          "wall_s": 24.38701403804589,
+          "output_tokens_per_wall_s": 167.95824177613048,
+          "cached_tokens_delta": 0
+        }
+      },
+      "guard": {
+        "observations": 75,
+        "minimum_free_mib": 319,
+        "first_observation_verified": true,
+        "first_epoch": 1792900799.9367924,
+        "first_admission_epoch": 1792900800.524272,
+        "first_observation_precedes_first_admission": true
+      }
+    },
+    "spec-b1": {
+      "theta": 0.2,
+      "PID": 22923,
+      "phases": {
+        "fixed": {
+          "prompt_tokens": 16588,
+          "output_tokens": 2048,
+          "wall_s": 15.791756163001992,
+          "output_tokens_per_wall_s": 129.6879193713866,
+          "cached_tokens_delta": 0
+        },
+        "mixed": {
+          "prompt_tokens": 20685,
+          "output_tokens": 2048,
+          "wall_s": 27.37239777308423,
+          "output_tokens_per_wall_s": 74.81989765667643,
+          "cached_tokens_delta": 0
+        },
+        "long": {
+          "prompt_tokens": 16584,
+          "output_tokens": 4096,
+          "wall_s": 23.475411035004072,
+          "output_tokens_per_wall_s": 174.48043801629177,
+          "cached_tokens_delta": 0
+        }
+      },
+      "guard": {
+        "observations": 72,
+        "minimum_free_mib": 297,
+        "first_observation_verified": true,
+        "first_epoch": 1792901087.3941476,
+        "first_admission_epoch": 1792901087.969938,
+        "first_observation_precedes_first_admission": true
+      }
+    },
+    "spec-b2": {
+      "theta": 0.2,
+      "PID": 23309,
+      "phases": {
+        "fixed": {
+          "prompt_tokens": 16588,
+          "output_tokens": 2048,
+          "wall_s": 15.70277148205787,
+          "output_tokens_per_wall_s": 130.42283665275673,
+          "cached_tokens_delta": 0
+        },
+        "mixed": {
+          "prompt_tokens": 20685,
+          "output_tokens": 2048,
+          "wall_s": 27.398919278988615,
+          "output_tokens_per_wall_s": 74.74747376516227,
+          "cached_tokens_delta": 0
+        },
+        "long": {
+          "prompt_tokens": 16584,
+          "output_tokens": 4096,
+          "wall_s": 24.319723112974316,
+          "output_tokens_per_wall_s": 168.4229701535881,
+          "cached_tokens_delta": 0
+        }
+      },
+      "guard": {
+        "observations": 73,
+        "minimum_free_mib": 297,
+        "first_observation_verified": true,
+        "first_epoch": 1792901369.5676138,
+        "first_admission_epoch": 1792901370.132948,
+        "first_observation_precedes_first_admission": true
+      }
+    },
+    "spec-a2": {
+      "theta": 0.35,
+      "PID": 23697,
+      "phases": {
+        "fixed": {
+          "prompt_tokens": 16588,
+          "output_tokens": 2048,
+          "wall_s": 16.310747257084586,
+          "output_tokens_per_wall_s": 125.56138402000249,
+          "cached_tokens_delta": 0
+        },
+        "mixed": {
+          "prompt_tokens": 20685,
+          "output_tokens": 2048,
+          "wall_s": 26.782696716021746,
+          "output_tokens_per_wall_s": 76.46728115973701,
+          "cached_tokens_delta": 0
+        },
+        "long": {
+          "prompt_tokens": 16584,
+          "output_tokens": 4096,
+          "wall_s": 24.91637099906802,
+          "output_tokens_per_wall_s": 164.38991055933496,
+          "cached_tokens_delta": 0
+        }
+      },
+      "guard": {
+        "observations": 74,
+        "minimum_free_mib": 319,
+        "first_observation_verified": true,
+        "first_epoch": 1792901652.156356,
+        "first_admission_epoch": 1792901652.69102,
+        "first_observation_precedes_first_admission": true
+      }
+    }
+  },
+  "prompt_identity": {
+    "fixed": {
+      "json_objects_equal_all4arms": true,
+      "requests_sha256": {
+        "spec-a1": "961594c686d3d0aaab036e0fea0133c563396dbfbf48cb6289f75d3736b7783d",
+        "spec-b1": "961594c686d3d0aaab036e0fea0133c563396dbfbf48cb6289f75d3736b7783d",
+        "spec-b2": "961594c686d3d0aaab036e0fea0133c563396dbfbf48cb6289f75d3736b7783d",
+        "spec-a2": "961594c686d3d0aaab036e0fea0133c563396dbfbf48cb6289f75d3736b7783d"
+      }
+    },
+    "mixed": {
+      "json_objects_equal_all4arms": true,
+      "requests_sha256": {
+        "spec-a1": "0ab08f77a62dd56cb397cf897122b50a8ffd0ff0f491137d8e7fdd767cb9605c",
+        "spec-b1": "0ab08f77a62dd56cb397cf897122b50a8ffd0ff0f491137d8e7fdd767cb9605c",
+        "spec-b2": "0ab08f77a62dd56cb397cf897122b50a8ffd0ff0f491137d8e7fdd767cb9605c",
+        "spec-a2": "0ab08f77a62dd56cb397cf897122b50a8ffd0ff0f491137d8e7fdd767cb9605c"
+      }
+    },
+    "long": {
+      "json_objects_equal_all4arms": true,
+      "requests_sha256": {
+        "spec-a1": "cdebdec700f0430cad3556c3ae4e05647f960bb29095de5dfe13f61217b53d47",
+        "spec-b1": "cdebdec700f0430cad3556c3ae4e05647f960bb29095de5dfe13f61217b53d47",
+        "spec-b2": "cdebdec700f0430cad3556c3ae4e05647f960bb29095de5dfe13f61217b53d47",
+        "spec-a2": "cdebdec700f0430cad3556c3ae4e05647f960bb29095de5dfe13f61217b53d47"
+      }
+    }
+  },
+  "decision": "retain theta0.35; theta0.2 failed5percentprimarygate",
+  "script_snapshot_limit": "Controller/harness bytes archived after experiment; exact per-arm argv/environment/binary/PID are in each actual configuration receipt. Initial build receipt activated=false is historical build state, not a claim the candidate was never run.",
+  "common_model_path": "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+  "profiling_and_audit_off_all4": true
+}

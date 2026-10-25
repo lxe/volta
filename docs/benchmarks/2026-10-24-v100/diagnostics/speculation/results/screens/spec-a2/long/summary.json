@@ -1,0 +1,24 @@
+{
+  "label": "spec-a2",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 24.91637099906802,
+  "monitor_wall_s": 25.190804447047412,
+  "completed": 4,
+  "requested_output_tokens": 4096,
+  "output_tokens": 4096,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 164.38991055933496,
+  "prompt_tokens": 16584,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 4096,
+  "ttft_s": [
+    8.441014645970426,
+    8.44143157103099,
+    8.440726272994652,
+    8.365363080985844
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.5350451075641915
+}

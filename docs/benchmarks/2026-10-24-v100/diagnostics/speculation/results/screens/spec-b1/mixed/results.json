@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 22.780291383038275,
+    "start_monotonic": 977930.171645585,
+    "end_monotonic": 977952.951936968,
+    "ttft_s": 7.705259602982551,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "84c69d04b0840042850bdf8a66d1604ac7d7d126ff47778adb52d704bf1c3eeb",
+    "output": "# Code Review: `spec-theta-01-mixed` (client 0)\n\n## Summary of findings\n\nThe module consists of 100+ near-identical functions `record_N(values)` for N = 0..107 (the file is truncated mid-way through `record_107`). Each function computes `sum(v * (N+1) for v in values)` and returns a dict `{\"record\": N, \"total\": total, \"count\": len(values)}`. The only thing that varies across functions is the record index `N` and the multiplier `N+1`. This is a textbook case of mechanical code generation gone wrong \u2014 the file is a wall of copy-paste with no abstraction, no validation, no shared logic, and it is truncated (syntax error) at the end.\n\nI'll enumerate findings in rough order of severity.\n\n---\n\n### Finding 1 \u2014 File is syntactically invalid (truncated mid-function)\n\nThe last visible function is:\n\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\n\nThis is an incomplete `return` statement \u2014 the dict literal is unterminated. The module **cannot be imported**; `import` will raise `SyntaxError: unexpected EOF while parsing`. Whatever test harness or downstream consumer expects to call `record_0`..`record_107` will fail at import time, before any function runs. This is the single most blocking defect.\n\n**Action:** the file must be completed (or, better, rewritten \u2014 see the revised implementation). Any review of the *logic* is moot until this is fixed, but the remaining findings still apply to the intended design.\n\n---\n\n### Finding 2 \u2014 Massive duplication (100+ copies of the same function body)\n\nEvery `record_N` is a copy of every other `record_N` with two constants changed: the index `N` in the return dict, and the multiplier `N+1` in the sum. This is ~108 \u00d7 3 lines \u2248 324 lines of code that encode exactly **one** piece of logic parameterized by a single integer.\n\nConsequences:\n\n- **Maintenance hazard:** a bug fix (e.g., \"also return the mean\", \"guard against non-numeric input\", \"return a decimal instead of float\") must be applied 108 times, and any missed copy silently diverges.\n- **Review hazard:** nothing in this file can be",
+    "decode_tokens_per_s": 33.89710930334842
+  },
+  {
+    "wall_s": 23.09036955598276,
+    "start_monotonic": 977930.171486737,
+    "end_monotonic": 977953.261856293,
+    "ttft_s": 7.608367499080487,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "7be12a67e58d899c7e0b295a0a2402d3394da9101f8a5ae9d640acd931f18bb9",
+    "output": "# Code Review: `spec-theta-01-mixed` Python Module\n\n## Overview\n\nThe module consists of 108 nearly-identical functions (`record_0` through `record_107`, with `record_107` truncated mid-expression in the submitted artifact). Each function:\n\n1. Accepts a single positional argument `values`\n2. Computes `sum(v * K for v in values)` where `K` is a per-function constant equal to the function's index + 1\n3. Returns a dict `{\"record\": N, \"total\": total, \"count\": len(values)}` where `N` equals the function's index\n\nThe code is mechanically generated and exhibits a classic \"copy-paste with a numeric parameter\" anti-pattern. Below is a detailed, numbered review.\n\n---\n\n## Findings\n\n### 1. Massive duplication (DRY violation)\n108 functions differ only in two integers (`record` id and multiplier). This is the single largest defect. Any bug fix or behavioral change (e.g., adding a `mean` field, validating input, supporting a `weight` parameter) must be replicated 108 times. Maintenance cost scales linearly with the number of records and is a breeding ground for drift.\n\n### 2. No shared helper / no dispatch table\nThere is no `record(n, values)` generic entry point, no `RECORDS` dict, no factory. Callers must know the exact function name for each record id, which couples every call site to the generated surface area.\n\n### 3. Truncated final function (`record_107`) \u2014 syntax error\nThe submitted source ends mid-expression:\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\nThis is a hard `SyntaxError` (`unexpected EOF while parsing`). The module cannot be imported as-is. Even if this is an artifact of the paste, any review must flag it: the deliverable as submitted does not run.\n\n### 4. Redundant generator expression `sum(v * K for v in values)`\nA generator expression is passed to `sum`, which is fine, but `sum(v * K for v in values)` is equivalent to `sum(values) * K` only when `K` is constant \u2014 and since `K` *is* constant per function, the entire loop is unnecessary work. For each function:\n\n```python\ntotal = sum(values) *",
+    "decode_tokens_per_s": 33.0060671818722
+  },
+  {
+    "wall_s": 22.883448065957054,
+    "start_monotonic": 977930.171823691,
+    "end_monotonic": 977953.055271757,
+    "ttft_s": 7.705134816002101,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "0df23a48b45ca2a786877ff772c6fea37a6339f707c888a27b6252a8aa3168dd",
+    "output": "# Code Review: `spec-theta-01-mixed` (Client 2)\n\n## Overview\n\nThis module contains 108 nearly-identical functions (`record_0` through `record_107`) that each compute a weighted sum of a `values` list and return a dictionary containing the record index, the total, and the count. The functions differ only in two constants: the `record` index (which equals the function's suffix) and the multiplier (`record_N` uses multiplier `N+1`).\n\nThe module is truncated mid-way through `record_107`'s return statement, so it is not syntactically valid Python as delivered.\n\nBelow is a detailed, numbered review.\n\n---\n\n## Findings\n\n### Finding 1 \u2014 Module is syntactically incomplete (truncated)\n\n`record_107` ends with:\n\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\n\nThis is a `SyntaxError`. The file cannot be imported or executed. Whatever process produced this module (code generation, copy/paste, partial write) left the last function unterminated. This is the most severe issue: **the module does not run at all.**\n\n**Severity:** Blocker.\n\n---\n\n### Finding 2 \u2014 Massive duplication (108 near-identical functions)\n\nEvery function is the same three-line body with two substituted integers. This is textbook copy-paste code generation. Consequences:\n\n- Any bug fix must be applied 108 times.\n- Reviewing 108 functions for correctness is impractical; a single typo in one of them is easy to miss.\n- The module has no shared abstraction, so callers must dispatch by name (e.g., `getattr(module, f\"record_{i}\")`) or write their own table.\n\n**Severity:** High (maintainability).\n\n**Recommendation:** Replace all 108 functions with a single parameterized function plus a dispatch table or a thin wrapper factory.\n\n---\n\n### Finding 3 \u2014 Implicit invariant between `record` index and multiplier is undocumented and fragile\n\nFor every function, `record_N` uses multiplier `N+1`. So `record` index and multiplier are coupled by `multiplier = index + 1`. Nothing in the code expresses this relationship; it is only discoverable by reading all 108 functions and noticing the pattern. If someone edits one function's multiplier, the invariant silently breaks. There is no docstring",
+    "decode_tokens_per_s": 33.666454999636834
+  },
+  {
+    "wall_s": 19.263657415052876,
+    "start_monotonic": 977938.280227095,
+    "end_monotonic": 977957.54388451,
+    "ttft_s": 13.022329102968797,
+    "usage": {
+      "prompt_tokens": 8244,
+      "completion_tokens": 512,
+      "total_tokens": 8756,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 8244
+    },
+    "finish_reason": "length",
+    "output_sha256": "bbb33d778d5c1ac3ede30d4d072aae5d650d2b5f483feae8c1493ab1b7029777",
+    "output": "# Code Review: `spec-theta-01-mixed` (client 3)\n\n## Overview\n\nThe module consists of 216 near-identical functions, `record_0` through `record_215`, each of which:\n\n1. Takes a single iterable `values`.\n2. Computes `sum(v * K for v in values)` where `K` is a function-specific multiplier (`1` for `record_0`, `2` for `record_1`, \u2026, `216` for `record_215`).\n3. Returns a dict `{\"record\": N, \"total\": total, \"count\": len(values)}`.\n\nThe file is truncated at `record_215` mid-body, but the pattern is unambiguous.\n\nBelow are numbered findings. I have tried to be exhaustive rather than succinct, as requested.\n\n---\n\n## Findings\n\n### 1. Massive duplication (the dominant issue)\n\nEvery function is a copy-paste of the previous one with two constants changed: the `record` index `N` and the multiplier `N + 1`. This is the textbook case for a data-driven / higher-order implementation. 216 functions \u00d7 ~3 lines each \u2248 650 lines of code that could be ~10 lines. Duplication of this scale:\n\n- Makes review impossible in practice (a reviewer cannot eyeball 216 functions for correctness; I had to trust the arithmetic pattern).\n- Guarantees drift: if a bug is fixed in `record_0`, nothing forces the fix into `record_1..215`.\n- Bloats import time, bytecode size, and `dir()` output.\n- Makes the module hostile to refactoring, testing, and tooling.\n\n**Recommendation:** Replace the entire family with a single parameterized function plus a lookup table (or `functools.partial` closures / `__getattr__` factory). See revised implementation.\n\n### 2. The multiplier is `record_index + 1`, but this is implicit and undocumented\n\nNothing in the code states the relationship `multiplier = record + 1`. A reader must infer it from the sequence `1, 2, 3, \u2026, 216`. If the spec ever changes (e.g., multiplier becomes `record * 2` or a prime table), every one of the 216 functions must be edited. The invariant should be encoded once, in data or in a formula, and documented.\n\n### 3. No docstrings, no module docstring, no type hints",
+    "decode_tokens_per_s": 81.87359716530743
+  }
+]
