@@ -1,0 +1,21 @@
+{
+  "label": "hp4-256-profile",
+  "clients": 1,
+  "mixed": false,
+  "wall_s": 16.283734214957803,
+  "monitor_wall_s": 16.583457574015483,
+  "completed": 1,
+  "requested_output_tokens": 1024,
+  "output_tokens": 1024,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 62.88483872816967,
+  "prompt_tokens": 4145,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 1024,
+  "ttft_s": [
+    5.793668190017343
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.5519990018853278
+}
