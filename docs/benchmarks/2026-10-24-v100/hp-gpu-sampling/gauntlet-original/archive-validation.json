@@ -1,0 +1,14 @@
+{
+  "scope": "CPU archive fidelity only; no renderer execution or live observation",
+  "closed_cast_gzip_roundtrip_sha256": "45f8e858f0902104f89531fe39511c4bf4404614622ffd3e1c8b8dc9bbae5f1e",
+  "closed_cast_original_bytes": 74514267,
+  "compressed_cast_bytes": 4557936,
+  "four_sources_match_geometry_review": true,
+  "memory_observations": 182,
+  "memory_pid": 32809,
+  "minimum_observed_free_mib": 1747,
+  "maximum_memory_observation_gap_s": 1.1315958499908447,
+  "guard_stopped_server": false,
+  "semantic_requirement_pass": false,
+  "failure": "Original torus discards surface-normal luminance during output."
+}

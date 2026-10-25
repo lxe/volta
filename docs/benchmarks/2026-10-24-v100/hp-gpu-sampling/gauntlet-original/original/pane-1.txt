@@ -1,0 +1,28 @@
+render.py is written and running in pane %139.
+
+ How it works:
+ - Geometry: square pyramid (apex + 4 base vertices) spun about Y at
+   1.15 rad/s, with a slow tilt 0.30 + 0.26*sin(t*0.35) that reveals
+   the top and under-side as it spins.
+ - Raster: each frame the terminal is re-read via
+   shutil.get_terminal_size(), the scene is projected at dot
+   resolution (2×4 dots per cell, aspect kept square) and filled with
+   an edge-function triangle rasteriser plus a depth buffer so nearer
+   faces occlude farther ones.
+ - Shading: per face, brightness = 0.10 + 0.55*lambert + 0.55*facing
+   (facing = normal·view), mapped onto a 9-step 256-colour grey-blue
+   ramp; back faces are culled so faces fade as they turn edge-on.
+ - Output: braille bitmask per cell, only changed cells are repainted
+   (cursor-addressed escapes), cursor hidden with ESC[?25l and
+   restored on SIGINT/SIGTERM/exit.
+ - Timing: fixed 30 fps pacing (~4 ms/frame of CPU for an 70×29
+   pane), resizes are detected and trigger a full clear.
+
+ Ctrl-C was verified to restore the cursor and return to the shell
+ prompt; the animation is left running.
+
+──────────────────────────────────────────────────────────────────────
+
+──────────────────────────────────────────────────────────────────────
+~/volta-sixhour-20261024/hp-256k-gauntlet/gauntlet/02-pyramid
+↑249k ↓6.8k 7.8%/262k (auto)        deepseek-v4.1-flash • thinking off

@@ -1,0 +1,29 @@
+---
+ 73x29
+
+ Took 1.0s
+
+
+ It's running and animating (frame changed, cube rotated). The animation
+ is stable and filling the pane. Leaving it running in %135.
+
+ The program is complete at
+ /home/lxe/volta-sixhour-20261024/hp-256k-gauntlet/gauntlet/01-cube/rend
+ er.py:
+ - Rotates a solid unit cube about X and Y axes
+ - Shaded faces via Lambert lighting against a fixed light, with
+   brightness mapped to dot coverage through a 4×4 ordered-dither
+   (Bayer) matrix so each face shows a distinct density while still
+   reading as a solid surface
+ - Back-to-front painter's algorithm with scanline convex-quad fill
+ - Unicode braille cells (2×4 dots), redrawn each frame at ~30 FPS
+ - Reads shutil.get_terminal_size every frame to adapt to pane resizes
+ - Hides cursor on start and restores it on Ctrl-C
+
+ It's now running live in tmux pane %135.
+
+─────────────────────────────────────────────────────────────────────────
+
+─────────────────────────────────────────────────────────────────────────
+~/volta-sixhour-20261024/hp-256k-gauntlet/gauntlet/01-cube
+↑63k ↓4.1k 6.2%/262k (auto)            deepseek-v4.1-flash • thinking off
