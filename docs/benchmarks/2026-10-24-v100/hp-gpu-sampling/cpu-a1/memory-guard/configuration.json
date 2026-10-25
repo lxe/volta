@@ -1,0 +1,54 @@
+{
+  "first_observation_verified": true,
+  "observation_path": "/root/memory-hp-cpu-a1.jsonl",
+  "server_pid": 21894,
+  "guard_pid": 22078,
+  "command": [
+    "python3",
+    "/root/memory-guard.py",
+    "--name",
+    "hp-cpu-a1",
+    "--receipt-name",
+    "hp-cpu-a1",
+    "--min-free-mib",
+    "192",
+    "--until",
+    "1792902290.201086"
+  ],
+  "ready_free_mib": [
+    [
+      0,
+      1879
+    ],
+    [
+      1,
+      1879
+    ],
+    [
+      2,
+      1879
+    ],
+    [
+      3,
+      1879
+    ],
+    [
+      4,
+      1879
+    ],
+    [
+      5,
+      1879
+    ],
+    [
+      6,
+      1879
+    ],
+    [
+      7,
+      1879
+    ]
+  ],
+  "log": "/root/memory-guard-hp-cpu-a1.log",
+  "until": 1792902290.201086
+}

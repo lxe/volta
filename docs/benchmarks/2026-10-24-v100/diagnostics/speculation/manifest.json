@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "evidence_scope": "Measured baseline only; no candidate throughput gain",
+  "files": {
+    "README.md": {
+      "bytes": 1497,
+      "sha256": "6a928237e1c63b1ff7d1482043bbc0cbc18ef3335159dc2cbc3f54064fb2ebbc"
+    },
+    "speculation-budget-review.md": {
+      "bytes": 11211,
+      "sha256": "0f2d6d5b1c034f680f787d45a7a839356f0b85622de0b6177a1a67c9c0952189"
+    },
+    "speculation-cpu-analysis.py": {
+      "bytes": 2053,
+      "sha256": "50778d904dcaf17c1094b25a6265287d708e1181273880517877d2ea01c9ae5c"
+    },
+    "speculation-timing-analysis.json": {
+      "bytes": 9445,
+      "sha256": "fee75b4f5cf483cc9d9c8f8cc45350c44f0cc9cefcb1d994fae693dff85dc654"
+    }
+  }
+}
