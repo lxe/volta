@@ -173,6 +173,50 @@ impl Gpu {
         unsafe { cu::cuCtxSetCurrent(self.ctx) };
     }
 
+    /// Opaque primary-context token for checked cross-context copies; the owning worker keeps it alive.
+    pub fn context_token(&self) -> usize {
+        self.ctx as usize
+    }
+
+    /// Copy one packed vocabulary slice into full-vocabulary rows on this GPU's main stream.
+    /// The caller must establish source readiness and keep both allocations/contexts alive until completion.
+    pub fn collect_vocab_slice(&self, src: u64, src_context: usize, dst: u64, slice_bytes: usize, full_bytes: usize, offset: usize, rows: usize) -> Result<()> {
+        anyhow::ensure!(src != 0 && dst != 0 && src_context != 0 && rows > 0 && slice_bytes > 0, "vocabulary copy: empty pointer/context/extent");
+        anyhow::ensure!(offset.checked_add(slice_bytes).is_some_and(|end| end <= full_bytes), "vocabulary copy: slice exceeds destination pitch");
+        self.bind();
+        unsafe {
+            if src_context == self.context_token() {
+                let mut c: cu::CUDA_MEMCPY3D = std::mem::zeroed();
+                c.srcMemoryType = cu::CUmemorytype::CU_MEMORYTYPE_DEVICE;
+                c.srcDevice = src;
+                c.srcPitch = slice_bytes;
+                c.dstMemoryType = cu::CUmemorytype::CU_MEMORYTYPE_DEVICE;
+                c.dstDevice = dst;
+                c.dstPitch = full_bytes;
+                c.dstXInBytes = offset;
+                c.WidthInBytes = slice_bytes;
+                c.Height = rows;
+                c.Depth = 1;
+                check(cu::cuMemcpy3DAsync_v2(&c, self.stream), "local vocabulary collect")
+            } else {
+                let mut c: cu::CUDA_MEMCPY3D_PEER = std::mem::zeroed();
+                c.srcMemoryType = cu::CUmemorytype::CU_MEMORYTYPE_DEVICE;
+                c.srcDevice = src;
+                c.srcContext = src_context as cu::CUcontext;
+                c.srcPitch = slice_bytes;
+                c.dstMemoryType = cu::CUmemorytype::CU_MEMORYTYPE_DEVICE;
+                c.dstDevice = dst;
+                c.dstContext = self.ctx;
+                c.dstPitch = full_bytes;
+                c.dstXInBytes = offset;
+                c.WidthInBytes = slice_bytes;
+                c.Height = rows;
+                c.Depth = 1;
+                check(cu::cuMemcpy3DPeerAsync(&c, self.stream), "peer vocabulary collect")
+            }
+        }
+    }
+
     /// Start capturing this stream's work into a graph (relaxed mode: other threads may keep using CUDA).
     pub fn begin_capture(&self) -> Result<()> {
         self.mk_flush()?;
