@@ -283,9 +283,9 @@ impl Volta {
                         "hesitation_lambda":q.hes.as_ref().map(|h| h.lambda),
                         "draft_bound_ok":q.next.is_none() || n <= 9})
                 }).collect();
-                eprintln!("HP_SAMPLE_DISPATCH {}", serde_json::json!({"command":if on_gpu {"StepSampleHp"} else if sampled {"Step"} else {"StepGreedy"},
+                crate::volta::write_hp_audit_record("HP_SAMPLE_DISPATCH", &serde_json::json!({"command":if on_gpu {"StepSampleHp"} else if sampled {"Step"} else {"StepGreedy"},
                     "gpu":on_gpu, "sampled":sampled, "gpu_sample_enabled":self.gpu_sample,
-                    "step_rows":plan.iter().map(Vec::len).sum::<usize>(), "table_rows_if_gpu":if on_gpu {rows.len()} else {0}, "rows":details}));
+                    "step_rows":plan.iter().map(Vec::len).sum::<usize>(), "table_rows_if_gpu":if on_gpu {rows.len()} else {0}, "rows":details}))?;
             }
             let dec: Vec<(usize, u32)> = if on_gpu {
                 let mut tabs: Vec<(Vec<i32>, Vec<f32>)> = vec![(vec![], vec![]); ng];
