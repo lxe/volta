@@ -1,5 +1,5 @@
 {
-  "README.md": "23adcc7cdd936a728eccac770d9c9e2ba04df1b0ccb9f339786dbcb7f845ed67",
+  "README.md": "af348ebc0e1827c51ec52dbc716fdbe94ddfb577096b9132dafaa78a84cbe785",
   "batch-configuration.json": "9f5c1a05368939cff1b04ce687e41c22c40c1d3a861c929db2ab20050cee267c",
   "clients-1-a/final-stats.json": "aaec5e7d260982d2bc6c7859e90e5d733365d79081f5100cd921f056b5049668",
   "clients-1-a/initial-stats.json": "e29f2f13eabaedc8133448e55a7619452fca7e868f548d29314dd75ef4e4c93d",
@@ -39,6 +39,7 @@
   "clients-8-b/summary.json": "fb364c635174c84a42cf4f705f4096125ebe6793c1a5df93ab2979ec32522b60",
   "concurrency-batch.py": "3bf07975a046188af9543edead2a836fc6402f880bc6556d771f98d8923ac3de",
   "configuration.json": "7948c1958b5040df5e3a2fc31634f49fb07afc3e5190faede1c724afa5700481",
+  "long-context.json": "0ca63ee14e6263bc671a2baeb063382ab84068194c744d8ea3d18ba401ba403e",
   "matched-fixed/final-stats.json": "49360745d0c27df55674c79fb11652bbed8a3e323e8bad6fe01a535118f806e9",
   "matched-fixed/initial-stats.json": "4d9dfc286936b243864e8e14627b740cf6c3e6671e768c322d6ddf2870546e28",
   "matched-fixed/requests.json": "0ebe05e0f311e73f7b586a6121a948145286274a3d2fdb034855b9df131f480c",
@@ -51,6 +52,17 @@
   "matched-mixed/results.json": "dfb7d18728333c3fbf1344456db0fbfe22b062f9759bf8159a5b6cd2fb4f5324",
   "matched-mixed/stats.jsonl": "3e678975aae15e08f7f6bd712351af5b4a8912cf9d58404e79e9e635b167c398",
   "matched-mixed/summary.json": "d6b761cf4acad61669dec6c87063ea900b4e90a63752b386a74ca988dbeae039",
+  "memory-guard/configuration.json": "64d292f174bfe5ef8c5f7e2afa28fe2a9d54faff789b0e0caba6bc1039f24ec1",
+  "memory-guard/guard.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "memory-guard/launch-stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "memory-guard/observations.jsonl": "f24d610ebfa79b3ce5e1f37c5deefc6bc661b5131758c9710635e0893d3a7616",
+  "needle-250000/final-stats.json": "b52bc779ee54d6b15128ab94e7f25d1e47ca385987cfaec5f1de36e36444b155",
+  "needle-250000/initial-stats.json": "6c46a801416c03a06067c00f53c647f6efe0ce3d0b35d3e06b98cb22b2c206ad",
+  "needle-250000/requests.json": "336123c4c79bc4051589dcd06913feacdb61ea8f0fa7302ae83b16418591058a",
+  "needle-250000/results.json": "a8ef553d337697719563e11cc8cdbab086bdff6d7eef99ab2d554a925c748dcf",
+  "needle-250000/stats.jsonl": "0aa7f559bc2507412d797f63b00761b679809d2b68008d0ffaa61080bd13f0a0",
+  "needle-250000/summary.json": "50c77b62a45e64f65243085c355201bbd78d1f93925398aa92b7fa7a77fbf5ba",
   "screen-timed.py": "4bb2cda5d33a134ebaee5d22eb17e20003f86f942b9e4dde2b19b554fb670a24",
+  "server.log": "4b7ba38126a7b4fa36ce915f6bf73e7b255c9a50efec4077735683fe2f6830de",
   "short-profile.json": "97314acd98d7bc76bea6894b82f8c5445db7a6c8979f52bde3dd293208c6184c"
 }
