@@ -1,0 +1,1 @@
+Same four-slot HP GPU-sampler process as the successful four-client 250K retrieval. Cache/graph history retained; individual short cases use distinct cold request nonces. Descriptive profile; no controlled cross-configuration gain claimed. Eight submissions queue behind four active slots.

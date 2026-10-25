@@ -1,0 +1,297 @@
+{
+  "scope": "Actual descriptive six-case HP GPU sampling concurrency profile; no controlled cross-mode gain.",
+  "files": {
+    "README.md": {
+      "bytes": 5169,
+      "sha256": "4a9824845ecbfaf36e3e0b47a2edc5a79380ba598355aabfd11448b7ffa2d165"
+    },
+    "analyze-hp-concurrency.py": {
+      "bytes": 14193,
+      "sha256": "78fd5c5432c6199f9ac58cf376867a43947b7c8113b15f6b589df47f52320001"
+    },
+    "concurrency-hp-gpu-batch.py": {
+      "bytes": 2637,
+      "sha256": "c983f4ead1cb0d1f1a96b30b858224face86b9ccba39abe046ff6ed1fce1fba2"
+    },
+    "hp-full-concurrency-budget.md": {
+      "bytes": 2887,
+      "sha256": "bab4553158b5acd4856d54a82f53baedd3d54393b9f0a821b5d099d07063b09e"
+    },
+    "hp-sampling-v3-build-proof.json": {
+      "bytes": 2744,
+      "sha256": "faf10e0091dafeaa9202fa57914ecafa9cde38cd75870387dd5aa03cad7f3152"
+    },
+    "hp-sampling-v3-source.json": {
+      "bytes": 674,
+      "sha256": "e38c20626ac46d07a999dee1cff387ac4926e54f3b5c2a62d609f66f33a848d7"
+    },
+    "launch-hp-concurrency.py": {
+      "bytes": 1838,
+      "sha256": "6b35d1f8280d63e7c081f85117579d323f8464e5118224e4a8a48eec51e0ac39"
+    },
+    "memory-guard.py": {
+      "bytes": 2517,
+      "sha256": "e92241ff30a6dfb0bf2795705e728ee1b91837a5cb324ce185729be5a6c99226"
+    },
+    "memory-guards/hp-gpu-concurrency/configuration.json": {
+      "bytes": 730,
+      "sha256": "8d73f151cc0ead93b7961900f1f7c69cf01d05f3298ea4f780cb84867ee253ae"
+    },
+    "memory-guards/hp-gpu-concurrency/launch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "receipts/hp-gpu-concurrency-analysis.json": {
+      "bytes": 43081,
+      "sha256": "d27f011605f52e980f8a4f4819c5660fa5f88d2c4d34e6575147444aa57cccd1"
+    },
+    "receipts/hp-gpu-concurrency-controller.log": {
+      "bytes": 3795,
+      "sha256": "f42b11ef1d33491db3017e43917e9c313b5a7cf2ba6087f150914d445ed8e260"
+    },
+    "receipts/hp-shared-source-binding.json": {
+      "bytes": 411,
+      "sha256": "2617f89f5a3053665c6e3220497f9545123db960c78fc2fa640b8367da5c854f"
+    },
+    "receipts/model-sha256.json": {
+      "bytes": 131,
+      "sha256": "adb1122335cbfdba1e4b498e19c7b2209c4f9e295e1ddb57fa862409635a53e4"
+    },
+    "screen-timed.py": {
+      "bytes": 10181,
+      "sha256": "4bb2cda5d33a134ebaee5d22eb17e20003f86f942b9e4dde2b19b554fb670a24"
+    },
+    "screens/four-hp-250k/final-stats.json": {
+      "bytes": 29956,
+      "sha256": "376168a8849ba208cd129379a5baf7a716549395ebbc7fb74c64834787e75b3e"
+    },
+    "screens/hp-gpu-concurrency/BATCH_DONE": {
+      "bytes": 19,
+      "sha256": "c69395c70190eef3104cf14b0ee44cc11d6f4ee30a870535f393beac289097e1"
+    },
+    "screens/hp-gpu-concurrency/batch-configuration.json": {
+      "bytes": 213,
+      "sha256": "6cb6fb2ef18d8c36b3312ef391ba623364a14b033895348696f348766cb35cc8"
+    },
+    "screens/hp-gpu-concurrency/clients-1-a/final-stats.json": {
+      "bytes": 29943,
+      "sha256": "f014e37737532a8421ea7ab9d69cb5766747056df54f08f9f3fe2f9d93a2df0a"
+    },
+    "screens/hp-gpu-concurrency/clients-1-a/initial-stats.json": {
+      "bytes": 28661,
+      "sha256": "2f979734f71b9b604f8ed9962910e6cba20d0b4b6440bfbf74ef7e85f1214919"
+    },
+    "screens/hp-gpu-concurrency/clients-1-a/requests.json": {
+      "bytes": 15329,
+      "sha256": "09951b69148219f2bb89473758008dced7a4ede9e284c65b23628c1a93025e4d"
+    },
+    "screens/hp-gpu-concurrency/clients-1-a/results.json": {
+      "bytes": 29730,
+      "sha256": "346f60668cad7790b00281bd07a986e4993fc445085cf5bc83898fbda6623af6"
+    },
+    "screens/hp-gpu-concurrency/clients-1-a/stats.jsonl": {
+      "bytes": 31182,
+      "sha256": "e8c1971f11c483b1cba0df0175d1e7eea13c71295594578200ab4ab5365b38be"
+    },
+    "screens/hp-gpu-concurrency/clients-1-a/summary.json": {
+      "bytes": 506,
+      "sha256": "35024b878a3907d8f64988df07ca4fc1d8fe0d05effda6b4ff9886978cdcd2ed"
+    },
+    "screens/hp-gpu-concurrency/clients-1-a.log": {
+      "bytes": 507,
+      "sha256": "7070cdd133654574d194f7577e9bb71a2466133578438a0032ae36e560851ea4"
+    },
+    "screens/hp-gpu-concurrency/clients-1-b/final-stats.json": {
+      "bytes": 30900,
+      "sha256": "b851656501c0f424551d1c9ce981f4892e557e035b598fdcd7774a0ffb8d674b"
+    },
+    "screens/hp-gpu-concurrency/clients-1-b/initial-stats.json": {
+      "bytes": 30528,
+      "sha256": "549b47e017313b3b6e23a703b1776801cae01f51f3f930d0656271911cafc040"
+    },
+    "screens/hp-gpu-concurrency/clients-1-b/requests.json": {
+      "bytes": 15329,
+      "sha256": "86b1c9c90effde64cfe38032c22759d1e79595d39d4f52434afb6d05664d5b03"
+    },
+    "screens/hp-gpu-concurrency/clients-1-b/results.json": {
+      "bytes": 29409,
+      "sha256": "5122eb1d0793dbd3bd045ebaa69e1dd206c3c1a26e42a4353e5aa24b21906078"
+    },
+    "screens/hp-gpu-concurrency/clients-1-b/stats.jsonl": {
+      "bytes": 49129,
+      "sha256": "9977a17d29a679a2fb053b04741ccbf3d5edb6fb565eb77751e8b1f60ba323e6"
+    },
+    "screens/hp-gpu-concurrency/clients-1-b/summary.json": {
+      "bytes": 504,
+      "sha256": "d5c72104aad099d51b1e9cfadd4cde96575a6f08a8a99f2ef5dab5921a3742fb"
+    },
+    "screens/hp-gpu-concurrency/clients-1-b.log": {
+      "bytes": 505,
+      "sha256": "8ccf5bab34ff99fd31e23d8e8720c598a28e1f9d6c7cf16425452076c612ab5b"
+    },
+    "screens/hp-gpu-concurrency/clients-4-a/final-stats.json": {
+      "bytes": 30418,
+      "sha256": "f9bb52ecf46df19427bbc39bc2b480c34dc2943efc58bc9ecc950cbcf26fa9c6"
+    },
+    "screens/hp-gpu-concurrency/clients-4-a/initial-stats.json": {
+      "bytes": 29657,
+      "sha256": "1bb477060eebc3d93a476be43e65534cd6661c383670e1e483e07b9083bb1a8d"
+    },
+    "screens/hp-gpu-concurrency/clients-4-a/requests.json": {
+      "bytes": 61316,
+      "sha256": "1f6fe16a72904e43a7175ccaaa2fd50c0599b046480b26b28f179be4e2d501fb"
+    },
+    "screens/hp-gpu-concurrency/clients-4-a/results.json": {
+      "bytes": 118057,
+      "sha256": "131aef7b179256b32517975f827e4d7674ebfefe815f3e0f30554eb69ff7adf4"
+    },
+    "screens/hp-gpu-concurrency/clients-4-a/stats.jsonl": {
+      "bytes": 134169,
+      "sha256": "eccfaa81e55bff5697fc96d420cf95dd0b0dbcb1e0f164919fe986575322ada5"
+    },
+    "screens/hp-gpu-concurrency/clients-4-a/summary.json": {
+      "bytes": 580,
+      "sha256": "d8dfb8129c702362dabd25a2bc540a96c69a5912f4e691688dc6d07a0f04df0d"
+    },
+    "screens/hp-gpu-concurrency/clients-4-a.log": {
+      "bytes": 581,
+      "sha256": "616fb512e6dc9fbb416142905fc45505f2ddfaa7791766f96313aff51e91b1e6"
+    },
+    "screens/hp-gpu-concurrency/clients-4-b/final-stats.json": {
+      "bytes": 30893,
+      "sha256": "949c2dc60f98b3c128bfb53f23e407d58ed32c7c7fa4245172733f350bd8d219"
+    },
+    "screens/hp-gpu-concurrency/clients-4-b/initial-stats.json": {
+      "bytes": 30842,
+      "sha256": "cd5df88df3096e76e23a02bec559b96256d92e56903874c1fb7d8a8ed3febea2"
+    },
+    "screens/hp-gpu-concurrency/clients-4-b/requests.json": {
+      "bytes": 61316,
+      "sha256": "626e665c34d3dd866894218100f7f5b8b7f54e09d74578c0c5e61aba7124008f"
+    },
+    "screens/hp-gpu-concurrency/clients-4-b/results.json": {
+      "bytes": 118351,
+      "sha256": "6acab13a12e865967438668bcaf49b04e3d4d850fa67b4ef6c686041c792206f"
+    },
+    "screens/hp-gpu-concurrency/clients-4-b/stats.jsonl": {
+      "bytes": 172751,
+      "sha256": "68e6c3ff3b90015d490d0a91f9ae66b553004374e726c3685d016200f9d19d2c"
+    },
+    "screens/hp-gpu-concurrency/clients-4-b/summary.json": {
+      "bytes": 576,
+      "sha256": "b3d9fa0d327ac0359216462a3beaeb1dfe2484f2dd41cfd1cb3a5d69c2bb5abe"
+    },
+    "screens/hp-gpu-concurrency/clients-4-b.log": {
+      "bytes": 577,
+      "sha256": "3329ff17afd2e43603539fdcc52d6a225fa8b59b4bdc13a900ec17db405ecfeb"
+    },
+    "screens/hp-gpu-concurrency/clients-8-a/final-stats.json": {
+      "bytes": 30714,
+      "sha256": "c0a874f8f7bd05586cc9b062e05866c82948e996afea0c0366cdd8807d250386"
+    },
+    "screens/hp-gpu-concurrency/clients-8-a/initial-stats.json": {
+      "bytes": 30403,
+      "sha256": "63733dc6b3bb2df923c420be6fb981ab46c5d90fbfa4db35992e959c31a51aaa"
+    },
+    "screens/hp-gpu-concurrency/clients-8-a/requests.json": {
+      "bytes": 122632,
+      "sha256": "38900d64012123578c6eca3241cc247907d1dd6e0a81c3fe97ad3dfda32286c7"
+    },
+    "screens/hp-gpu-concurrency/clients-8-a/results.json": {
+      "bytes": 235793,
+      "sha256": "5200a226f181933b687dc893e8eedbcad6a3219a828e8535121f52058dc6a644"
+    },
+    "screens/hp-gpu-concurrency/clients-8-a/stats.jsonl": {
+      "bytes": 314220,
+      "sha256": "ec3fc633406047aab1ce7a3d257cde59699b22ac7ddc66e09c67c3d3613009c7"
+    },
+    "screens/hp-gpu-concurrency/clients-8-a/summary.json": {
+      "bytes": 669,
+      "sha256": "0ec95769d26df5f5e6a0050d55e332b74f6c721482351f62d454a4a48527b68b"
+    },
+    "screens/hp-gpu-concurrency/clients-8-a.log": {
+      "bytes": 670,
+      "sha256": "b98c965f39bd7f68a6da9eb698d91787f454c249b9b0c2b37a40d622325e085a"
+    },
+    "screens/hp-gpu-concurrency/clients-8-b/final-stats.json": {
+      "bytes": 30667,
+      "sha256": "2b9ed3c245b94ae0e74db812f40ece1cd6789828f7a3dcd1d221d93cf65423d5"
+    },
+    "screens/hp-gpu-concurrency/clients-8-b/initial-stats.json": {
+      "bytes": 30758,
+      "sha256": "efde38f251e78967bfef8e5ece6fa667e7ff59fc060db552c4686b23cbb61993"
+    },
+    "screens/hp-gpu-concurrency/clients-8-b/requests.json": {
+      "bytes": 122632,
+      "sha256": "bc47309c1e2683fd2ad2c095dc64f21d6b149067b1d60cea18aaf196dc4116b2"
+    },
+    "screens/hp-gpu-concurrency/clients-8-b/results.json": {
+      "bytes": 236343,
+      "sha256": "cf302839e552e45db0e7447213f0135b6332b9e59527cfde690400a3b58f1cf4"
+    },
+    "screens/hp-gpu-concurrency/clients-8-b/stats.jsonl": {
+      "bytes": 333548,
+      "sha256": "733c7847c249bd3376d50600b1f3e3da899c966ed2fa1c7271a9b705532ccabd"
+    },
+    "screens/hp-gpu-concurrency/clients-8-b/summary.json": {
+      "bytes": 671,
+      "sha256": "785c9598e9961f4a9f2484cdcec5ac57c4f0f8fd80a88bee58e7a36b882c052f"
+    },
+    "screens/hp-gpu-concurrency/clients-8-b.log": {
+      "bytes": 672,
+      "sha256": "1edc665ebb2ecb7d4d5d6d6ce875c945cf201cb2cd4568037cf7d72108f1bf50"
+    },
+    "screens/hp-gpu-concurrency/configuration.json": {
+      "bytes": 1410,
+      "sha256": "6712335f86b5e1acf02e1cb2120a906c612dc7bad7a3c69bdde6ca1cc9d8fa54"
+    },
+    "screens/hp-gpu-concurrency/harness-sha256.txt": {
+      "bytes": 65,
+      "sha256": "8643e1e04d5f6a3c3289803e99af115a4dd320392e4f410232a3feef5f2a7b3e"
+    },
+    "screens/hp-gpu-concurrency/initial-stats.json": {
+      "bytes": 29800,
+      "sha256": "f6f2691ecd990af43fe55596c245ec56623609e9088332ba40aa2b013268b0fb"
+    },
+    "screens/hp-gpu-concurrency/memory-final.jsonl": {
+      "bytes": 68515,
+      "sha256": "3ef383081e9812d681d1eb3570948175ca0f9799ec4e3f22dcdf8e4d7f3f5d35"
+    },
+    "screens/hp-gpu-concurrency/memory-observations.jsonl": {
+      "bytes": 57562,
+      "sha256": "cdfd6cf34c4f60cb007764d93469544d617adf1163706bc376c66455a0e3f035"
+    },
+    "screens/hp-gpu-concurrency/prior-work.txt": {
+      "bytes": 290,
+      "sha256": "428a285ba9d947e33df73ade9c8691fbb585e67771e7091af379bc56199ac240"
+    },
+    "screens/hp-gpu-concurrency/server.log": {
+      "bytes": 38276,
+      "sha256": "953454ac2e400fc40748e16569e0ce119be19abcf1e8f91b1029a54788a96e4d"
+    },
+    "server-control.py": {
+      "bytes": 9372,
+      "sha256": "95dc4a81a4b01b47c72b3e33e45e1516fac95e8cce305cf04eda7db9e37510cc"
+    },
+    "server-runs/hp-gpu-capacity4/configuration.json": {
+      "bytes": 1409,
+      "sha256": "0968eeaa055100949be2c3ffc3466ecaa8432b0d41fcaa384d5f4ed307cce7a5"
+    },
+    "start-memory-guard.py": {
+      "bytes": 3188,
+      "sha256": "2f49fc8e8c0967af50a4a875eb122eb515f371058d75c489fee1b583ca2809db"
+    },
+    "tested-source/engine/src/gpu.rs": {
+      "bytes": 38599,
+      "sha256": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992"
+    },
+    "tested-source/engine/src/server/volta.rs": {
+      "bytes": 28056,
+      "sha256": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+    },
+    "tested-source/engine/src/volta.rs": {
+      "bytes": 195130,
+      "sha256": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a"
+    }
+  }
+}
