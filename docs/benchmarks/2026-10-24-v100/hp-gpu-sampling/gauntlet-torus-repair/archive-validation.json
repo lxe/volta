@@ -1,0 +1,10 @@
+{
+  "cast_original_sha256": "7afd88711d25e3ea8ffe90bc2f780d1aad0688a26b2021328d87306243e52b97",
+  "cast_original_bytes": 20043538,
+  "gzip_bytes": 1040707,
+  "gzip_roundtrip_verified": true,
+  "validator_source_hash_matches": true,
+  "distinct_torus_frames": 3,
+  "source_sha256": "d61391d5a9473eeb4ebf2243ce71582fe060009a48012658fd1ce26598667880",
+  "original_archive_untouched": true
+}

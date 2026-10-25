@@ -1,0 +1,13 @@
+{
+  "scope": "Static source review only; no reviewer renderer execution or remote/GPU work",
+  "source_sha256": "d61391d5a9473eeb4ebf2243ce71582fe060009a48012658fd1ce26598667880",
+  "original_source_sha256": "83c4dcec85b8f92411a10afcef635ab3f04aed7c2e14df7bff80055ba221dd6f",
+  "per_dot_depth_buffer": true,
+  "per_dot_intensity_buffer": true,
+  "nearest_sample_replaces_intensity": true,
+  "normal_lighting_controls_visible_dots": true,
+  "ordered_dither": "brightness > BAYER[py & 3][px & 3]",
+  "braille_mapping_correct": true,
+  "original_torus_findings_repaired": true,
+  "remaining_scope": "Finite sampled surface can have sampling holes; actual FPS not established by static review. Cube clipping and pyramid depth limitations were not repaired."
+}

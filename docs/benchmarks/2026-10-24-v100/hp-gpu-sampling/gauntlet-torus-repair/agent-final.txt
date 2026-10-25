@@ -1,0 +1,29 @@
+    per braille dot). Each sample now depth-tests against its
+    exact pixel, so occluded samples are rejected instead of
+    being OR'd into a shared cell.
+
+ 2. Actual visible normal lighting — the computed normal
+    dot-product intensity is now stored per-dot in an
+    lbuf[iy][ix] brightness buffer (no longer discarded).
+
+ 3. Ordered dithering to emit shading — when composing each
+    braille cell, every dot is thresholded against a normalized
+    4×4 Bayer matrix (lbuf > BAYER[py&3][px&3]). Bright, lit dots
+    survive the threshold and dark ones drop out, so the braille
+    pattern itself carries a real grayscale gradient from the
+    normal lighting.
+
+ 4. Removed the dead per-cell (int(lum*7)<<8) shading path and
+    the unused RAMP constant.
+
+ Preserved: solid torus geometry, dual-axis rotation, per-frame
+ shutil.get_terminal_size adaptive sizing, ~30 fps pacing, cursor
+ hide/restore on Ctrl-C/SIGTERM, and stdlib-only code.
+ Syntax-checked with ast.parse before launching, and the
+ corrected renderer is now running only in pane %140.
+
+──────────────────────────────────────────────────────────────────
+
+──────────────────────────────────────────────────────────────────
+~/volta-sixhour-20261024/hp-256k-gauntlet/gauntlet/03-torus
+↑111k ↓5.6k 5.2%/262k (auto)    deepseek-v4.1-flash • thinking off
