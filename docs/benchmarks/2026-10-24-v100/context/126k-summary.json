@@ -1,0 +1,23 @@
+{
+  "label": "frozen-concurrency",
+  "clients": 1,
+  "mixed": false,
+  "wall_s": 226.6546633329708,
+  "monitor_wall_s": 226.69225022010505,
+  "completed": 1,
+  "requested_output_tokens": 64,
+  "output_tokens": 13,
+  "all_hit_output_budget": false,
+  "output_tokens_per_wall_s": 0.0573559785130127,
+  "prompt_tokens": 126041,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 13,
+  "ttft_s": [
+    226.50210119306576
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.0,
+  "workload": "single greedy long-context retrieval check; not a matched throughput comparison",
+  "needle_verified": true
+}
