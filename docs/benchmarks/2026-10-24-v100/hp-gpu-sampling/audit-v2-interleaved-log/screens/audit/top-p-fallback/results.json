@@ -1,0 +1,22 @@
+[
+  {
+    "wall_s": 2.1201949999667704,
+    "start_monotonic": 979235.870365557,
+    "end_monotonic": 979237.990560557,
+    "ttft_s": 1.1387072189245373,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 64,
+      "total_tokens": 620,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "fc394514cec50c17a27379aadd5c314bcb0dd05be9c2bc05d3085053e3ea97b0",
+    "output": "# Code Review: `hp-gpu-audit2`, Case 30\n\n## Executive Summary\n\nThe module under review consists of a family of nearly identical functions (`record_0` through `record_13`, and presumably continuing beyond the truncated snippet). Each function computes a weighted sum of an input sequence and returns",
+    "decode_tokens_per_s": 64.18826725799975
+  }
+]

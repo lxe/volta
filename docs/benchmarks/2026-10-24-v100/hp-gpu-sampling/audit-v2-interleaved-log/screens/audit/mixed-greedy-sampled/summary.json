@@ -1,0 +1,9 @@
+{
+  "phase": "mixed-greedy-sampled",
+  "requests": 4,
+  "prompt_tokens": 2224,
+  "output_tokens": 1024,
+  "max_active": 4,
+  "max_queued": 0,
+  "cached_tokens_delta": 0
+}

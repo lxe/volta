@@ -1,0 +1,7 @@
+{
+  "v2_proof_hash_matches_copied_files": {
+    "analyze-hp-sampling-audit.py": true,
+    "hp-sampling-audit-parser-protocol.md": true
+  },
+  "note": "Launch-time API client/controller file hashes were not separately recorded; these copies preserve the locally available v2 controller and client at archive time."
+}

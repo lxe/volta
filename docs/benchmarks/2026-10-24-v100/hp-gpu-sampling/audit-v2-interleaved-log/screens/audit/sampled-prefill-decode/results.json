@@ -1,0 +1,22 @@
+[
+  {
+    "wall_s": 3.121329876012169,
+    "start_monotonic": 979221.096224028,
+    "end_monotonic": 979224.217553904,
+    "ttft_s": 1.8329209089279175,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 128,
+      "total_tokens": 684,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "ab67efd30766681b3e738eed0a521471041c5946826523b6d470648987e4c1c7",
+    "output": "# Code Review: `hp-gpu-audit2`, case 0\n\n## 1. Executive Summary\n\nThe submitted module consists of a series of near-identical functions (`record_0` through `record_13`, with the last one truncated mid-expression). Each function takes a `values` iterable, multiplies each element by a constant that increments by one per function (1, 2, 3, \u2026), sums the products, and returns a dictionary containing the record index, the total, and the count.\n\nThe code is functionally simple and syntactically valid for the first 13 functions, but the",
+    "decode_tokens_per_s": 98.5711860477103
+  }
+]

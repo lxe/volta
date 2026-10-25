@@ -1,0 +1,11 @@
+{
+  "source_commit": "48660962e1a80847e27b82a8dceca245564515af",
+  "repair_diff_reviewed": "Complete local/peer CUDA_MEMCPY3D struct literals initialize valid DEVICE enums and all pointer, extent, reserved and context fields. No zeroed/MaybeUninit construction remains in the added helper.",
+  "CPU_constructor_regression": "Passed without CUDA calls; meaningful regression for observed zero-init abort.",
+  "kernel_fatbin_unchanged": true,
+  "source_and_built_commit_hashes_checked_by": "run-hp-audit-v2.py before launch",
+  "audit_launch_authorized": true,
+  "known_failed_v1": "Zero completed audits; no model output; all GPU allocations reclaimed after abort.",
+  "run_name": "hp-gpu-audit2",
+  "controller_tool_handle": 86218
+}

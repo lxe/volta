@@ -1,0 +1,12 @@
+[
+  {
+    "remote_file": "server-hp-gpu-audit2.log",
+    "returncode": 0,
+    "stderr": ""
+  },
+  {
+    "remote_file": "memory-hp-gpu-audit2.jsonl",
+    "returncode": 0,
+    "stderr": ""
+  }
+]
