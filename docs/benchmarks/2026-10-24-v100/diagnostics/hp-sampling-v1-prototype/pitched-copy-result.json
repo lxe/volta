@@ -1,0 +1,38 @@
+{
+  "exit_code": 0,
+  "wall_s": 5.611165285110474,
+  "postcheck_exit": 0,
+  "model_pid_preserved": true,
+  "model_idle": true,
+  "model_requests_unchanged": true,
+  "shapes": {
+    "1": {
+      "count": 20,
+      "median_ms": 0.07638400000000001,
+      "max_ms": 0.091648
+    },
+    "3": {
+      "count": 20,
+      "median_ms": 0.12312000000000001,
+      "max_ms": 0.405632
+    },
+    "12": {
+      "count": 20,
+      "median_ms": 0.384304,
+      "max_ms": 0.392736
+    },
+    "64": {
+      "count": 20,
+      "median_ms": 1.8429440000000001,
+      "max_ms": 1.848576
+    }
+  },
+  "success": [
+    {
+      "kind": "success",
+      "collections": 80,
+      "verified_bytes": 827392000,
+      "owned_resources_release_on_return": true
+    }
+  ]
+}

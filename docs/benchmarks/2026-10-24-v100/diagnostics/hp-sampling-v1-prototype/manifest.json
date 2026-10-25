@@ -1,0 +1,21 @@
+{
+  "hp-sampling-prototype-plan.md": "97bd41522053552b1f05276e48278bf16bbc07f5d619ee64bae4c94f7d1ca5d4",
+  "hp-sampling.patch": "6bb164b9406be8dd33ab6b36f807253979befc3a81026ef7b06d1d769e0d4408",
+  "hp-sampling-source-v1.json": "6967669797ee0dc8d45b933d1c5bd4388113a8bbd9b698addd4d75e40845915f",
+  "hp-sampling-local-proof.json": "95653f05a8e6c9ecf75b9d373171df2bfb29db0f208e285869f3eef0cf06427a",
+  "hp-sampling-local-check.log": "a9bbed92ab53455893499b05a60b7c808159e0591af573a7e0eb06cc47f6e3d1",
+  "hp-sampling-local-tests.log": "945588fef5a09adf94c2ceb73d588157fa92518b4a04f81c80e9a9ac62807f14",
+  "hp-sampling-v1-build-proof.json": "28d3f3c99e59036e33f4a2e1ebcf9600ea2adcbaf363aed6327c792a10b9e864",
+  "hp-sampling-v1-build-console.log": "5d0e5aec1f42937ed23ed78c8da6acd576111e7eb09721e11bfc8af2b7313da5",
+  "build-hp-sampling-v1.log": "5191f5c4952361ba658f413e7fbc478df6ef0a570450e3e60dd1bac39928f744",
+  "build-hp-sampling-v1.sh": "a27c30fd37481e2b508d4335ca1468d2567ca87244a8a8d67d3c971d2e8d885e",
+  "HP_SAMPLING_BUILD_COMPLETE": "30563022bde232ac49e83c155adeba00861d2379c7aa74da78e10096fd7895d1",
+  "pitched-copy-result.json": "4dbc0d36bac7c4f2e480e51ef1e5546d63b2f908684666e1efd48cb7cab7f4e0",
+  "pitched-copy-budget.md": "48a7fbf8ea15be5aff55a2236a276dfb6fc2a5128db12a0a3e33d3798f1b2ef0",
+  "hp_pitched_copy.cpp": "e1d427e3b48c754274e9a5907702c3b72883e843cb3f6610e3475ba815a491fa",
+  "pitched-copy-compile-proof.json": "97cfb3b0d82deeffbd09c28589400da258144b740631d7940ef5111368c53a7d",
+  "parent-validation-protocol.md": "5e6fe1be76e856d337d88e5c22db97f5005851b8ce9483d4971187880e1a6c35",
+  "kernel-source-manifest.json": "f835edb5dc45202f49e047e08e1bb476afbb4acdb835dd7facf5f878182f2fd1",
+  "source-commit.txt": "f8eec9de299b3d223142ee11ae186ed9cda299a0491ed795a8f60228c30646de",
+  "README.md": "ab3161e18831e9fa5fc11d2834de2c54ba5b4855405920e558453018c2b63d4c"
+}

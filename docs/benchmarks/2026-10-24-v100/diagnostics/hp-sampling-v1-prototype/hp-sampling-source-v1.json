@@ -1,0 +1,13 @@
+{
+  "source_base": "b93eebfc57bf44a2fb853f2755ad6fa238e6d80e",
+  "source_sha256": {
+    "engine/src/gpu.rs": "b84deb7f5a1117027798c763674ea81acea53c59e83721a32be03637387c0b2d",
+    "engine/src/volta.rs": "9926e1c5cb86846c25a0dd7b6eb6669b8581e121ba1e320d1d94d01bea2082c9",
+    "engine/src/server/volta.rs": "2f871c5da82894bb573b95713a66e89473459cc1c10191a01b55fb44e0100051"
+  },
+  "archive_sha256": "c88991104f5c2c6065b24b95e39491b6704619544d921c49e36c2b1ad5200fe7",
+  "patch_sha256": "6bb164b9406be8dd33ab6b36f807253979befc3a81026ef7b06d1d769e0d4408",
+  "opt_in": "VOLTA_HP_GPU_SAMPLE=1",
+  "audit": "VOLTA_HP_SAMPLE_AUDIT=1024 (0 default,4096max)",
+  "gpu_launches": 0
+}

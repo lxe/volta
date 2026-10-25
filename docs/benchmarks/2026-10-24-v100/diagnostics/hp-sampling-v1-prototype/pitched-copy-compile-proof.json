@@ -1,0 +1,14 @@
+{
+  "evidence": "CPU_COMPILE_ONLY_NO_EXECUTION",
+  "utc": "2026-10-25T03:42:33.108710+00:00",
+  "files_sha256": {
+    "hp-copy-budget.md": "48a7fbf8ea15be5aff55a2236a276dfb6fc2a5128db12a0a3e33d3798f1b2ef0",
+    "hp_pitched_copy.cpp": "e1d427e3b48c754274e9a5907702c3b72883e843cb3f6610e3475ba815a491fa",
+    "hp_pitched_copy": "5f30685eba565b2a33657731066c88dac7d52e8b42026f1d1fe38a0e3d0a9c08"
+  },
+  "flags": "-std=c++17 -O2 -Wall -Wextra -Werror CUDA12.9headers/stublib -lcuda -ldl",
+  "gpu_launches": 0,
+  "runtime_tested": false,
+  "safety_admission": "NVML all8>=1GiB before CUDA contexts; >=512MiB after each context/allocation/peer enable/stream/event",
+  "execution_protocol": "Parent review first; timeout --signal=KILL 60 ./hp_pitched_copy; verify model PID and memory recovery afterward; no automatic launch"
+}
