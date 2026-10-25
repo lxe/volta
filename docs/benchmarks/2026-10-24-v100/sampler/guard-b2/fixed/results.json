@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 15.983910229057074,
+    "start_monotonic": 970874.682643211,
+    "end_monotonic": 970890.66655344,
+    "ttft_s": 8.458695887005888,
+    "usage": {
+      "prompt_tokens": 4145,
+      "completion_tokens": 512,
+      "total_tokens": 4657,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4145
+    },
+    "finish_reason": "length",
+    "output_sha256": "c772aafd37859df645ee57bb1d5770c1c9c4e849082459e543a8645ea25fb564",
+    "output": "# Code Review: `guard-02-fixed` (client 0)\n\n## Summary\n\nThis module defines 108 (and counting, the file is truncated mid-`record_107`) near-identical functions named `record_0` through `record_107` (and presumably beyond). Each function:\n\n1. Accepts a single positional argument `values`.\n2. Computes `total = sum(v * K for v in values)` where `K` is a per-function constant equal to the function's index + 1.\n3. Returns a dict `{\"record\": N, \"total\": total, \"count\": len(values)}` where `N` is the function's index.\n\nThe file is clearly generated code (a \"guard\" work item, likely a synthetic benchmark or code-generation test fixture). Below is a detailed review with numbered findings, followed by a revised implementation.\n\n---\n\n## Findings\n\n### 1. Massive code duplication (DRY violation)\n\nEvery function is structurally identical except for two literals: the multiplier `N+1` and the `\"record\": N` value. This is the textbook definition of copy-paste/generated duplication. 108 functions \u00d7 ~4 lines each = ~430+ lines that encode exactly one piece of information each: an integer index.\n\n**Impact:** Any bug fix or behavior change must be replicated 108+ times. The file is unmaintainable by hand and hostile to review (this review is only tractable because the pattern is mechanical).\n\n**Recommendation:** Replace with a single parameterized function plus a dispatch table or `functools.partial`/closure factory. See revised implementation.\n\n### 2. No input validation\n\n- `values` is assumed to be iterable and to contain numbers. If `values` is `None`, a non-iterable, or contains non-numeric elements, the function raises an unhelpful `TypeError` deep inside `sum`.\n- No check that `values` is not a string (which is iterable and would produce confusing results \u2014 `sum` over characters raises `TypeError` anyway, but the error message would be opaque).\n- No handling of generators being consumed twice \u2014 note `sum(...)` consumes `values`, then `len(values)` is called. **If `values` is a generator or iterator, `len()` will raise `TypeError`.** This is a real latent bug (see finding 3).\n\n### 3. Latent bug: `len(values)`",
+    "decode_tokens_per_s": 67.9050425373949
+  },
+  {
+    "wall_s": 15.755572956055403,
+    "start_monotonic": 970874.683056304,
+    "end_monotonic": 970890.43862926,
+    "ttft_s": 8.4582099650288,
+    "usage": {
+      "prompt_tokens": 4145,
+      "completion_tokens": 512,
+      "total_tokens": 4657,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4145
+    },
+    "finish_reason": "length",
+    "output_sha256": "97138a9bad4afcebd5b82fce91e3ad4d495dcd7b3ad71fa25db9286f4dc821c2",
+    "output": "# Code Review: `guard-02-fixed` (Client 1)\n\n## Scope and Context\n\nThe module under review consists of 108 near-identical functions `record_0` through `record_107`. Each function takes a single positional parameter `values`, computes `total = sum(v * k for v in values)` where `k` is the function's index plus one, and returns a dict `{\"record\": i, \"total\": total, \"count\": len(values)}`. The file appears truncated at `record_107` (the return statement is cut off mid-line), so the review must also address the truncation and incompleteness of the artifact.\n\nBelow is a detailed, numbered review. Each finding includes severity, location, rationale, and suggested remediation. After the findings, a revised implementation is provided.\n\n---\n\n## Findings\n\n### 1. Massive code duplication (Severity: Critical)\n**Location:** Entire module, `record_0`\u2013`record_107`.\n\nEvery function differs only in two constants: the record index `i` and the multiplier `i + 1`. This is textbook copy-paste duplication. Consequences:\n\n- Any bug fix (e.g., changing the return schema, handling non-numeric input, changing the accumulation strategy) must be applied 108 times, with high risk of divergence.\n- The module is roughly 650 lines of boilerplate that could be 5\u201310 lines of parameterized code plus a dispatch table.\n- Reviewers cannot meaningfully audit 108 functions; the cognitive load guarantees missed defects.\n- The file is likely machine-generated or manually replicated, which suggests the generation process itself is fragile.\n\n**Remediation:** Replace with a single parameterized function `record(values, index)` and either expose thin wrappers via a factory, or expose a registry/dispatch function `record_by_id(values, record_id)`. If callers require named functions `record_0`\u2026`record_107`, generate them programmatically at import time (see revised implementation) or provide `__getattr__` on the module.\n\n### 2. Truncated / syntactically invalid file (Severity: Critical)\n**Location:** End of file, `record_107`.\n\nThe final function ends with:\n\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\n\nThe return statement is incomplete \u2014 no closing value, no closing brace, no new",
+    "decode_tokens_per_s": 70.0252955250225
+  },
+  {
+    "wall_s": 15.41211694397498,
+    "start_monotonic": 970874.682467157,
+    "end_monotonic": 970890.094584101,
+    "ttft_s": 8.458919379976578,
+    "usage": {
+      "prompt_tokens": 4145,
+      "completion_tokens": 512,
+      "total_tokens": 4657,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4145
+    },
+    "finish_reason": "length",
+    "output_sha256": "44a93944beaf079b78f64eb9fe60171b675a887fc2b7750228379d07035ea9af",
+    "output": "# Code Review: `guard-02-fixed` (client 2)\n\n## Overview\n\nThe module consists of 108 nearly identical functions, `record_0` through `record_107`, each of which:\n\n1. Takes a single parameter `values` (presumably an iterable of numbers).\n2. Computes `total = sum(v * K for v in values)` where `K` is an integer ranging from `1` (for `record_0`) to `108` (for `record_107`).\n3. Returns a dictionary `{\"record\": N, \"total\": total, \"count\": len(values)}` where `N` is the function's index.\n\nThe file is truncated at the end of `record_107` (the final `return` statement is cut off mid-expression). This review treats the visible content as the complete artifact and notes the truncation as a finding.\n\nThe module is a textbook example of **copy-paste code generation** \u2014 likely produced by a script or template rather than written by hand. While it is syntactically valid Python (aside from the truncation), it has significant structural, maintainability, and design problems. Below are numbered findings.\n\n---\n\n## Findings\n\n### 1. Severe code duplication (DRY violation)\n\nEvery function body is identical except for two constants: the multiplier `K` and the `\"record\"` index `N`. There are 108 copies of the same three-line pattern. This is the single most important issue in the module.\n\n**Impact:**\n- Any change to the return shape (e.g., adding a `\"mean\"` field, renaming `\"total\"` to `\"sum\"`) requires editing 108 places.\n- Any bug in the shared logic (e.g., a wrong multiplier, a wrong key name) must be fixed 108 times.\n- Reviewers cannot meaningfully read the file; the signal-to-noise ratio is near zero.\n\n**Recommendation:** Replace the entire family of functions with a single parameterized function or a factory.\n\n### 2. The `\"record\"` value is redundant with the function identity\n\nEach function returns `\"record\": N`, where `N` is exactly the function's own index. The caller already knows which function it called, so `\"record\"` is dead metadata \u2014 it simply mirrors the function name. If the intent is to tag results with a source identifier, that belongs in the caller's dispatch layer, not baked into every function",
+    "decode_tokens_per_s": 73.49136786301122
+  },
+  {
+    "wall_s": 15.983663787017576,
+    "start_monotonic": 970874.682829402,
+    "end_monotonic": 970890.666493189,
+    "ttft_s": 8.355446169967763,
+    "usage": {
+      "prompt_tokens": 4145,
+      "completion_tokens": 512,
+      "total_tokens": 4657,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4145
+    },
+    "finish_reason": "length",
+    "output_sha256": "a63af5557d47d15fa6c4bf2865d7a55cd5db040ebbf07d0b3cae6ef930f48fe0",
+    "output": "# Code Review: `guard-02-fixed` (client 3)\n\n## Summary\n\nThe module consists of 108 near-identical functions `record_0` through `record_107`. Each function accepts a `values` iterable, computes `sum(v * k for v in values)` for a distinct multiplier `k` (ranging from 1 to 108), and returns a dict with keys `record`, `total`, and `count`. The `record` field is hardcoded per function; the multiplier is `record_index + 1`.\n\nThe file is truncated mid-way through `record_107` (the dict literal is incomplete: `{\"record\": 107, \"total\":` with no closing). This is a syntax error and the module will not import.\n\nBelow are numbered findings, ordered roughly by severity.\n\n---\n\n## Findings\n\n### 1. **Syntax error / truncated file (blocker)**\n`record_107` ends with `return {\"record\": 107, \"total\":` and no closing brace or `}`/`count` key. The module cannot be parsed. Any deployment of this file will raise `SyntaxError` at import time. This must be fixed before anything else.\n\n### 2. **Massive duplication / copy-paste code (blocker for maintainability)**\n108 functions are structurally identical, differing only in two constants (the record index and the multiplier, which are always `index` and `index + 1`). This is a textbook case for a single parameterized function or a factory. Consequences:\n- Any bug fix or behavior change must be replicated 108 times.\n- The chance of a copy-paste error (e.g. an off-by-one multiplier) grows with each function; auditing 108 hand-written constants is error-prone.\n- Code review is impractical \u2014 reviewers cannot realistically verify each multiplier without tooling.\n\n### 3. **Silent off-by-one risk in multipliers**\nEach `record_N` uses multiplier `N + 1`. This convention is undocumented. A reader cannot tell from a single function whether the multiplier is intentional (e.g. `record_0` uses weight 1) or a mistake. There is no test or assertion pinning the relationship `multiplier == record_index + 1`. A future edit to one function (say, changing `record_42` to use `* 44`) would be invisible in review.\n\n### 4. **No input validation**\n`values` is",
+    "decode_tokens_per_s": 66.98812562162162
+  }
+]

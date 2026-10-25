@@ -270,7 +270,8 @@ impl Volta {
                 && self.gpu_sample
                 && rows.iter().all(|&(i, _, _, n)| {
                     let q = &seqs[i];
-                    q.hes.is_none() && (q.greedy || q.job.params.top_p >= 1.0) && n <= 9
+                    // Prefill samples its last row with no drafts, regardless of chunk length.
+                    q.hes.is_none() && (q.greedy || q.job.params.top_p >= 1.0) && (q.next.is_none() || n <= 9)
                 });
             let dec: Vec<(usize, u32)> = if on_gpu {
                 let mut tabs: Vec<(Vec<i32>, Vec<f32>)> = vec![(vec![], vec![]); ng];
