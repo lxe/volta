@@ -1,0 +1,76 @@
+[
+  {
+    "shape": "01-cube",
+    "source_sha256": "5fa9dfdcbac4ab82c4c4a4ebcd57e9056c833fc023c6b7fc5224318c849ece9e",
+    "imports": [
+      "math",
+      "shutil",
+      "signal",
+      "sys",
+      "time"
+    ],
+    "syntax": "valid",
+    "distinct_frames": 3,
+    "frame_sha256": [
+      "8f09984a9c2c33ebd5e4805dce7804a9900051f18d8f2fd4990c354fb42de7fb",
+      "e1905828c5c1d809357aa6ecf678a5daa15a65757f445b78dde29b21df52c38c",
+      "421f5dd996efbfbe46da9e8ea3bc2dc47c73d4d032e87879aa82acfae170da96"
+    ],
+    "scope": "syntax, standard-library imports, running process and distinct live braille frames; visual geometry reviewed separately"
+  },
+  {
+    "shape": "02-pyramid",
+    "source_sha256": "e0e163b3dbb73525057a4fb04ee2507fd8830ca9aad22377c38c11860d471151",
+    "imports": [
+      "math",
+      "shutil",
+      "signal",
+      "sys",
+      "time"
+    ],
+    "syntax": "valid",
+    "distinct_frames": 3,
+    "frame_sha256": [
+      "8229f0938fa7d0dd095fced0fdc2f2a6996f125cf4fb75e00fb679e90be6f264",
+      "fe5b8e49530c4d3741705ded9a8ebbf1b6261b58efd7f76bad24d62f20aa9c38",
+      "1b81420ae7b3e1821261594ea80a07bf05ef109453970e9b61ebb2eae323e84c"
+    ],
+    "scope": "syntax, standard-library imports, running process and distinct live braille frames; visual geometry reviewed separately"
+  },
+  {
+    "shape": "03-torus",
+    "source_sha256": "bf73d87ff7dc60ba5666f4a9d39412d14c379667ad1781ebf672958407a1b7eb",
+    "imports": [
+      "math",
+      "shutil",
+      "sys",
+      "time"
+    ],
+    "syntax": "valid",
+    "distinct_frames": 3,
+    "frame_sha256": [
+      "e683d1bdc77dc5e21d770116aa50ac7c3df8f40ca3db67b837a23cbd68154915",
+      "021e62c29eb5dd473b05dc07bbc8f66e04a7059fbfd6a8eb95ef19b44dfd6745",
+      "c9c2e03e7b9deede3f5a8ed0e4658cd11fbc9bd2aa25159346de128a5d1d204c"
+    ],
+    "scope": "syntax, standard-library imports, running process and distinct live braille frames; visual geometry reviewed separately"
+  },
+  {
+    "shape": "04-sphere",
+    "source_sha256": "d867165cba3dfe50da9f55a636899a99deda25e95279f6a650340f2e29182c4d",
+    "imports": [
+      "math",
+      "shutil",
+      "sys",
+      "time"
+    ],
+    "syntax": "valid",
+    "distinct_frames": 3,
+    "frame_sha256": [
+      "3443c517677b6bfba211c2739df8613c73efa6f3cb4e0b12b5feef45abcd403b",
+      "fb2274488179dcffa115947c8adbbde2d4b9d978deebc07fc1d0aa8ac6df488a",
+      "638bf833194f51de9fe5af481b8e53ccec67f65508f31c1ab630ded929f8d504"
+    ],
+    "scope": "syntax, standard-library imports, running process and distinct live braille frames; visual geometry reviewed separately"
+  }
+]

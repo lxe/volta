@@ -1,0 +1,15 @@
+{
+  "stop_reason": "agents_idle",
+  "wall_s": 434.44781374931335,
+  "tokens_out": 44901,
+  "tokens_prompt": 145136,
+  "tokens_cached": 3352676,
+  "requests": 117,
+  "out_tok_s_mean_wall": 103.35188388336312,
+  "peak_out_tok_s": 460.28842644275926,
+  "active_median_tps": 105.49871673724493,
+  "active_median_step_ms": 52.68356520277781,
+  "multi_median_tps": 113.44788128502393,
+  "multi_mean_tps": 138.36273953078788,
+  "multi_median_step_ms": 53.41121329545455
+}

@@ -1,0 +1,9 @@
+# Sampler candidate agent and concurrency checks
+
+The sampler candidate completed the cube, pyramid, torus and sphere Pi tasks through real API requests and local read/bash/edit/write tool calls. All four generated programs are preserved here. They use only the Python standard library, parse successfully, run in the assigned display panes and produced three distinct live braille frames each. The visible geometry was reviewed in kitty. The recording closed successfully; its full JSON stream was parsed and hashed. The local zstd copy occupies31.9MiB.
+
+This run made117requests and generated44901tokens. It ran on a warm candidate server after the fixed/mixed and concurrency screens. Its work differs substantially from the frozen baseline's47requests/19805tokens, so the434.45s wall time and138.36tokens/s mean over the multi-session interval are not a same-work engine speed comparison. The controlled A/B evidence in ../sampler remains the basis for the measured engine gain.
+
+The cold concurrency profile used4K inputs and1024outputtokens per client in1/4/8/8/4/1order. Nonces included client count, and every case reported zero cached tokens and a full output budget. Whole-request aggregate rates were54.4–56.0tokens/s for one client,165.2–169.3for four, and267.2–273.2for eight. Median individual decode rates were80.6–84.4,65.6–66.1and58.1–58.8tokens/s respectively. These are different total workloads; their rates include prefill except where explicitly labeled individual decode. SSE gap measurements describe visible content chunks, which may include multiple model tokens.
+
+Context131072,DPslots1,chunk64,spec-k5,temperature0.7,top-p1,graphs4. Binaryb9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4, exact CUDA fatbin unchanged from frozen. Head-parallel and256K experiments are separate and still in progress.
