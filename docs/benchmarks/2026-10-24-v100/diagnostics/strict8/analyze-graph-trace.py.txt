@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""Validate bounded Volta graph diagnostics and simulate a four-slot policy; CPU only."""
+import argparse
+from collections import Counter, deque
+import json
+from pathlib import Path
+import tempfile
+import statistics
+import math
+
+LABELS = ['hit', 'warm', 'capture', 'budget', 'full', 'failure', 'forced']
+
+
+def require(ok, message):
+    if not ok:
+        raise ValueError(message)
+
+
+def simulate(records, replacement_limit=8, resident_limit=4):
+    """Replay key sequence only: no predicted timings or CUDA allocation model."""
+    require(resident_limit in (4,8), 'only separately budgeted4/8 resident hypotheses supported')
+    require(replacement_limit in (8,16), 'only explicitly budgeted8/16 hypotheses are supported')
+    resident = set()
+    warmed = set()
+    window = deque()
+    freq = Counter()
+    last_replay = {}
+    last_replace = -64
+    replacements = 0
+    limit_blocked = 0
+    results = Counter()
+    events = []
+    small_hits = 0
+    step_decisions = []
+    for i, row in enumerate(records, 1):
+        key = (row['t'], row['bucket'])
+        window.append(key)
+        freq[key] += 1
+        if len(window) > 64:
+            old = window.popleft()
+            freq[old] -= 1
+        decision = 'eager'
+        if key in resident:
+            decision = 'hit'
+            last_replay[key] = i
+        elif len(resident) < resident_limit:
+            if key in warmed:
+                resident.add(key)
+                last_replay[key] = i
+                decision = 'capture'
+            else:
+                warmed.add(key)
+        elif i - last_replace >= 64 and freq[key] >= 8:
+            victim = min(resident, key=lambda k: (freq[k], last_replay.get(k, 0), k))
+            if freq[key] >= freq[victim] + 4:
+                if replacements >= replacement_limit:
+                    limit_blocked += 1
+                else:
+                    resident.remove(victim)
+                    resident.add(key)
+                    last_replay[key] = i
+                    replacements += 1
+                    last_replace = i
+                    decision = 'replacement_capture'
+                    events.append({'seq': i, 'key': list(key), 'victim': list(victim),
+                                   'candidate_window_count': freq[key], 'victim_window_count': freq[victim]})
+        require(len(resident) <= resident_limit, 'simulator exceeded resident budget')
+        step_decisions.append(decision)
+        results[decision] += 1
+        if decision == 'hit' and 1 <= key[0] <= 6:
+            small_hits += 1
+    return {'step_decisions': step_decisions, 'steps': len(records), 'decisions': dict(results),
+            'hit_fraction': results['hit'] / max(1, len(records)),
+            'small_t_1_6_hits': small_hits, 'resident_limit':resident_limit,'replacement_limit':replacement_limit, 'replacement_count': replacements, 'replacement_limit_blocked_observations': limit_blocked,
+            'replacement_events': events, 'final_resident_keys': sorted(map(list, resident)),
+            'model_limits': ['key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction',
+                             'capture executes current step but is counted separately from replay hit',
+                             'all recorded keys replayed, including idle t0; no token-count priority']}
+
+
+def validate(path, gpu, min_steps):
+    require(path.stat().st_size <= 4 * 1024 * 1024, f'{path}: file cap exceeded')
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    require(rows and rows[0].get('kind') == 'header', f'{path}: missing first header')
+    header = rows[0]
+    require(sum(r.get('kind') == 'header' for r in rows) == 1, f'{path}: duplicate header')
+    require(header.get('version') in (1,2) and header.get('gpu') == gpu, f'{path}: header identity/version')
+    require(header.get('labels') == LABELS, f'{path}: counter label order')
+    require(header.get('step_limit') == 4096 and header.get('file_byte_limit') == 4194304,
+            f'{path}: unexpected trace caps')
+    epoch = header.get('wall_epoch_ns')
+    require(header['version'] != 2 or (isinstance(epoch,int) and epoch>0), f'{path}: v2 missing wall epoch')
+    steps = []
+    summaries = []
+    seen = Counter()
+    keyed = {}
+    for row in rows[1:]:
+        require(row.get('gpu') == gpu, f'{path}: mixed GPU records')
+        if row.get('kind') == 'step':
+            seq = row.get('seq')
+            require(seq == len(steps) + 1 and seq <= 4096, f'{path}: missing/duplicate/out-of-order step')
+            t, bucket = row['t'], row['bucket']
+            require(isinstance(t, int) and 0 <= t <= 64, f'{path}: invalid t')
+            require(isinstance(bucket, int) and 64 <= bucket <= 262144 and bucket & (bucket-1) == 0,
+                    f'{path}: invalid bucket for this 128K/256K protocol')
+            label = row['decision']
+            require(label in LABELS, f'{path}: unknown decision')
+            keys = row['resident_keys']
+            require(keys == sorted(keys) and len({tuple(k) for k in keys}) == len(keys), f'{path}: invalid resident list')
+            count = row['resident_count']
+            require(count >= len(keys) and len(keys) <= 16, f'{path}: resident count')
+            require(row['resident_keys_truncated'] == (count > 16), f'{path}: resident truncation flag')
+            require(count == len(keys) or row['resident_keys_truncated'], f'{path}: incomplete resident list')
+            require(row['limit'] == 4, f'{path}: simulator protocol requires unchanged four-slot budget')
+            require(row['small_t_hint'] == (1 <= t <= 9), f'{path}: hint mismatch')
+            if not row['resident_keys_truncated']:
+                require(label not in ('hit', 'capture') or [t,bucket] in keys, f'{path}: hit/capture absent from residents')
+            require(label != 'full' or row['full'], f'{path}: full label without flag')
+            require(isinstance(row['capture_ns'], int) and row['capture_ns'] >= 0, f'{path}: capture time')
+            if header['version'] == 2 or 'elapsed_ns' in row or 'host_enqueue_backpressure_ns' in row:
+                require(isinstance(row.get('elapsed_ns'),int) and row['elapsed_ns']>=0, f'{path}: invalid elapsed time')
+                require(isinstance(row.get('host_enqueue_backpressure_ns'),int) and row['host_enqueue_backpressure_ns']>=0, f'{path}: invalid host enqueue/backpressure time')
+                require(not steps or row['elapsed_ns']>=steps[-1]['elapsed_ns'], f'{path}: nonmonotonic elapsed time')
+                require(row['capture_ns']<=row['host_enqueue_backpressure_ns'], f'{path}: capture path exceeds outer enqueue time')
+            steps.append(row)
+            seen[(t,bucket,label)] += 1
+            keyed.setdefault((t,bucket), Counter())[label] += 1
+        elif row.get('kind') == 'summary':
+            n = row['observed_steps']
+            require(n >= len(steps), f'{path}: summary precedes recorded observations')
+            require(n > 4096 or n == len(steps), f'{path}: summary exceeds visible uncapped prefix')
+            require(not summaries or n >= summaries[-1]['observed_steps'], f'{path}: nonmonotonic summary')
+            require(row['trace_steps'] == min(n,4096), f'{path}: summary trace count')
+            require(row['trace_truncated'] == (n > 4096), f'{path}: summary truncation')
+            require(len(row['counts']) <= 1024, f'{path}: counter key cap')
+            counters = {}
+            for t,b,c in row['counts']:
+                require(len(c) == 7 and all(isinstance(v,int) and v>=0 for v in c), f'{path}: invalid counter row')
+                require((t,b) not in counters, f'{path}: duplicate counter key')
+                counters[(t,b)] = c
+            require(sum(map(sum,counters.values())) == n, f'{path}: counters do not cover observed steps')
+            for (t,b,label), value in seen.items():
+                c = counters.get((t,b), [0]*7)[LABELS.index(label)]
+                require(c >= value, f'{path}: summary undercounts visible records')
+                if n <= 4096:
+                    require(c == value, f'{path}: summary mismatches visible records')
+            summaries.append(row)
+        else:
+            raise ValueError(f'{path}: unknown record kind')
+    require(len(steps) >= min_steps, f'{path}: only {len(steps)} detailed steps, need {min_steps}')
+    require(summaries, f'{path}: no completed snapshot')
+    require(summaries[-1]['trace_steps'] == len(steps), f'{path}: final visible steps lack summary')
+    return steps, keyed, summaries[-1], path.stat().st_size, header
+
+
+def analyze(directory, min_steps=128, controlled=False, start=1, end=None, replacement_limit=8, resident_limit=4):
+    require(directory.is_dir(), 'trace directory missing')
+    require({p.name for p in directory.glob('gpu*.jsonl')} == {f'gpu{i}.jsonl' for i in range(8)},
+            'need exactly eight GPU files gpu0..gpu7.jsonl')
+    output = {'evidence': 'ACTUAL_TRACE_INPUT; inference/performance claims require independent runtime receipts',
+              'policy_hypothesis':f'{resident_limit}residents/{replacement_limit}trialreplacements; failed four-slot reports remain preserved',
+              'directory': str(directory), 'controlled_prompt_tail_protocol': controlled,
+              'selected_interval': {'start_seq': start, 'end_seq': end},
+              'phase_rule': ('t1..6 identify generated steps only for the supplied no-cache slots1 controlled4145/8242prompt protocol; '
+                             '49/50-token prompt tails exceed9' if controlled else 't1..6 are hints only; no exact generation phase asserted'),
+              'gpus': [], 'limits': ['only completed snapshots are visible; SIGTERM may lose up to63 pending tail steps',
+                                    'detailed coverage stops at4096 steps/GPU; simulation excludes any later observations',
+                                    'per-GPU sequence intervals are not synchronized wall-clock phases']}
+    for gpu in range(8):
+        steps, keyed, summary, size, header = validate(directory / f'gpu{gpu}.jsonl', gpu, min_steps)
+        selected = [r for r in steps if r['seq'] >= start and (end is None or r['seq'] <= end)]
+        require(selected, f'GPU{gpu}: empty selected interval')
+        timed = [r for r in selected if 'host_enqueue_backpressure_ns' in r]
+        def timing_stats(items):
+            values = sorted(r['host_enqueue_backpressure_ns']/1e6 for r in items)
+            return {'count':len(values),'mean_ms':statistics.fmean(values),'median_ms':statistics.median(values),
+                    'p95_ms':values[math.ceil(.95*len(values))-1],'min_ms':values[0],'max_ms':values[-1]} if values else None
+        timing = {'label':'unsynchronized host enqueue/backpressure time; not GPU elapsed time',
+                  'timed_selected_steps':len(timed),'all_selected':timing_stats(timed),
+                  'by_decision':{label:timing_stats([r for r in timed if r['decision']==label]) for label in LABELS},
+                  'small_t_1_6':timing_stats([r for r in timed if 1<=r['t']<=6])}
+        epoch = header.get('wall_epoch_ns')
+        alignment = {'header_wall_epoch_ns':epoch,'clock_note':'wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only'}
+        if timed:
+            alignment.update(first_selected_elapsed_ns=timed[0]['elapsed_ns'],last_selected_elapsed_ns=timed[-1]['elapsed_ns'])
+            if epoch is not None:
+                alignment.update(first_selected_record_epoch_ns=epoch+timed[0]['elapsed_ns'],
+                                 last_selected_record_epoch_ns=epoch+timed[-1]['elapsed_ns'])
+        actual = Counter(r['decision'] for r in selected)
+        small = [r for r in selected if 1 <= r['t'] <= 6]
+        small_budget = Counter((r['t'],r['bucket']) for r in small if r['decision']=='budget')
+        replayed = {(r['t'],r['bucket']) for r in small if r['decision']=='hit'}
+        resident_union = {tuple(k) for r in small for k in r['resident_keys']}
+        stale = sorted(resident_union-replayed)
+        persistent_stale = sorted(set.intersection(*(set(map(tuple,r['resident_keys'])) for r in small))-replayed) if small else []
+        key_rows = [{'key': list(k), 'decisions': dict(v)} for k,v in sorted(keyed.items())]
+        simulation = simulate(steps,replacement_limit,resident_limit)  # Cold-start whole visible prefix, not a fictitious cold start at selected interval.
+        simulated_decisions = simulation.pop('step_decisions')
+        selected_sim = Counter(d for r,d in zip(steps,simulated_decisions) if r['seq'] >= start and (end is None or r['seq'] <= end))
+        simulation['selected_interval_decisions'] = dict(selected_sim)
+        simulation['selected_interval_hit_fraction'] = selected_sim['hit']/len(selected)
+        actual_prefix_hits = sum(r['decision']=='hit' for r in steps)
+        improvement = simulation['hit_fraction'] - actual_prefix_hits/len(steps)
+        sim_valid = not any(r['full'] or r['decision'] in ('failure','full','forced') for r in steps)
+        output['gpus'].append({'gpu':gpu,'file_bytes':size,'coverage':{'detailed_steps':len(steps),
+            'last_summary_observed_steps':summary['observed_steps'],'detailed_limit_reached':len(steps)==4096,
+            'summary_after_detail':summary['observed_steps']>len(steps),'selected_steps':len(selected)},
+            'alignment':alignment,'host_enqueue_backpressure':timing, 'per_key_whole_prefix':key_rows, 'selected_decisions':dict(actual),
+            'resident_count_min':min(r['resident_count'] for r in selected),
+            'resident_count_max':max(r['resident_count'] for r in selected),
+            'small_t_steps':len(small),'small_t_budget_misses':sum(small_budget.values()),
+            'small_t_budget_miss_fraction':sum(small_budget.values())/max(1,len(small)),
+            'repeated_small_t_budget_keys':[{'key':list(k),'misses':v} for k,v in sorted(small_budget.items()) if v>=20],
+            'resident_keys_never_replayed_during_small_t_interval':stale,
+            'resident_keys_present_every_small_t_step_never_replayed':persistent_stale,
+            'admission_evidence_gate': controlled and sum(small_budget.values())>=.25*max(1,len(small)) and any(v>=20 for v in small_budget.values()) and bool(persistent_stale),
+            'capture_path_total_ns':sum(r['capture_ns'] for r in selected),
+            'simulation':simulation,'simulation_valid_for_policy_comparison':sim_valid,
+            'simulation_hit_coverage_gain_percentage_points':100*improvement,
+            'simulation_selected_interval_hit_coverage_gain_percentage_points':100*(selected_sim['hit']-actual['hit'])/len(selected),
+            'simulation_screen_gate':sim_valid and improvement>=.15 and simulation['replacement_count']<=replacement_limit and not simulation['replacement_limit_blocked_observations']})
+    output['small_t_active_gpus'] = [g['gpu'] for g in output['gpus'] if g['small_t_steps']]
+    output['admission_gate_gpus'] = [g['gpu'] for g in output['gpus'] if g['admission_evidence_gate']]
+    output['simulation_gate_gpus'] = [g['gpu'] for g in output['gpus'] if g['simulation_screen_gate']]
+    output['total_file_bytes'] = sum(g['file_bytes'] for g in output['gpus'])
+    return output
+
+
+def self_test():
+    with tempfile.TemporaryDirectory() as tmp:
+        path=Path(tmp)
+        # Synthetic source-policy prefix: four prefill graphs then sustained two-key small-t budget misses.
+        keys=[(64,b) for b in (256,512,1024,2048) for _ in range(2)]+[(2 if i%2 else 6,8192) for i in range(248)]
+        for gpu in range(8):
+            resident=set(); warm=set(); counts={}; records=[]
+            for seq,key in enumerate(keys,1):
+                if key in resident:decision='hit'
+                elif key in warm:decision='capture';resident.add(key)
+                elif len(resident)>=4:decision='budget'
+                else:decision='warm';warm.add(key)
+                counts.setdefault(key,[0]*7)[LABELS.index(decision)]+=1
+                records.append({'kind':'step','gpu':gpu,'seq':seq,'t':key[0],'bucket':key[1],'decision':decision,
+                                'small_t_hint':1<=key[0]<=9,'resident_count':len(resident),'resident_keys':sorted(map(list,resident)),
+                                'resident_keys_truncated':False,'full':False,'limit':4,'capture_ns':0})
+            rows=[{'kind':'header','version':1,'gpu':gpu,'labels':LABELS,'step_limit':4096,'file_byte_limit':4194304}]+records+[
+                {'kind':'summary','gpu':gpu,'observed_steps':256,'trace_steps':256,'trace_truncated':False,
+                 'counts':[[*key,value] for key,value in sorted(counts.items())]}]
+            if gpu%2 == 0:
+                rows[0].update(version=2,wall_epoch_ns=1700000000000000000)
+                for row in records:
+                    row.update(elapsed_ns=row['seq']*1000000,host_enqueue_backpressure_ns=123000)
+            (path/f'gpu{gpu}.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+        result=analyze(path,128,True)
+        assert all(g['admission_evidence_gate'] and g['simulation_screen_gate'] for g in result['gpus'])
+        assert result['gpus'][0]['host_enqueue_backpressure']['all_selected']['median_ms']==.123
+        assert result['gpus'][1]['host_enqueue_backpressure']['timed_selected_steps']==0
+        assert result['gpus'][0]['alignment']['first_selected_record_epoch_ns']==1700000000001000000
+        assert all(g['simulation']['replacement_count']==2 for g in result['gpus'])
+        stress = [{'t':64,'bucket':b} for b in (256,512,1024,2048) for _ in range(2)]
+        stress += [{'t':2 if i%2 else 6,'bucket':2**b} for b in range(6,16) for i in range(256)]
+        capped = simulate(stress)
+        assert capped['replacement_count'] == 8 and capped['replacement_limit_blocked_observations'] > 0
+        assert all(b['seq']-a['seq']>=64 for a,b in zip(capped['replacement_events'],capped['replacement_events'][1:]))
+        capacity_trace = [{'t':t,'bucket':8192} for t in range(1,9) for _ in range(2)] + [{'t':i%8+1,'bucket':8192} for i in range(256)]
+        four = simulate(capacity_trace,16,4);eight = simulate(capacity_trace,16,8)
+        assert len(eight['final_resident_keys'])==8 and eight['replacement_count']==0
+        assert eight['decisions']['hit']>four['decisions']['hit']
+        # Integrity failures must be rejected, not converted into a partial success.
+        broken=path/'gpu7.jsonl';original=broken.read_text();broken.write_text(original.replace('"seq": 2,','"seq": 1,',1))
+        try:analyze(path)
+        except ValueError:pass
+        else:raise AssertionError('duplicate sequence accepted')
+        broken.write_text(original);broken.unlink()
+        try:analyze(path)
+        except ValueError:pass
+        else:raise AssertionError('missing GPU accepted')
+        return {'evidence':'SYNTHETIC_CPU_FIXTURE_ONLY','status':'passed','checks':['eight-file validation','per-key counts',
+                'resident integrity','hot/stale evidence gate','two hysteresis replacements','coverage gain gate',
+                'optional v1/v2 wall alignment and host enqueue statistics','strict8capacity parameter remains bounded','eight-replacement cap and64-step spacing','duplicate sequence rejected','missing GPU rejected'],'actual_trace_analyzed':False}
+
+
+def main():
+    ap=argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('directory',nargs='?',type=Path)
+    ap.add_argument('--out',type=Path)
+    ap.add_argument('--min-steps',type=int,default=128)
+    ap.add_argument('--controlled-4k8k-slots1',action='store_true')
+    ap.add_argument('--start-seq',type=int,default=1)
+    ap.add_argument('--end-seq',type=int)
+    ap.add_argument('--resident-limit',type=int,choices=[4,8],default=4,help='8 is the separately budgeted strict8 hypothesis; default original4')
+    ap.add_argument('--replacement-limit',type=int,choices=[8,16],default=8,help='16 is the separately budgeted revision; default original8')
+    ap.add_argument('--self-test',action='store_true')
+    args=ap.parse_args()
+    require(args.start_seq>=1 and args.min_steps>=1,'positive sequence/coverage limits required')
+    require(args.self_test or args.directory is not None, 'provide a trace directory or --self-test')
+    result=self_test() if args.self_test else analyze(args.directory,args.min_steps,args.controlled_4k8k_slots1,args.start_seq,args.end_seq,args.replacement_limit,args.resident_limit)
+    data=json.dumps(result,indent=2)+'\n'
+    if args.out:
+        with args.out.open('x') as f:f.write(data)
+    else:print(data,end='')
+if __name__=='__main__':main()
