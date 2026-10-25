@@ -106,6 +106,36 @@ unsafe impl Send for GraphExec {}
 
 unsafe impl Send for Gpu {}
 
+// CUmemorytype is a Rust enum with no zero variant. Complete literals avoid constructing an invalid enum,
+// even temporarily; C-style zero-initialize-then-assign is not valid for these Rust FFI structs.
+fn local_vocab_copy(src: u64, dst: u64, slice_bytes: usize, full_bytes: usize, offset: usize, rows: usize) -> cu::CUDA_MEMCPY3D {
+    cu::CUDA_MEMCPY3D {
+        srcXInBytes: 0, srcY: 0, srcZ: 0, srcLOD: 0,
+        srcMemoryType: cu::CUmemorytype::CU_MEMORYTYPE_DEVICE,
+        srcHost: std::ptr::null(), srcDevice: src, srcArray: std::ptr::null_mut(), reserved0: std::ptr::null_mut(),
+        srcPitch: slice_bytes, srcHeight: 0,
+        dstXInBytes: offset, dstY: 0, dstZ: 0, dstLOD: 0,
+        dstMemoryType: cu::CUmemorytype::CU_MEMORYTYPE_DEVICE,
+        dstHost: std::ptr::null_mut(), dstDevice: dst, dstArray: std::ptr::null_mut(), reserved1: std::ptr::null_mut(),
+        dstPitch: full_bytes, dstHeight: 0,
+        WidthInBytes: slice_bytes, Height: rows, Depth: 1,
+    }
+}
+
+fn peer_vocab_copy(src: u64, src_context: cu::CUcontext, dst: u64, dst_context: cu::CUcontext, slice_bytes: usize, full_bytes: usize, offset: usize, rows: usize) -> cu::CUDA_MEMCPY3D_PEER {
+    cu::CUDA_MEMCPY3D_PEER {
+        srcXInBytes: 0, srcY: 0, srcZ: 0, srcLOD: 0,
+        srcMemoryType: cu::CUmemorytype::CU_MEMORYTYPE_DEVICE,
+        srcHost: std::ptr::null(), srcDevice: src, srcArray: std::ptr::null_mut(), srcContext: src_context,
+        srcPitch: slice_bytes, srcHeight: 0,
+        dstXInBytes: offset, dstY: 0, dstZ: 0, dstLOD: 0,
+        dstMemoryType: cu::CUmemorytype::CU_MEMORYTYPE_DEVICE,
+        dstHost: std::ptr::null_mut(), dstDevice: dst, dstArray: std::ptr::null_mut(), dstContext: dst_context,
+        dstPitch: full_bytes, dstHeight: 0,
+        WidthInBytes: slice_bytes, Height: rows, Depth: 1,
+    }
+}
+
 impl Gpu {
     pub fn new(ordinal: i32) -> Result<Gpu> {
         if KERNEL_IMAGE.is_empty() {
@@ -186,32 +216,10 @@ impl Gpu {
         self.bind();
         unsafe {
             if src_context == self.context_token() {
-                let mut c: cu::CUDA_MEMCPY3D = std::mem::zeroed();
-                c.srcMemoryType = cu::CUmemorytype::CU_MEMORYTYPE_DEVICE;
-                c.srcDevice = src;
-                c.srcPitch = slice_bytes;
-                c.dstMemoryType = cu::CUmemorytype::CU_MEMORYTYPE_DEVICE;
-                c.dstDevice = dst;
-                c.dstPitch = full_bytes;
-                c.dstXInBytes = offset;
-                c.WidthInBytes = slice_bytes;
-                c.Height = rows;
-                c.Depth = 1;
+                let c = local_vocab_copy(src, dst, slice_bytes, full_bytes, offset, rows);
                 check(cu::cuMemcpy3DAsync_v2(&c, self.stream), "local vocabulary collect")
             } else {
-                let mut c: cu::CUDA_MEMCPY3D_PEER = std::mem::zeroed();
-                c.srcMemoryType = cu::CUmemorytype::CU_MEMORYTYPE_DEVICE;
-                c.srcDevice = src;
-                c.srcContext = src_context as cu::CUcontext;
-                c.srcPitch = slice_bytes;
-                c.dstMemoryType = cu::CUmemorytype::CU_MEMORYTYPE_DEVICE;
-                c.dstDevice = dst;
-                c.dstContext = self.ctx;
-                c.dstPitch = full_bytes;
-                c.dstXInBytes = offset;
-                c.WidthInBytes = slice_bytes;
-                c.Height = rows;
-                c.Depth = 1;
+                let c = peer_vocab_copy(src, src_context as cu::CUcontext, dst, self.ctx, slice_bytes, full_bytes, offset, rows);
                 check(cu::cuMemcpy3DPeerAsync(&c, self.stream), "peer vocabulary collect")
             }
         }
@@ -870,4 +878,35 @@ unsafe extern "C" {
 unsafe fn libc_madvise(p: *mut u8, len: usize) {
     const MADV_HUGEPAGE: i32 = 14;
     unsafe { madvise(p as *mut c_void, len, MADV_HUGEPAGE) };
+}
+
+#[cfg(test)]
+mod vocabulary_copy_descriptor_tests {
+    use super::*;
+    #[test]
+    fn construct_valid_local_and_peer_descriptors_without_cuda() {
+        let src_context = 0x1000usize as cu::CUcontext;
+        let dst_context = 0x2000usize as cu::CUcontext;
+        for t in [1, 3, 12, 64] {
+            let local = local_vocab_copy(0x3000, 0x4000, 64640, 517120, 0, t);
+            assert_eq!(local.srcMemoryType, cu::CUmemorytype::CU_MEMORYTYPE_DEVICE);
+            assert_eq!(local.dstMemoryType, cu::CUmemorytype::CU_MEMORYTYPE_DEVICE);
+            assert_eq!((local.srcDevice, local.dstDevice), (0x3000, 0x4000));
+            assert_eq!((local.srcPitch, local.dstPitch, local.WidthInBytes), (64640, 517120, 64640));
+            assert_eq!((local.Height, local.Depth, local.dstXInBytes), (t, 1, 0));
+            assert!(local.srcHost.is_null() && local.dstHost.is_null() && local.srcArray.is_null() && local.dstArray.is_null());
+            assert!(local.reserved0.is_null() && local.reserved1.is_null());
+            assert_eq!((local.srcY, local.srcZ, local.srcLOD, local.srcHeight, local.dstY, local.dstZ, local.dstLOD, local.dstHeight), (0, 0, 0, 0, 0, 0, 0, 0));
+            let peer = peer_vocab_copy(0x3000, src_context, 0x4000, dst_context, 64640, 517120, 7 * 64640, t);
+            assert_eq!(peer.srcMemoryType, cu::CUmemorytype::CU_MEMORYTYPE_DEVICE);
+            assert_eq!(peer.dstMemoryType, cu::CUmemorytype::CU_MEMORYTYPE_DEVICE);
+            assert_eq!((peer.srcContext, peer.dstContext), (src_context, dst_context));
+            assert_eq!((peer.srcDevice, peer.dstDevice), (0x3000, 0x4000));
+            assert_eq!((peer.srcPitch, peer.dstPitch, peer.WidthInBytes), (64640, 517120, 64640));
+            assert_eq!((peer.Height, peer.Depth, peer.dstXInBytes), (t, 1, 7 * 64640));
+            assert!(peer.srcHost.is_null() && peer.dstHost.is_null() && peer.srcArray.is_null() && peer.dstArray.is_null());
+            assert_eq!((peer.srcXInBytes, peer.srcY, peer.srcZ, peer.srcLOD, peer.srcHeight, peer.dstY, peer.dstZ, peer.dstLOD, peer.dstHeight), (0, 0, 0, 0, 0, 0, 0, 0, 0));
+            assert_eq!(peer.dstXInBytes + peer.WidthInBytes, peer.dstPitch);
+        }
+    }
 }
