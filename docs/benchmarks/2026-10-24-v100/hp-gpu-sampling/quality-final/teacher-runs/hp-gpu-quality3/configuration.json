@@ -1,0 +1,30 @@
+{
+  "name": "hp-gpu-quality3",
+  "pid": 25518,
+  "heads": true,
+  "started_epoch": 1792902994.5149994,
+  "binary_sha256": "bcfe792f228ba7216237c13e5d582dd7e4a34e0872ddd4c293c77d10a237cd67",
+  "binary": "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta",
+  "volta_environment": {
+    "VOLTA_GRAPHS": "4",
+    "VOLTA_HEADS": "1",
+    "VOLTA_HP_GPU_SAMPLE": "1"
+  },
+  "stdout": "/root/teacher-hp-gpu-quality3.jsonl",
+  "stderr": "/root/teacher-hp-gpu-quality3.log",
+  "command": [
+    "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta",
+    "eval",
+    "--model",
+    "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+    "--eval",
+    "/root/eval",
+    "--seqs",
+    "8",
+    "--len",
+    "1024",
+    "--chunk",
+    "1"
+  ],
+  "stopped_server_pid": 25169
+}

@@ -1,0 +1,12 @@
+{
+  "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+  "source_sha256": {
+    "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+    "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+    "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+  },
+  "source_archive_sha256": "41f5afd1a7b2867ae2c69758d303150f6ed3873cb48bfc926b10382c94e93d48",
+  "patch_sha256": "88a67dbe48cedf335482d732d0353e11bd7806672a5644881073dbf0bf330d17",
+  "scope": "audit logging only, preformat whole line and one write_all under stderr lock",
+  "GPU_launches": 0
+}

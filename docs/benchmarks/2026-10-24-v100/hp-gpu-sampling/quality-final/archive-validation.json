@@ -1,0 +1,49 @@
+{
+  "status": "PASS",
+  "scope": "CPU validation of archived receipts; no new inference",
+  "arms": [
+    {
+      "flag": 0,
+      "pid": 27301,
+      "metrics": {
+        "tokens": 8184,
+        "ppl": 8.9605,
+        "kl_top256": 0.13073,
+        "top1_agree": 0.839198,
+        "wall_s": 49.5
+      },
+      "memory_observations": 101,
+      "minimum_observed_free_mib": 3601,
+      "maximum_observation_gap_s": 2.138674736022949,
+      "all_observations_owned": true,
+      "exit_code": 0,
+      "all_gpus_released_after_exit": true
+    },
+    {
+      "flag": 1,
+      "pid": 27642,
+      "metrics": {
+        "tokens": 8184,
+        "ppl": 8.9402,
+        "kl_top256": 0.12937,
+        "top1_agree": 0.842131,
+        "wall_s": 51.3
+      },
+      "memory_observations": 101,
+      "minimum_observed_free_mib": 3569,
+      "maximum_observation_gap_s": 2.197847843170166,
+      "all_observations_owned": true,
+      "exit_code": 0,
+      "all_gpus_released_after_exit": true
+    }
+  ],
+  "identical_input_hashes": true,
+  "identical_model_metadata": true,
+  "only_volta_environment_difference": "VOLTA_HP_GPU_SAMPLE 0 to 1",
+  "actual_worker_matches_reviewed_worker": true,
+  "promotion_receipt_digests_verified": true,
+  "pair_elapsed_s": 431.5044150352478,
+  "planned_budget_s": 420,
+  "budget_overrun_s": 11.504415035247803,
+  "observation_limit": "Polled GPU memory does not establish instantaneous minimum free memory."
+}

@@ -1,0 +1,15 @@
+{
+  "epoch": 1792904635.1221576,
+  "status": "PASS",
+  "scope": "Real-row collection/replay audit, strict swapped timing, initial teacher plus predeclared flag0/flag1 quality pair; fresh Pi and four-long capacity still pending",
+  "receipts_sha256": {
+    "receipts/hp-gpu-audit3-analysis.json": "4a1a8557a1440202b0364b2903338b7b31504e5f818c18b5ba8ae258ac87ef47",
+    "receipts/hp-gpu-audit3-launch-binding.json": "0d0e2b855980bda8dadc599979537c93edab50d56a52011e1597ee6ee55b5304",
+    "receipts/hp-gpu-abba-analysis.json": "2223f07d372b4e4b3f9e57d86641ee528e37c2924118c2d45c4ed37ee15d512e",
+    "teacher-runs/hp-gpu-quality3/metrics.json": "6115e811f1a2f86d45554c789fd03f9a6f9389d76646be33cafd43c28bc41ed2",
+    "teacher-runs/hp-v3-flag-pair/remote/state.json": "82cc3a39361fdfc9705b85c562598fed0dd24cee8753c6c18bf1554da468509d",
+    "hp-sampling-v3-build-proof.json": "faf10e0091dafeaa9202fa57914ecafa9cde38cd75870387dd5aa03cad7f3152"
+  },
+  "pair_elapsed_s": 431.5044150352478,
+  "pair_planned_budget_exceeded": true
+}

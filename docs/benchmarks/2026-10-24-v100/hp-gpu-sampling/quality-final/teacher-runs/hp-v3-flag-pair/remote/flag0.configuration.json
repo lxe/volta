@@ -1,0 +1,41 @@
+{
+  "flag": 0,
+  "pid": 27301,
+  "command": [
+    "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta",
+    "eval",
+    "--model",
+    "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+    "--eval",
+    "/root/eval",
+    "--seqs",
+    "8",
+    "--len",
+    "1024",
+    "--chunk",
+    "1"
+  ],
+  "started_epoch": 1792904171.8647401,
+  "input_sha256": {
+    "heldout.i32": "9c816710d619da56761967609174231ace2f900dbe7486d376997b2abaffa716",
+    "teacher_idx.i32": "ed0fade255c0b6c4a8606e3b21a9c52b024a0d5f37e5c69ff548486c16a8ffb1",
+    "teacher_lp.f32": "e689eabd99c20cdf2edc1d24fc6516121b34fd8e05b3fedcefbe12a36004350d",
+    "teacher_kl.json": "1d8ca2d8bc382312ff376528c03375dfcf3a3e3f0540fb9bd0ef08ce78044822"
+  },
+  "model_metadata": {
+    "st_dev": 44,
+    "st_ino": 3249763219,
+    "st_size": 441574130240,
+    "st_mtime_ns": 1792892003479842388,
+    "st_ctime_ns": 1792892003479842388
+  },
+  "binary_sha256": "bcfe792f228ba7216237c13e5d582dd7e4a34e0872ddd4c293c77d10a237cd67",
+  "volta_environment": {
+    "VOLTA_HEADS": "1",
+    "VOLTA_GRAPHS": "4",
+    "VOLTA_HP_GPU_SAMPLE": "0"
+  },
+  "other_runtime_environment": {
+    "LD_LIBRARY_PATH": "/usr/local/cuda-12.9/targets/x86_64-linux/lib:"
+  }
+}

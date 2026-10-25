@@ -1,0 +1,479 @@
+{
+  "status": "PASS",
+  "audit_log_gate_passed": true,
+  "input_log": "/home/lxe/volta-sixhour-20261024/screens/hp-gpu-audit3/server.log",
+  "input_sha256": "aa18432ffe1e2e4afe922695dd328ca89c08ea5f600f891fc766a28cd4368a8c",
+  "source_schema_binding": {
+    "engine_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+    "expected_server_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+    "binary_identity_verified_here": false
+  },
+  "counts": {
+    "target_records": 1333,
+    "HP_SAMPLE_DISPATCH": 735,
+    "HP_SAMPLE_DISPATCH_valid": 735,
+    "HP_SAMPLE_AUDIT": 598,
+    "HP_SAMPLE_AUDIT_valid": 598
+  },
+  "checked_u32_total": 2258133760,
+  "checked_bytes_total": 9032535040,
+  "matrix_rows_histogram": {
+    "2": 53,
+    "3": 72,
+    "4": 46,
+    "5": 20,
+    "6": 40,
+    "7": 6,
+    "8": 3,
+    "9": 6,
+    "10": 5,
+    "11": 6,
+    "12": 12,
+    "13": 17,
+    "14": 18,
+    "15": 21,
+    "16": 15,
+    "17": 17,
+    "18": 5,
+    "19": 2,
+    "20": 2,
+    "33": 1,
+    "39": 1,
+    "44": 1,
+    "48": 1,
+    "64": 228
+  },
+  "draft_nd_histogram": {
+    "0": 237,
+    "1": 288,
+    "2": 362,
+    "3": 285,
+    "4": 149,
+    "5": 206
+  },
+  "command_histogram": {
+    "StepSampleHp": 598,
+    "Step": 105,
+    "StepGreedy": 32
+  },
+  "distinct_logit_fingerprints": 598,
+  "coverage": {
+    "row_base_63": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 23,
+          "audit_id": 0
+        },
+        {
+          "line": 25,
+          "audit_id": 1
+        },
+        {
+          "line": 27,
+          "audit_id": 2
+        },
+        {
+          "line": 29,
+          "audit_id": 3
+        },
+        {
+          "line": 31,
+          "audit_id": 4
+        },
+        {
+          "line": 33,
+          "audit_id": 5
+        },
+        {
+          "line": 35,
+          "audit_id": 6
+        },
+        {
+          "line": 37,
+          "audit_id": 7
+        }
+      ]
+    },
+    "speculative_nd_positive": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 41,
+          "audit_id": 9
+        },
+        {
+          "line": 43,
+          "audit_id": 10
+        },
+        {
+          "line": 45,
+          "audit_id": 11
+        },
+        {
+          "line": 47,
+          "audit_id": 12
+        },
+        {
+          "line": 49,
+          "audit_id": 13
+        },
+        {
+          "line": 51,
+          "audit_id": 14
+        },
+        {
+          "line": 53,
+          "audit_id": 15
+        },
+        {
+          "line": 55,
+          "audit_id": 16
+        }
+      ]
+    },
+    "accepted_positive": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 41,
+          "audit_id": 9
+        },
+        {
+          "line": 43,
+          "audit_id": 10
+        },
+        {
+          "line": 45,
+          "audit_id": 11
+        },
+        {
+          "line": 47,
+          "audit_id": 12
+        },
+        {
+          "line": 49,
+          "audit_id": 13
+        },
+        {
+          "line": 51,
+          "audit_id": 14
+        },
+        {
+          "line": 53,
+          "audit_id": 15
+        },
+        {
+          "line": 55,
+          "audit_id": 16
+        }
+      ]
+    },
+    "draft_rejection": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 45,
+          "audit_id": 11
+        },
+        {
+          "line": 49,
+          "audit_id": 13
+        },
+        {
+          "line": 51,
+          "audit_id": 14
+        },
+        {
+          "line": 53,
+          "audit_id": 15
+        },
+        {
+          "line": 55,
+          "audit_id": 16
+        },
+        {
+          "line": 57,
+          "audit_id": 17
+        },
+        {
+          "line": 59,
+          "audit_id": 18
+        },
+        {
+          "line": 67,
+          "audit_id": 22
+        }
+      ]
+    },
+    "all_drafts_accepted": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 41,
+          "audit_id": 9
+        },
+        {
+          "line": 43,
+          "audit_id": 10
+        },
+        {
+          "line": 47,
+          "audit_id": 12
+        },
+        {
+          "line": 61,
+          "audit_id": 19
+        },
+        {
+          "line": 63,
+          "audit_id": 20
+        },
+        {
+          "line": 65,
+          "audit_id": 21
+        },
+        {
+          "line": 71,
+          "audit_id": 24
+        },
+        {
+          "line": 75,
+          "audit_id": 26
+        }
+      ]
+    },
+    "multiple_tables": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 174,
+          "audit_id": 69
+        },
+        {
+          "line": 176,
+          "audit_id": 70
+        },
+        {
+          "line": 178,
+          "audit_id": 71
+        },
+        {
+          "line": 180,
+          "audit_id": 72
+        },
+        {
+          "line": 182,
+          "audit_id": 73
+        },
+        {
+          "line": 184,
+          "audit_id": 74
+        },
+        {
+          "line": 186,
+          "audit_id": 75
+        },
+        {
+          "line": 188,
+          "audit_id": 76
+        }
+      ]
+    },
+    "mixed_greedy_sample_tables": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 192,
+          "audit_id": 78
+        },
+        {
+          "line": 194,
+          "audit_id": 79
+        },
+        {
+          "line": 196,
+          "audit_id": 80
+        },
+        {
+          "line": 198,
+          "audit_id": 81
+        },
+        {
+          "line": 200,
+          "audit_id": 82
+        },
+        {
+          "line": 202,
+          "audit_id": 83
+        },
+        {
+          "line": 204,
+          "audit_id": 84
+        },
+        {
+          "line": 206,
+          "audit_id": 85
+        }
+      ]
+    },
+    "matrix_t_lt64": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 39,
+          "audit_id": 8
+        },
+        {
+          "line": 41,
+          "audit_id": 9
+        },
+        {
+          "line": 43,
+          "audit_id": 10
+        },
+        {
+          "line": 45,
+          "audit_id": 11
+        },
+        {
+          "line": 47,
+          "audit_id": 12
+        },
+        {
+          "line": 49,
+          "audit_id": 13
+        },
+        {
+          "line": 51,
+          "audit_id": 14
+        },
+        {
+          "line": 53,
+          "audit_id": 15
+        }
+      ]
+    },
+    "cpu_top_p_fallback": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 436,
+          "command": "Step"
+        },
+        {
+          "line": 437,
+          "command": "Step"
+        },
+        {
+          "line": 438,
+          "command": "Step"
+        },
+        {
+          "line": 439,
+          "command": "Step"
+        },
+        {
+          "line": 440,
+          "command": "Step"
+        },
+        {
+          "line": 441,
+          "command": "Step"
+        },
+        {
+          "line": 442,
+          "command": "Step"
+        },
+        {
+          "line": 443,
+          "command": "Step"
+        }
+      ]
+    },
+    "cpu_positive_hesitation_fallback": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 472,
+          "command": "Step"
+        },
+        {
+          "line": 473,
+          "command": "Step"
+        },
+        {
+          "line": 474,
+          "command": "Step"
+        },
+        {
+          "line": 475,
+          "command": "Step"
+        },
+        {
+          "line": 476,
+          "command": "Step"
+        },
+        {
+          "line": 477,
+          "command": "Step"
+        },
+        {
+          "line": 478,
+          "command": "Step"
+        },
+        {
+          "line": 479,
+          "command": "Step"
+        }
+      ]
+    },
+    "pure_greedy_step": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 549,
+          "command": "StepGreedy"
+        },
+        {
+          "line": 550,
+          "command": "StepGreedy"
+        },
+        {
+          "line": 551,
+          "command": "StepGreedy"
+        },
+        {
+          "line": 552,
+          "command": "StepGreedy"
+        },
+        {
+          "line": 553,
+          "command": "StepGreedy"
+        },
+        {
+          "line": 554,
+          "command": "StepGreedy"
+        },
+        {
+          "line": 555,
+          "command": "StepGreedy"
+        },
+        {
+          "line": 556,
+          "command": "StepGreedy"
+        }
+      ]
+    }
+  },
+  "missing_required_coverage": [],
+  "errors_total": 0,
+  "errors_first100": [],
+  "limits": [
+    "This gate covers observed audit/dispatch records only; teacher quality, memory, performance and long-context gates remain separate.",
+    "Fingerprints are validated for encoding; original full tensors/tables are not retained in logs, so their hashes cannot be independently recomputed here.",
+    "t<64 establishes a smaller logical matrix, not a prefill/decode phase classification.",
+    "Coverage is never inferred from submitted requests; CPU fallback and greedy coverage require dispatch records.",
+    "IDs are checked within one fresh source-bound server log; do not concatenate independent runs."
+  ]
+}

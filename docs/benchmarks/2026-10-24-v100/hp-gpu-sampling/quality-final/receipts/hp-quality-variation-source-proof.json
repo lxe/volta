@@ -1,0 +1,15 @@
+{
+  "evidence": "LOCAL_CPU_SOURCE_COMPARISON_ONLY",
+  "Engine_step_identical_to_frozen": true,
+  "Engine_step_body_sha256": "d2648cfafa614632362995c97077f2b1c529cc881cdd3cad356f5dfb04df5af1",
+  "teacher_CLI_source_identical_to_frozen": true,
+  "teacher_CLI_sha256": "e784c61f80d18226d02522857706061ba0ece2ebac8cbc4d22855d28b7c6f9e6",
+  "teacher_inputs_have_per_run_content_hashes_in_config": false,
+  "metric_receipts_sha256": {
+    "receipts/teacher-eval.jsonl": "cd6fce1487e02759db916565bc339a1ab447891c610e58a4d3a909cfd7ea40e8",
+    "teacher-runs/hp-quality-001/metrics.json": "f0535f9d696f1c5cfdb7c76a03a5e7878ad3288ba91897390c1d4928d3f92a40",
+    "teacher-runs/hp-gpu-quality3/metrics.json": "6115e811f1a2f86d45554c789fd03f9a6f9389d76646be33cafd43c28bc41ed2"
+  },
+  "remote_activity": false,
+  "GPU_activity": false
+}
