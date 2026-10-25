@@ -1,0 +1,22 @@
+[
+  {
+    "wall_s": 1.246683235047385,
+    "start_monotonic": 979768.165505565,
+    "end_monotonic": 979769.4121888,
+    "ttft_s": 0.8413498540176079,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 64,
+      "total_tokens": 620,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "9403f14a40936b5c3e8c1f99d06d4c40415da409561d0a55423d6b58996bf882",
+    "output": "# Code Review: `hp-gpu-audit3`, Case 32\n\n## 1. Summary\n\nThe module under review consists of a sequence of near-identical functions `record_0` through `record_13` (and presumably beyond, since the snippet is truncated mid-expression in `record_13",
+    "decode_tokens_per_s": 155.4276132894463
+  }
+]

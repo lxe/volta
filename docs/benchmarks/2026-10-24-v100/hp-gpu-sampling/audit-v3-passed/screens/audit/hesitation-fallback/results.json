@@ -1,0 +1,22 @@
+[
+  {
+    "wall_s": 2.6246118909912184,
+    "start_monotonic": 979765.023828025,
+    "end_monotonic": 979767.648439916,
+    "ttft_s": 1.0729383860016242,
+    "usage": {
+      "prompt_tokens": 582,
+      "completion_tokens": 64,
+      "total_tokens": 646,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 582
+    },
+    "finish_reason": "length",
+    "output_sha256": "e44291c387952b779ed5d510d0223051671e17c3ec749c8c4ce0282513881fc0",
+    "output": "We need to audit work item hp-gpu-audit3, case 31. The user asks: \"Review this Python module.\" They provide a truncated module of functions record_0 through record_13, with a syntax error at the end (missing closing parenthesis). They want a detailed code review and revised implementation",
+    "decode_tokens_per_s": 40.6013248260126
+  }
+]

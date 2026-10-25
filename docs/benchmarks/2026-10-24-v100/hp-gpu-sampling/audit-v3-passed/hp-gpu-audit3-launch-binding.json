@@ -1,0 +1,21 @@
+{
+  "client_exit_code": 0,
+  "analyzer_exit_code": 0,
+  "actual_server_pid": 25169,
+  "actual_server_binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+  "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+  "guard_observations": 52,
+  "minimum_free_mib": 1643,
+  "evidence_copied": [
+    {
+      "remote_file": "server-hp-gpu-audit3.log",
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "remote_file": "memory-hp-gpu-audit3.jsonl",
+      "returncode": 0,
+      "stderr": ""
+    }
+  ]
+}

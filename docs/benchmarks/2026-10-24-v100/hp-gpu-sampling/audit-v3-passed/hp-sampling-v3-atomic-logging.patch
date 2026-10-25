@@ -1,0 +1,67 @@
+diff --git a/engine/src/server/volta.rs b/engine/src/server/volta.rs
+index 63df41d..d294305 100644
+--- a/engine/src/server/volta.rs
++++ b/engine/src/server/volta.rs
+@@ -283,9 +283,9 @@ impl Volta {
+                         "hesitation_lambda":q.hes.as_ref().map(|h| h.lambda),
+                         "draft_bound_ok":q.next.is_none() || n <= 9})
+                 }).collect();
+-                eprintln!("HP_SAMPLE_DISPATCH {}", serde_json::json!({"command":if on_gpu {"StepSampleHp"} else if sampled {"Step"} else {"StepGreedy"},
++                crate::volta::write_hp_audit_record("HP_SAMPLE_DISPATCH", &serde_json::json!({"command":if on_gpu {"StepSampleHp"} else if sampled {"Step"} else {"StepGreedy"},
+                     "gpu":on_gpu, "sampled":sampled, "gpu_sample_enabled":self.gpu_sample,
+-                    "step_rows":plan.iter().map(Vec::len).sum::<usize>(), "table_rows_if_gpu":if on_gpu {rows.len()} else {0}, "rows":details}));
++                    "step_rows":plan.iter().map(Vec::len).sum::<usize>(), "table_rows_if_gpu":if on_gpu {rows.len()} else {0}, "rows":details}))?;
+             }
+             let dec: Vec<(usize, u32)> = if on_gpu {
+                 let mut tabs: Vec<(Vec<i32>, Vec<f32>)> = vec![(vec![], vec![]); ng];
+diff --git a/engine/src/volta.rs b/engine/src/volta.rs
+index e8b9579..1e32581 100644
+--- a/engine/src/volta.rs
++++ b/engine/src/volta.rs
+@@ -2730,10 +2730,10 @@ impl<'m> Shard<'m> {
+             }).collect();
+             let ints_hash = fingerprint(&mut step.ints.iter().map(|&x| x as u32));
+             let floats_hash = fingerprint(&mut step.floats.iter().map(|x| x.to_bits()));
+-            eprintln!("HP_SAMPLE_AUDIT {}", serde_json::json!({"audit_id":step.audit_id, "logit_rows":t, "vocab":vocab,
++            write_hp_audit_record("HP_SAMPLE_AUDIT", &serde_json::json!({"audit_id":step.audit_id, "logit_rows":t, "vocab":vocab,
+                 "checked_u32":t*vocab, "logits_equal":true, "sampler_replay_equal":true,
+                 "logits_fnv_u32":format!("{logits_hash:016x}"), "table_ints_fnv_u32":format!("{ints_hash:016x}"),
+-                "table_floats_fnv_u32":format!("{floats_hash:016x}"), "rows":rows}));
++                "table_floats_fnv_u32":format!("{floats_hash:016x}"), "rows":rows}))?;
+         }
+         Ok(result.into_iter().map(f32::from_bits).collect())
+     }
+@@ -2831,6 +2831,17 @@ enum Cmd {
+     Stop,
+ }
+ 
++fn hp_audit_line(label: &str, value: &serde_json::Value) -> String {
++    format!("{label} {value}\n")
++}
++
++/// Format before I/O: serde's Display must never emit fragments directly to merged stdout/stderr logs.
++pub(crate) fn write_hp_audit_record(label: &str, value: &serde_json::Value) -> Result<()> {
++    use std::io::Write;
++    let line = hp_audit_line(label, value);
++    std::io::stderr().lock().write_all(line.as_bytes()).context("write complete HP audit record")
++}
++
+ /// One explicit HP sampled step. Debug CPU slices are per-command and bounded by TMAX*vocab words.
+ struct HpSampleStep {
+     ints: Vec<i32>,
+@@ -3610,6 +3621,15 @@ fn populate_engram(m: &Model) {
+ mod hp_sampling_table_tests {
+     use super::validate_hp_sample_table;
+     #[test]
++    fn audit_record_is_complete_before_io() {
++        let value = serde_json::json!({"rows":[{"rb":63,"nd":0}],"text":"a\nb"});
++        let line = super::hp_audit_line("HP_SAMPLE_AUDIT", &value);
++        assert!(line.ends_with('\n'));
++        assert_eq!(line.bytes().filter(|&x| x == b'\n').count(), 1);
++        let json = line.strip_prefix("HP_SAMPLE_AUDIT ").unwrap().trim_end();
++        assert_eq!(serde_json::from_str::<serde_json::Value>(json).unwrap(), value);
++    }
++    #[test]
+     fn hp_table_bounds_and_uniforms() {
+         let mut ints = vec![0; 10];
+         let mut floats = vec![0.5; 10];

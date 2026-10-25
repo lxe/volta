@@ -1,0 +1,9 @@
+{
+  "phase": "staggered-prefill",
+  "requests": 4,
+  "prompt_tokens": 9904,
+  "output_tokens": 2048,
+  "max_active": 4,
+  "max_queued": 0,
+  "cached_tokens_delta": 0
+}

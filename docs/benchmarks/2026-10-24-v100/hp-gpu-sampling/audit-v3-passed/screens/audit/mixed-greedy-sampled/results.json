@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 10.014171384973451,
+    "start_monotonic": 979751.121903545,
+    "end_monotonic": 979761.13607493,
+    "ttft_s": 4.843057228019461,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 256,
+      "total_tokens": 812,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "12dfdd488fdccfe2cfa76af529822e4acad2ad550700c1a7f70a85a2c42e5a80",
+    "output": "# Code Review: `hp-gpu-audit3`, Case 10\n\n## 1. Summary\n\nThe module under review consists of a sequence of near-identical functions `record_0` through `record_13` (and presumably beyond, since the snippet is truncated mid-expression in `record_13`). Each function:\n\n1. Accepts a single iterable `values`.\n2. Computes `sum(v * k for v in values)` where `k` is a per-function constant (`1` for `record_0`, `2` for `record_1`, \u2026, `14` for `record_13`).\n3. Returns a dict `{\"record\": n, \"total\": total, \"count\": len(values)}`.\n\nThe pattern is a textbook case of **copy-paste duplication** with a single varying parameter. The review below covers correctness, style, maintainability, performance, edge cases, and API design, followed by a revised implementation.\n\n---\n\n## 2. Correctness Issues\n\n### 2.1 Truncated / syntactically invalid final function\n\n`record_13` ends with:\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values\n```\n\n",
+    "decode_tokens_per_s": 49.31239037859609
+  },
+  {
+    "wall_s": 9.736996956984513,
+    "start_monotonic": 979751.121641973,
+    "end_monotonic": 979760.85863893,
+    "ttft_s": 1.8813181889709085,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 256,
+      "total_tokens": 812,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "135e0726249a6a6745b2fdcbf150f77be5041e437dd32888e4bccd703b7d4220",
+    "output": "# Code Review: `hp-gpu-audit3` \u2014 Case 11\n\n## 1. Summary\n\nThe module consists of a series of near-identical functions `record_0` through (at least) `record_13`, each of which:\n\n- Accepts a single iterable `values`\n- Computes `sum(v * k for v in values)` where `k` is a per-function constant (1 for `record_0`, 2 for `record_1`, \u2026, 14 for `record_13`)\n- Returns a dict `{\"record\": n, \"total\": total, \"count\": len(values)}`\n\nThe file is truncated mid-statement at `record_13` (`total = sum(v * 14 for v in values` \u2014 missing closing paren and the rest of the function body). This is the most immediate defect.\n\nBeyond the truncation, the code exhibits a strong **copy-paste / boilerplate** anti-pattern: 14+ essentially identical functions differing only in two numeric literals. This is a textbook case for parameterization, a data table, or a factory.\n\n---\n\n## 2. Detailed Findings\n\n### 2.1 Syntax error (blocker)\n\n`record_13` ends",
+    "decode_tokens_per_s": 32.46059411674233
+  },
+  {
+    "wall_s": 10.41526238201186,
+    "start_monotonic": 979751.122016253,
+    "end_monotonic": 979761.537278635,
+    "ttft_s": 6.445550934993662,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 256,
+      "total_tokens": 812,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "c4f6fdf3442aec81f03aaebedb2d8e0260bca0aa0d32c60511af9504183e0b5a",
+    "output": "# Code Review: `hp-gpu-audit3`, Case 12\n\n## 1. Summary\n\nThe module under review consists of a sequence of near-identical functions `record_0` through `record_13` (and presumably beyond, since the snippet is truncated mid-expression in `record_13`). Each function:\n\n1. Accepts a single iterable `values`.\n2. Computes `sum(v * k for v in values)` where `k` is a per-function constant (`1` for `record_0`, `2` for `record_1`, \u2026, `14` for `record_13`).\n3. Returns a dict `{\"record\": n, \"total\": total, \"count\": len(values)}`.\n\nThe pattern is a textbook case of **copy-paste duplication** with a single varying parameter. The review below covers correctness, style, maintainability, performance, and edge cases, followed by a revised implementation.\n\n---\n\n## 2. Findings\n\n### 2.1 Correctness\n\n**F1 \u2014 Truncated final function (syntax error).**\n`record_13` is incomplete:\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values",
+    "decode_tokens_per_s": 64.23640695384553
+  },
+  {
+    "wall_s": 10.705084652989171,
+    "start_monotonic": 979751.1217738,
+    "end_monotonic": 979761.826858453,
+    "ttft_s": 3.2002488770522177,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 256,
+      "total_tokens": 812,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "438f05bd8592240d6b367ed211c355b896dc5a1e27d5d85d0997d6ae77661190",
+    "output": "# Code Review: `hp-gpu-audit3`, Case 13\n\n## 1. Executive Summary\n\nThe module under review consists of a family of near-identical functions `record_0` through `record_13` (and, based on the pattern, presumably continuing beyond the truncated `record_13`). Each function computes a weighted sum of an input sequence and returns a small summary dictionary. The implementation is functionally correct for well-formed inputs but exhibits a number of structural, maintainability, and robustness problems that should be addressed before this code is merged or relied upon.\n\nThe most significant issues are:\n\n1. **Massive duplication** \u2014 14+ functions differ only by a constant multiplier and an index literal.\n2. **No input validation** \u2014 non-iterable inputs, `None`, or elements that are not numeric will raise raw exceptions.\n3. **No type hints** \u2014 the public surface is untyped, making downstream use error-prone.\n4. **No docstrings** \u2014 the contract (what `values` must be, what the return keys mean) is undocumented.\n5. **The truncated `record_13` is syntactically incomplete** \u2014 the file as pasted will not import.\n6. **`sum(v",
+    "decode_tokens_per_s": 33.97809194141415
+  }
+]

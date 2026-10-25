@@ -1,0 +1,34 @@
+{
+  "raw_json_records_valid_without_stitching": true,
+  "valid_parity_records": 598,
+  "valid_dispatch_records": 735,
+  "audit_ids_contiguous": [
+    0,
+    597
+  ],
+  "checked_u32": 2258133760,
+  "checked_bytes": 9032535040,
+  "log_fingerprint": "aa18432ffe1e2e4afe922695dd328ca89c08ea5f600f891fc766a28cd4368a8c",
+  "all_coverage_independently_observed": [
+    "accepted_positive",
+    "all_drafts_accepted",
+    "cpu_positive_hesitation_fallback",
+    "cpu_top_p_fallback",
+    "draft_rejection",
+    "matrix_t_lt64",
+    "mixed_greedy_sample_tables",
+    "multiple_tables",
+    "pure_greedy_step",
+    "row_base_63",
+    "speculative_nd_positive"
+  ],
+  "all_logged_table_bounds_valid": true,
+  "source_committed_files_match_receipt": true,
+  "binary_binding_config_build_launch_parser_agree": true,
+  "guard_observations": 52,
+  "minimum_free_mib": 1643,
+  "api_requests": 12,
+  "output_tokens": 3392,
+  "cached_tokens": 0,
+  "limits": "Original full tensors/uniforms are not logged; numerical parity booleans and fingerprints cannot be independently recomputed from raw tensors here. These checks validate logged structure/provenance, not statistical sampler quality or performance."
+}
