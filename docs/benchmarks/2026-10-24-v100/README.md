@@ -48,7 +48,11 @@ The swapped fixed gains were 53.92% and 51.78%; mixed gains were 47.94% and 47.8
 
 Three v3 teacher evaluations, including the final disabled/enabled flag pair, passed the original bounds over 8,184 positions: perplexity 8.9402–8.9605, KL top-256 0.129370–0.131653 and top-1 agreement 83.8710–84.2131%. The unchanged bounds were perplexity ≤ 9.0423, KL ≤ 0.131695 and top-1 agreement ≥ 83.8231%. [Final quality receipts](hp-gpu-sampling/quality-final/) bind the tested source and flags. The teacher CLI evaluates model quality separately and does not exercise the server's StepSampleHp path; the real-row server audit supplies that coverage.
 
-The four concurrent HP requests near 250K tokens and the HP geometric-shape gauntlet are still pending. No capacity, animation, recording or performance claim is made for those unfinished checks.
+Four concurrent HP requests each exercised 250,046 prompt tokens with zero cache reuse and returned their distinct keys exactly. Four active slots and no queue were observed; prefills were serialized in one 64-row group. Wall time was 1,872.11s, with a sampled minimum of 1,753 MiB free per GPU. This establishes that retrieval workload, not general long-context quality. See [four-request HP receipts](context/four-concurrent-250k-hp/).
+
+The subsequent cold-request profile measured 70.0–72.2 aggregate whole-request tokens/s for one client, 112.3–113.4 for four and 119.3–120.1 for eight submissions. Each request generated 1,024 outputs; eight submissions used four active slots and four queued requests. Single-client decode was 108.6–109.1 tokens/s. The server retained prior long-context history, so this is a descriptive profile. See [all six cases](hp-gpu-sampling/concurrency-profile/).
+
+The fresh four-Pi HP gauntlet completed 49 requests and 20,653 outputs, with 175.26 aggregate tokens/s during the sampled multi-active interval. The original torus discarded lighting; a separately recorded Pi correction added per-dot depth/intensity and visible dithering (five requests, 2,317 outputs). All four programs ran with distinct live frames, but cube clipping and approximate pyramid depth remain documented. Original and repair work are distinct; variable work prevents a controlled speedup claim. See [original evidence](hp-gpu-sampling/gauntlet-original/).
 
 ## Actual coding-agent gauntlet
 
