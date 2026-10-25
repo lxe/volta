@@ -44,6 +44,10 @@ its kernel layout at load while preserving the quantized values and original eig
 uses custom Volta encoding metadata and requires this engine. It is not a llama.cpp quant type. Previously
 downloaded native expert packs and base directories remain supported.
 
+The complete GGUF also has [GPU validation and four-agent measurements from October 24, 2026](docs/benchmarks/2026-10-24-v100/README.md), including actual Pi tool use, live tmux shapes, 128K/256K retrieval checks and controlled sampler comparisons. The data-parallel 128K profile measured 165.2–169.3 aggregate whole-request tokens/s for four cold 4K-input/1,024-output requests. It remains the measured throughput choice for four short-task agents.
+
+For head-parallel serving, `VOLTA_HP_GPU_SAMPLE=1` opts into collecting the eight vocabulary slices on GPU0 and using the existing GPU sampler. Four-client, 256K-capacity A/B/B/A tests measured 51.8–53.9% higher fixed-workload throughput and 47.8–47.9% higher mixed prefill/decode throughput than CPU HP sampling. The [HP receipts](docs/benchmarks/2026-10-24-v100/hp-gpu-sampling/) retain the real-row audit, quality checks, fallbacks and different CPU/GPU sampling trajectories. Default HP sampling is unchanged.
+
 The quality and performance results below were measured with the original native pack, before the GGUF repack.
 
 Against the FP8 model on the [Lucebox](https://huggingface.co/Lucebox/DeepSeek-V4.1-Flash-1017-ROCMFP-GGUF) eval
