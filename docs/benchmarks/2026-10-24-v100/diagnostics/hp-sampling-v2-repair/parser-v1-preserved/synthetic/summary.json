@@ -1,0 +1,255 @@
+{
+  "evidence": "SYNTHETIC_PARSER_VALIDATION_ONLY",
+  "passed": true,
+  "cases": [
+    {
+      "case": "positive",
+      "expected_pass": true,
+      "exit_code": 0,
+      "status": "PASS",
+      "errors_total": 0,
+      "missing": []
+    },
+    {
+      "case": "missing_coverage",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 0,
+      "missing": [
+        "draft_rejection",
+        "matrix_t_lt64",
+        "cpu_top_p_fallback",
+        "cpu_positive_hesitation_fallback",
+        "pure_greedy_step"
+      ]
+    },
+    {
+      "case": "malformed_json",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 2,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64",
+        "cpu_top_p_fallback",
+        "cpu_positive_hesitation_fallback",
+        "pure_greedy_step"
+      ]
+    },
+    {
+      "case": "empty_log",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 1,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64",
+        "cpu_top_p_fallback",
+        "cpu_positive_hesitation_fallback",
+        "pure_greedy_step"
+      ]
+    },
+    {
+      "case": "bad_checked",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 3,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "false_parity",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 3,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "bad_fingerprint",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 3,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "bad_rb",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 3,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "bad_accepted",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 3,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "bad_token",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 3,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "bad_nd",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 3,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "bool_as_integer",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 3,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "duplicate_audit_id",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 1,
+      "missing": [
+        "draft_rejection",
+        "matrix_t_lt64"
+      ]
+    },
+    {
+      "case": "wrong_fallback_gpu_flag",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 1,
+      "missing": [
+        "cpu_top_p_fallback"
+      ]
+    },
+    {
+      "case": "duplicate_json_field",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 2,
+      "missing": [
+        "row_base_63",
+        "speculative_nd_positive",
+        "accepted_positive",
+        "draft_rejection",
+        "all_drafts_accepted",
+        "multiple_tables",
+        "mixed_greedy_sample_tables",
+        "matrix_t_lt64",
+        "cpu_top_p_fallback",
+        "cpu_positive_hesitation_fallback",
+        "pure_greedy_step"
+      ]
+    },
+    {
+      "case": "explicit_runtime_failure",
+      "expected_pass": false,
+      "exit_code": 1,
+      "status": "FAIL",
+      "errors_total": 1,
+      "missing": []
+    }
+  ],
+  "parser_sha256": "ab974a349101594753409dbf417ab1ba39e437503d9897b94fb9924bd9c168c5",
+  "test_sha256": "1a6e490d7ba44c21d19b8256f1e209ad9c4d30caeea8eab20bd48605295a1dc6"
+}

@@ -1,0 +1,101 @@
+{
+  "status": "FAIL",
+  "audit_log_gate_passed": false,
+  "input_log": "/home/lxe/volta-sixhour-20261024/screens/hp-gpu-audit1/server.log",
+  "input_sha256": "fcaaecefc4052114ec13719c93cb6f9df618fac009de165d3db9621260cf1c43",
+  "source_schema_binding": {
+    "engine_commit": "acf798786b1962f5ea45ecbebc6cf114f2126b81",
+    "expected_server_sha256": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+    "binary_identity_verified_here": false
+  },
+  "counts": {
+    "target_records": 1,
+    "HP_SAMPLE_DISPATCH": 1,
+    "HP_SAMPLE_DISPATCH_valid": 1
+  },
+  "checked_u32_total": 0,
+  "checked_bytes_total": 0,
+  "matrix_rows_histogram": {},
+  "draft_nd_histogram": {},
+  "command_histogram": {
+    "StepSampleHp": 1
+  },
+  "distinct_logit_fingerprints": 0,
+  "coverage": {
+    "row_base_63": {
+      "observed": false,
+      "evidence": []
+    },
+    "speculative_nd_positive": {
+      "observed": false,
+      "evidence": []
+    },
+    "accepted_positive": {
+      "observed": false,
+      "evidence": []
+    },
+    "draft_rejection": {
+      "observed": false,
+      "evidence": []
+    },
+    "all_drafts_accepted": {
+      "observed": false,
+      "evidence": []
+    },
+    "multiple_tables": {
+      "observed": false,
+      "evidence": []
+    },
+    "mixed_greedy_sample_tables": {
+      "observed": false,
+      "evidence": []
+    },
+    "matrix_t_lt64": {
+      "observed": false,
+      "evidence": []
+    },
+    "cpu_top_p_fallback": {
+      "observed": false,
+      "evidence": []
+    },
+    "cpu_positive_hesitation_fallback": {
+      "observed": false,
+      "evidence": []
+    },
+    "pure_greedy_step": {
+      "observed": false,
+      "evidence": []
+    }
+  },
+  "missing_required_coverage": [
+    "row_base_63",
+    "speculative_nd_positive",
+    "accepted_positive",
+    "draft_rejection",
+    "all_drafts_accepted",
+    "multiple_tables",
+    "mixed_greedy_sample_tables",
+    "matrix_t_lt64",
+    "cpu_top_p_fallback",
+    "cpu_positive_hesitation_fallback",
+    "pure_greedy_step"
+  ],
+  "errors_total": 2,
+  "errors_first100": [
+    {
+      "line": 24,
+      "error": "thread '<unnamed>' (24168) panicked at /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/panicking.rs:225:5:"
+    },
+    {
+      "line": 0,
+      "error": "at least one valid parity audit is required"
+    }
+  ],
+  "limits": [
+    "This gate covers observed audit/dispatch records only; teacher quality, memory, performance and long-context gates remain separate.",
+    "Fingerprints are validated for encoding; original full tensors/tables are not retained in logs, so their hashes cannot be independently recomputed here.",
+    "t<64 establishes a smaller logical matrix, not a prefill/decode phase classification.",
+    "Coverage is never inferred from submitted requests; CPU fallback and greedy coverage require dispatch records.",
+    "IDs are checked within one fresh source-bound server log; do not concatenate independent runs."
+  ]
+}
