@@ -1,0 +1,66 @@
+[
+  {
+    "shape": "01-cube",
+    "source_sha256": "9c01c57bed932fb3625c8b315191a00114f4d8b5a82a7748c4df783a444a1b2b",
+    "syntax": "valid",
+    "frame_sha256": [
+      "158bdfb9481e6c34ffd08e0d9889c9b2aaa91f3d23684c605a741dd5a199dd6d",
+      "b4986574ddfa7539d9823c888f4ff36d3b0fb5cca2302488775ba4a8cbfa642e",
+      "ae7b49ee90413ac04d581feebc9bbfe15d5f0cb78f8430c012f63f83637396ee"
+    ],
+    "distinct_frames": 3,
+    "braille_cells": [
+      2117,
+      2117,
+      2117
+    ]
+  },
+  {
+    "shape": "02-pyramid",
+    "source_sha256": "0d34024322503c3f7db62e2f372af08d7e52df5d421cc1531278922dac2c284f",
+    "syntax": "valid",
+    "frame_sha256": [
+      "bc98a6b92c1afd6a4aacb09906f3752e32a4caf4dd7c0c0fe729fa7b2f1ac422",
+      "d7cbf9e0b31928fd32901b230f0b0977035cc76f3f261dcf9254208826233ecd",
+      "384dd21fb1d4fc0b4bf1ad37d4ad01c5db94245028408ad328c07976d8ad6d79"
+    ],
+    "distinct_frames": 3,
+    "braille_cells": [
+      2030,
+      2030,
+      2030
+    ]
+  },
+  {
+    "shape": "03-torus",
+    "source_sha256": "3dfb64b1de83889116c38700d28ca9369211eec8b42495f04758769d0f885a4b",
+    "syntax": "valid",
+    "frame_sha256": [
+      "4fc7b04de8d19cce4b717816f9becfd12ae4eb5a4a7da63387644dbf6e3e2cce",
+      "a7dafa2d6cff4d41b3365e0858211db085fcd8b3b4aa0a744f5a2ba840b91cc6",
+      "8383036052d2ebbddacb27f750ec58041084a0ec130b9fd4c29eab865368d408"
+    ],
+    "distinct_frames": 3,
+    "braille_cells": [
+      862,
+      1010,
+      848
+    ]
+  },
+  {
+    "shape": "04-sphere",
+    "source_sha256": "36af74d05e495ce2c5b492370f2ca230468339fb5b6a98ab2e191f2f75134da8",
+    "syntax": "valid",
+    "frame_sha256": [
+      "8ace69b8f97adf00588df2779bd9b9cb4c10d124db14671d391b9b9c7a130b23",
+      "30906ff301231649751ffb4fe8c5fe8d10f49a03b3d06363688e803def8d34a0",
+      "e5442b818105a17afc8b029765f2811ee7d0ad7e80183411c61d6efa9fd2541a"
+    ],
+    "distinct_frames": 3,
+    "braille_cells": [
+      840,
+      843,
+      871
+    ]
+  }
+]

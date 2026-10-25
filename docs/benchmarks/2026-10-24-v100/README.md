@@ -1,0 +1,13 @@
+# Eight-V100 geometric-shape baseline
+
+On October24,2026, eight V100-SXM2-32GB GPUs completed the four concurrent Pi tasks for cube, pyramid, torus and sphere animations. All four generated standard-library Python programs passed syntax inspection, ran in their assigned local kitty/tmux display panes, and produced three distinct captured frames. The source programs and complete recording remain in /home/lxe/volta-sixhour-20261024/baseline. The closed4.75GB cast compresses to13.4MiB with zstd.
+
+The frozen engine is cc54d97568adb3d9438a8692c3415cb72ac18957, binary9c82a8e15e96855badeb4128a7af7e01ab28d015fa575c717a36fc156513d1a9. It loaded the complete441574130240-byte GGUF with published SHA2569d15a1d6f263b25bb3bf0eb1b887c9c6d7176083b8a9bd55c998e8658e52000c. Context131072, one DP slot per GPU, chunk64, spec-k5, temperature0.7, top-p1, graphs4. The actual teacher evaluation covered8184positions: perplexity8.9423, KL_top2560.126695, top1agreement84.3231%.
+
+The agents made47 model requests and generated19805tokens. While at least two sessions were active, mean aggregate throughput was167.326tokens/s and median135.852tokens/s. These are task-specific aggregate measurements, not fixed-work maximum throughput or per-agent rates. Different model runs can generate different programs and token counts, so the prior native-pack task timing does not establish a speedup or regression.
+
+The original controller wall246.99s includes41.97s of launch/recorder repair before any task submission and about60s of idle closeout. The first-post-submit through closeout interval was205.02s; the last active stats sample was141.40s after that first sample. Original and clarified intervals are both retained in baseline.json. A tmux read-only recorder client initially blocked command submission; the same four prepared prompt buffers were submitted once after repair. No task request was restarted.
+
+The Vast rental costs$2.22756/hour including800GB storage, with754GiB host RAM and all48NVLinks active. Direct disk read measured6.3GB/s. Model hydration came from R2, followed by a full serial SHA256 check. The completed hydration was unnecessarily capped at1900Mbps; the user subsequently clarified that only workstation traffic has that cap, and all future rental-to-R2 traffic is direct and uncapped. This correction did not restart the verified transfer. The independent rental-release deadline is October24,23:18:26Pacific.
+
+The server has only491MiB free per GPU immediately after loading and about393-481MiB during the gauntlet. A proposed graph-budget16 trial therefore fails its planned1GiB headroom gate. Sampler optimization and context/concurrency comparisons remain unmeasured at this baseline commit.
