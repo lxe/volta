@@ -1,0 +1,29 @@
+Took 1.5s
+
+
+ Done. render.py is written and running in tmux pane %141.
+
+ What it does:
+ - Braille rendering: each terminal cell is a 2x4 dot grid; for
+   each dot it ray-casts into the sphere, computes the surface
+   normal, and applies Lambert shading with ordered (Bayer)
+   dithering so brightness becomes dot density.
+ - 3D rotating sphere: latitude/longitude bands modulate the
+   shading and rotate over time, so the turning is clearly
+   visible.
+ - Bouncing: the sphere moves in fractional terminal coordinates
+   and reflects off all four edges.
+ - Full terminal / adaptive: reads shutil.get_terminal_size()
+   every frame, so it fills and adapts to the pane size.
+ - ~30 fps: frame loop targets 1/FPS with sleep compensation.
+ - Cursor handling: hides the cursor on start and restores it
+   (plus SIGINT/SIGTERM handlers) so Ctrl-C exits cleanly —
+   verified it returns to the shell with the cursor visible.
+
+ It's left running in %141.
+
+──────────────────────────────────────────────────────────────────
+
+──────────────────────────────────────────────────────────────────
+~/volta-sixhour-20261024/hp-256k-gauntlet/gauntlet/04-sphere
+↑126k ↓6.5k 7.5%/262k (auto)    deepseek-v4.1-flash • thinking off

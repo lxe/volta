@@ -1,0 +1,17 @@
+{
+  "evidence": "LOCAL_CPU_ONLY",
+  "source_receipt": "hp-sampling-source-v1.json",
+  "cargo_check": "server+CLI with CUDA feature PASS,2.57s",
+  "cargo_test": "hp_sampling_table_tests 1passed/0failed/13filtered;20.84scompile",
+  "kernel_image_sha256": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5",
+  "gpu_launches": 0,
+  "logs_sha256": {
+    "hp-sampling-local-check.log": "a9bbed92ab53455893499b05a60b7c808159e0591af573a7e0eb06cc47f6e3d1",
+    "hp-sampling-local-tests.log": "945588fef5a09adf94c2ceb73d588157fa92518b4a04f81c80e9a9ac62807f14"
+  },
+  "parent_build_window": {
+    "pid": 22364,
+    "started_epoch": 1792900608.2922814,
+    "configuration_sha256": "8fbb64ec48c887467a7fd676805121abad6d4c74c3c0af3d22ef17d71ea4fb64"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "label": "hp4-256-profile",
+  "clients": 8,
+  "mixed": false,
+  "wall_s": 103.42310947400983,
+  "monitor_wall_s": 103.73987182206474,
+  "completed": 8,
+  "requested_output_tokens": 8192,
+  "output_tokens": 8192,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 79.20860281288144,
+  "prompt_tokens": 33160,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 8192,
+  "ttft_s": [
+    30.80279070395045,
+    61.574194649932906,
+    6.463819341966882,
+    22.279145951964892,
+    78.72511023504194,
+    14.104606835986488,
+    52.77622753102332,
+    70.08840565290302
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.5223662719477338
+}

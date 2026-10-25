@@ -1,0 +1,7 @@
+# CPU sampling profile accounting diagnostic
+
+V3 changes profiling accounting only: CPU sampled engine step belongs in step_ms; CPU distribution/RNG work gets its own cpu_sample_ms and is subtracted from rest_ms. Current rest_ms includes the sampled CPU path's full engine call, so it cannot attribute HP host sampling cost. GPU/greedy numerical execution and all kernels remain unchanged.
+
+Budget before implementation/build:40-90seconds CPU compilation in a separate checkout/target, two jobs,180s timeout, hard compiler stop before03:33UTC. No GPU/model launch, no weights or large transfers. Runtime adds a few Instant/timer operations in the existing CPU sampled branch and one field in existing profile output; no new unbounded log, synchronization or allocation. Source staging is a small archive through R2, workstation below1900Mbps and remote direct. Reuse exact frozen fatbin SHA4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5 after kernel-source equality checks.
+
+Prediction: accounting moves CPU sampled engine duration from rest_ms to step_ms and reports distribution/RNG work separately; no throughput gain is claimed. Confirm source-boundary review, CUDA-feature compilation, distinct binary/hash and unchanged fatbin; a later parent-owned profile verifies sensible accounting totals. Kill on altered sampling/numerical flow, changed kernels, build failure or deadline risk. Preserve V2 source/target/binary bytes. No diagnostic model may launch in this task.

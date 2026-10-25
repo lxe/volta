@@ -1,0 +1,19 @@
+{
+  "evidence": "CPU_ONLY_PARSER_SOURCE_AND_SYNTHETIC_CHECKS",
+  "engine_source_commit": "acf798786b1962f5ea45ecbebc6cf114f2126b81",
+  "engine_source_sha256": {
+    "engine/src/gpu.rs": "b84deb7f5a1117027798c763674ea81acea53c59e83721a32be03637387c0b2d",
+    "engine/src/volta.rs": "9926e1c5cb86846c25a0dd7b6eb6669b8581e121ba1e320d1d94d01bea2082c9",
+    "engine/src/server/volta.rs": "2f871c5da82894bb573b95713a66e89473459cc1c10191a01b55fb44e0100051"
+  },
+  "server_sha256": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+  "files_sha256": {
+    "analyze-hp-sampling-audit.py": "ab974a349101594753409dbf417ab1ba39e437503d9897b94fb9924bd9c168c5",
+    "test-hp-sampling-audit.py": "1a6e490d7ba44c21d19b8256f1e209ad9c4d30caeea8eab20bd48605295a1dc6",
+    "hp-sampling-audit-parser-protocol.md": "3ec790b4f40929e39c566e12f98e3b4f14e9e7b202ec9df41c7e497118733c30",
+    "receipts/hp-sampling-parser-synthetic/summary.json": "b5004756f16de313c33b53ec36c5123c5ae86da2941f65e46170d0516a8ab0d1"
+  },
+  "synthetic_cases": 16,
+  "actual_candidate_log_analyzed": false,
+  "GPU_launches": 0
+}

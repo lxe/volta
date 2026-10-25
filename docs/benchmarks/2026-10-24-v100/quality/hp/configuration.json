@@ -1,0 +1,24 @@
+{
+  "name": "hp-quality-001",
+  "pid": 16621,
+  "heads": true,
+  "started_epoch": 1792895771.533803,
+  "binary_sha256": "e216e64da3524d36b657f0cdc0cf3bf4a4099f421c5282970b908ead5817351c",
+  "stdout": "/root/teacher-hp-quality-001.jsonl",
+  "stderr": "/root/teacher-hp-quality-001.log",
+  "command": [
+    "/root/volta/target/release/volta",
+    "eval",
+    "--model",
+    "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+    "--eval",
+    "/root/eval",
+    "--seqs",
+    "8",
+    "--len",
+    "1024",
+    "--chunk",
+    "1"
+  ],
+  "stopped_server_pid": 16376
+}

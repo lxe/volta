@@ -1,0 +1,11 @@
+# Loop profile V3 protocol
+
+V3 measures the CPU-sampled engine step and the subsequent CPU distribution/RNG work separately. It includes unchanged V2 graph diagnostics and the exact sampler guard. Kernel sources, sampling math, graph policy, GPU sampling, and greedy paths are unchanged. The existing four-entry counter array already had an unused fourth entry; V3 uses it without resizing.
+
+Use the parent controller’s separately registered loop-prof engine and opt-in `--loop-profile 1` for the bounded diagnostic. No automatic launch is provided. The binary is `/root/volta-loop-prof-v3/target-v3/release/volta-server`. Default logging remains off (`VOLTA_LOOP_PROF=0`). `cpu_sample_ms` accumulates work from immediately after the sampled CPU engine step through the distribution, parallel join, RNG assignments, and hesitation updates. `step_ms` now includes the CPU-sampled `self.e.step(plan)` call, including GPU execution/download and HP host merge performed inside that call. The existing STEPT finish interval includes its projection and download portions, but excludes later host merge and distribution work.
+
+Analyze request intervals using this process’s UTC admission/completion logs and matching SSE request wall time. Sum `cpu_sample_ms` only within those intervals and divide by matching SSE wall time. Do not sum `iter_ms` as a denominator: it includes idle queue waiting between requests. For logging intervals greater than one pass, request boundaries can cut an aggregated interval; report that ambiguity or prefer interval one. Host elapsed counters provide attribution, not GPU-only timing or a throughput claim. Preserve raw logs, config, source/binary/fatbin hashes, and exact request/token/cache equality.
+
+The CPU build is jobs two, limited to 180 seconds and the parent-approved deadline. It executes no model/GPU job. V1/V2 source, targets, binaries, and receipts remain intact.
+
+The CPU analyzer follows active request IDs at each profile log. Source logs the profile before its final retire/done call; carrying completed IDs into the next record would contaminate phase boundaries. It verifies the exact17-request sequence and2048 generated tokens per primary phase, and reports a rounding bound of0.005ms per record for the new field. The five-percent feasibility gate uses the conservative lower rounding bound.

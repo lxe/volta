@@ -102,9 +102,9 @@ pub struct Volta {
     e: Engine,
     a: VoltaArgs,
     block: usize,
-    /// sampled steps choose their tokens on the GPU (vspec_sample) where they can: not head-parallel, and not with
-    /// VOLTA_GPU_SAMPLE=0
+    /// Eligible sampled steps use the GPU; HP additionally requires explicit opt-in and a split head.
     gpu_sample: bool,
+    sample_audit_remaining: usize,
 }
 
 // GPU state lives on the engine's own threads; this struct only holds their handles.
@@ -118,9 +118,10 @@ pub fn volta_engine(m: &'static Model, a: VoltaArgs) -> Result<Box<dyn BatchEngi
     // from here on `gpus` is what the scheduler places sessions on
     let a = VoltaArgs { spec_k: if block == 0 { 0 } else { a.spec_k.min(block) }, gpus: e.gpus(), ..a };
     tracing::info!(gpus = a.gpus, slots = a.slots, heads = a.heads, ctx = a.ctx, draft = block > 0, spec_k = a.spec_k, "volta engine up");
-    let gpu_sample = !e.head_parallel() && std::env::var("VOLTA_GPU_SAMPLE").map_or(true, |v| v != "0");
+    let gpu_sample = (!e.head_parallel() || e.hp_gpu_sampling()) && std::env::var("VOLTA_GPU_SAMPLE").map_or(true, |v| v != "0");
     tracing::info!(gpu_sample, "sampling");
-    Ok(Box::new(Volta { e, a, block, gpu_sample }))
+    let sample_audit_remaining = e.hp_sampling_audit_limit();
+    Ok(Box::new(Volta { e, a, block, gpu_sample, sample_audit_remaining }))
 }
 
 impl BatchEngine for Volta {
@@ -265,13 +266,27 @@ impl Volta {
             // their drafts; sampled ones run speculative sampling on the logits (exact for the target distribution)
             let sampled = rows.iter().any(|&(i, ..)| !seqs[i].greedy);
             // the tokens chosen on the GPU (vspec_sample) when every row allows it: no top-p, no hesitation penalty,
-            // at most 8 drafts, not head-parallel; VOLTA_GPU_SAMPLE=0 keeps the CPU path
+            // at most 8 drafts, an enabled GPU sampler; VOLTA_GPU_SAMPLE=0 keeps the CPU path
             let on_gpu = sampled
                 && self.gpu_sample
                 && rows.iter().all(|&(i, _, _, n)| {
                     let q = &seqs[i];
-                    q.hes.is_none() && (q.greedy || q.job.params.top_p >= 1.0) && n <= 9
+                    // Prefill samples its last row with no drafts, regardless of chunk length.
+                    q.hes.is_none() && (q.greedy || q.job.params.top_p >= 1.0) && (q.next.is_none() || n <= 9)
                 });
+            if self.sample_audit_remaining > 0 && self.e.head_parallel() {
+                self.sample_audit_remaining -= 1;
+                let details: Vec<_> = rows.iter().map(|&(i, _, rb, n)| {
+                    let q = &seqs[i];
+                    serde_json::json!({"rb":rb, "rows":n, "prefill":q.next.is_none(), "greedy":q.greedy,
+                        "top_p":q.job.params.top_p, "hesitation":q.hes.is_some(),
+                        "hesitation_lambda":q.hes.as_ref().map(|h| h.lambda),
+                        "draft_bound_ok":q.next.is_none() || n <= 9})
+                }).collect();
+                crate::volta::write_hp_audit_record("HP_SAMPLE_DISPATCH", &serde_json::json!({"command":if on_gpu {"StepSampleHp"} else if sampled {"Step"} else {"StepGreedy"},
+                    "gpu":on_gpu, "sampled":sampled, "gpu_sample_enabled":self.gpu_sample,
+                    "step_rows":plan.iter().map(Vec::len).sum::<usize>(), "table_rows_if_gpu":if on_gpu {rows.len()} else {0}, "rows":details}))?;
+            }
             let dec: Vec<(usize, u32)> = if on_gpu {
                 let mut tabs: Vec<(Vec<i32>, Vec<f32>)> = vec![(vec![], vec![]); ng];
                 let mut at = Vec::with_capacity(rows.len()); // (gpu, row in its table)

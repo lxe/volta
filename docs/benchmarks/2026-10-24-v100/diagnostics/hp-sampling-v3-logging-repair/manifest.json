@@ -1,0 +1,46 @@
+{
+  "hp-sampling-v3-logging-budget.md": {
+    "bytes": 1248,
+    "sha256": "1d8e4e86b14bce2abc64a42abc0bc36e5b419f75bdad9e3aa1def841ed0f74d4"
+  },
+  "hp-sampling-v3-atomic-logging.patch": {
+    "bytes": 3779,
+    "sha256": "88a67dbe48cedf335482d732d0353e11bd7806672a5644881073dbf0bf330d17"
+  },
+  "hp-sampling-v3-source-commit.txt": {
+    "bytes": 41,
+    "sha256": "4e7a7c419e2ae115a2955fe5dc6a44897bbe177538a1c3c2e5a114565cac3ed1"
+  },
+  "hp-sampling-v3-source.json": {
+    "bytes": 674,
+    "sha256": "e38c20626ac46d07a999dee1cff387ac4926e54f3b5c2a62d609f66f33a848d7"
+  },
+  "hp-sampling-v3-build-proof.json": {
+    "bytes": 2744,
+    "sha256": "faf10e0091dafeaa9202fa57914ecafa9cde38cd75870387dd5aa03cad7f3152"
+  },
+  "hp-sampling-v3-build-admission.json": {
+    "bytes": 308,
+    "sha256": "57a178ee33ce4635e2497b71a2009264d1bdd327109c9340c1bd8e5cd61cc28d"
+  },
+  "build-hp-sampling-v3.sh": {
+    "bytes": 1929,
+    "sha256": "8b340a778c7b176561998b5cfd0ada2031cb6e4bdff89e1551b29bc35ca4d483"
+  },
+  "build-hp-sampling-v3.log": {
+    "bytes": 2888,
+    "sha256": "a0b53cda44c541d2c3e202ea0ec2c724f475d902836bf5ca9d44cb68a69ae9e3"
+  },
+  "hp-sampling-v3-local-tests.log": {
+    "bytes": 3165,
+    "sha256": "de80198658e1687f2c4b66ff9efc55afd6b1a889ab528ab33cb95983926c5970"
+  },
+  "v2-strict-failed-analysis.json": {
+    "bytes": 9236,
+    "sha256": "3e3b0dd467f6f359238ce1dad8e378364b734e5dede16ff4214e7d5e12b53016"
+  },
+  "README.md": {
+    "bytes": 2325,
+    "sha256": "5a86eea8b93197df085168628b44291f3560f3ff4a3cbf60a9dc7dc6622f5525"
+  }
+}

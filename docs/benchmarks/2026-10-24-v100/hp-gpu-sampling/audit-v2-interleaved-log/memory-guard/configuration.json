@@ -1,0 +1,54 @@
+{
+  "first_observation_verified": true,
+  "observation_path": "/root/memory-hp-gpu-audit2.jsonl",
+  "server_pid": 24433,
+  "guard_pid": 24616,
+  "command": [
+    "python3",
+    "/root/memory-guard.py",
+    "--name",
+    "hp-gpu-audit2",
+    "--receipt-name",
+    "hp-gpu-audit2",
+    "--min-free-mib",
+    "192",
+    "--until",
+    "1792904201.3818831"
+  ],
+  "ready_free_mib": [
+    [
+      0,
+      1847
+    ],
+    [
+      1,
+      1879
+    ],
+    [
+      2,
+      1879
+    ],
+    [
+      3,
+      1879
+    ],
+    [
+      4,
+      1879
+    ],
+    [
+      5,
+      1879
+    ],
+    [
+      6,
+      1879
+    ],
+    [
+      7,
+      1879
+    ]
+  ],
+  "log": "/root/memory-guard-hp-gpu-audit2.log",
+  "until": 1792904201.3818831
+}

@@ -1,0 +1,14 @@
+{
+  "scope": "One actual greedy retrieval with an initial deployment key; not general long-context quality or matched throughput",
+  "prompt_tokens": 250042,
+  "cached_tokens": 0,
+  "needle_verified": true,
+  "ttft_s": 468.5657215259271,
+  "wall_s": 468.69586223596707,
+  "output_tokens": 13,
+  "natural_stop": true,
+  "memory_observations": 859,
+  "minimum_observed_free_mib": 1743,
+  "reserve_mib": 192,
+  "guard_stopped_server": false
+}

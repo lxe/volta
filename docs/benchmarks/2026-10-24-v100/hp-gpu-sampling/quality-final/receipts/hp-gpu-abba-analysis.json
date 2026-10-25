@@ -1,0 +1,271 @@
+{
+  "status": "PASS",
+  "arms": {
+    "hp-cpu-a1": {
+      "config_sha256": "e29d22e0e941b7d7454a28c0c182949dfe04531a07643a5d83f373c6050ec0fc",
+      "binary_sha256": "b9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4",
+      "pid": 21894,
+      "gpu_sampling": false,
+      "started_epoch": 1792900330.2505498,
+      "guard": {
+        "observations": 99,
+        "minimum_free_mib": 1745,
+        "maximum_gap_s": 1.1330509185791016,
+        "first_epoch": 1792900490.701059,
+        "last_epoch": 1792900598.5673141
+      },
+      "phases": {
+        "fixed": {
+          "wall_s": 41.809673840063624,
+          "tps": 48.98387889449471,
+          "output_tokens": 2048,
+          "prompt_tokens": 16588,
+          "cache_tokens": 0,
+          "request_sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+          "guard_phase_start_epoch_estimate": 1792900504.3523583,
+          "guard_phase_end_epoch_estimate": 1792900546.6833558,
+          "median_ttft_s": 18.37025395903038
+        },
+        "mixed": {
+          "wall_s": 48.76221526507288,
+          "tps": 41.999732556591404,
+          "output_tokens": 2048,
+          "prompt_tokens": 20685,
+          "cache_tokens": 0,
+          "request_sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961",
+          "guard_phase_start_epoch_estimate": 1792900546.9518836,
+          "guard_phase_end_epoch_estimate": 1792900596.235392,
+          "median_ttft_s": 15.56352784507908
+        }
+      }
+    },
+    "hp-gpu-b1": {
+      "config_sha256": "e0a2bf585820852a2003050651469c6bcddfc6a5042b5c9c94b160517069c884",
+      "binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+      "pid": 25741,
+      "gpu_sampling": true,
+      "started_epoch": 1792903205.0150988,
+      "guard": {
+        "observations": 69,
+        "minimum_free_mib": 1707,
+        "maximum_gap_s": 1.1470036506652832,
+        "first_epoch": 1792903359.1452916,
+        "last_epoch": 1792903433.3794744
+      },
+      "phases": {
+        "fixed": {
+          "wall_s": 27.162822259939276,
+          "tps": 75.3971726649504,
+          "output_tokens": 2048,
+          "prompt_tokens": 16588,
+          "cache_tokens": 0,
+          "request_sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+          "guard_phase_start_epoch_estimate": 1792903369.1821125,
+          "guard_phase_end_epoch_estimate": 1792903396.7491958,
+          "median_ttft_s": 12.909149093437009
+        },
+        "mixed": {
+          "wall_s": 32.96167649398558,
+          "tps": 62.13276197810183,
+          "output_tokens": 2048,
+          "prompt_tokens": 20685,
+          "cache_tokens": 0,
+          "request_sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961",
+          "guard_phase_start_epoch_estimate": 1792903397.0109737,
+          "guard_phase_end_epoch_estimate": 1792903430.5910637,
+          "median_ttft_s": 11.022184064495377
+        }
+      }
+    },
+    "hp-gpu-b2": {
+      "config_sha256": "e9536f161bf7cbaba943a1bbc48b088bd515aaa8de2b36d06a9a921ded3453ee",
+      "binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+      "pid": 26115,
+      "gpu_sampling": true,
+      "started_epoch": 1792903441.6513486,
+      "guard": {
+        "observations": 68,
+        "minimum_free_mib": 1711,
+        "maximum_gap_s": 1.1384646892547607,
+        "first_epoch": 1792903599.0640218,
+        "last_epoch": 1792903672.1689303
+      },
+      "phases": {
+        "fixed": {
+          "wall_s": 27.270288003026508,
+          "tps": 75.1000502734958,
+          "output_tokens": 2048,
+          "prompt_tokens": 16588,
+          "cache_tokens": 0,
+          "request_sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+          "guard_phase_start_epoch_estimate": 1792903609.0242093,
+          "guard_phase_end_epoch_estimate": 1792903636.562842,
+          "median_ttft_s": 12.977444892982021
+        },
+        "mixed": {
+          "wall_s": 32.87769393599592,
+          "tps": 62.29147348311315,
+          "output_tokens": 2048,
+          "prompt_tokens": 20685,
+          "cache_tokens": 0,
+          "request_sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961",
+          "guard_phase_start_epoch_estimate": 1792903636.8197634,
+          "guard_phase_end_epoch_estimate": 1792903669.954436,
+          "median_ttft_s": 10.938580768997781
+        }
+      }
+    },
+    "hp-cpu-a2": {
+      "config_sha256": "86b29bd475192a786522d24b4e5d20057c53777a5b24c171ef90ffa7277311b5",
+      "binary_sha256": "b9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4",
+      "pid": 26492,
+      "gpu_sampling": false,
+      "started_epoch": 1792903681.709265,
+      "guard": {
+        "observations": 99,
+        "minimum_free_mib": 1741,
+        "maximum_gap_s": 1.1371073722839355,
+        "first_epoch": 1792903839.0850704,
+        "last_epoch": 1792903946.8407736
+      },
+      "phases": {
+        "fixed": {
+          "wall_s": 41.39196014904883,
+          "tps": 49.47820766702836,
+          "output_tokens": 2048,
+          "prompt_tokens": 16588,
+          "cache_tokens": 0,
+          "request_sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+          "guard_phase_start_epoch_estimate": 1792903853.5389264,
+          "guard_phase_end_epoch_estimate": 1792903895.5346525,
+          "median_ttft_s": 18.06685388594633
+        },
+        "mixed": {
+          "wall_s": 48.60013291891664,
+          "tps": 42.13980244491999,
+          "output_tokens": 2048,
+          "prompt_tokens": 20685,
+          "cache_tokens": 0,
+          "request_sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961",
+          "guard_phase_start_epoch_estimate": 1792903895.8111982,
+          "guard_phase_end_epoch_estimate": 1792903944.8263073,
+          "median_ttft_s": 15.54800933500519
+        }
+      }
+    }
+  },
+  "pairs": {
+    "A1_to_B1": {
+      "fixed": {
+        "CPU_tps": 48.98387889449471,
+        "GPU_tps": 75.3971726649504,
+        "gain_percent": 53.92242175705746
+      },
+      "mixed": {
+        "CPU_tps": 41.999732556591404,
+        "GPU_tps": 62.13276197810183,
+        "gain_percent": 47.93608957957702
+      }
+    },
+    "B2_vs_A2": {
+      "fixed": {
+        "CPU_tps": 49.47820766702836,
+        "GPU_tps": 75.1000502734958,
+        "gain_percent": 51.78409609922372
+      },
+      "mixed": {
+        "CPU_tps": 42.13980244491999,
+        "GPU_tps": 62.29147348311315,
+        "gain_percent": 47.8209907712144
+      }
+    }
+  },
+  "errors": [],
+  "limits": [
+    "These are whole-request tokens/s at fixed output budgets, including prefill; generated trajectories can differ under CPU/GPU sampling RNG consumption and reductions.",
+    "Two swapped pairs on one rental are evidence for this workload, not a confidence interval or proof that HP beats DP.",
+    "Guard coverage is sampled at approximately1Hz, not a guarantee over unsampled subintervals. Guard wall alignment uses recorded server start epoch plus telemetry uptime.",
+    "A1 used an earlier fresh CPU server; source/binary differences, source-bound audit and matching unchanged CUDA module are retained for attribution. Quality and final promotion remain separate gates."
+  ],
+  "source_binding": {
+    "GPU_source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+    "GPU_source_sha256": {
+      "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+      "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+      "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+    },
+    "CPU_binary_sha256": "b9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4",
+    "GPU_binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+    "shared_fatbin_sha256": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5",
+    "CPU_build_receipt": "receipts/candidate-build-proof.json",
+    "GPU_build_receipt": "hp-sampling-v3-build-proof.json"
+  },
+  "normalized_config": {
+    "settings": {
+      "head_parallel": true,
+      "ctx": 262144,
+      "slots": 4,
+      "graphs": 4,
+      "chunk": 64,
+      "spec_k": 5,
+      "theta": 0.35,
+      "profile": false,
+      "loop_profile": 0,
+      "graph_trace": false
+    },
+    "model": "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+    "environment": {
+      "VOLTA_GRAPHS": "4",
+      "VOLTA_GPU_SAMPLE": "1",
+      "VOLTA_MEGA": "0",
+      "VOLTA_KV": "fp4",
+      "VOLTA_OVERLAP": "1",
+      "VOLTA_SHARED_TP": "1",
+      "VOLTA_SHARED_EARLY": "0"
+    },
+    "command": [
+      "--model",
+      "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+      "--gpus",
+      "8",
+      "--slots",
+      "4",
+      "--ctx",
+      "262144",
+      "--chunk",
+      "64",
+      "--spec-k",
+      "5",
+      "--theta",
+      "0.35",
+      "--temperature",
+      "0.7",
+      "--top-p",
+      "1",
+      "--max-tokens",
+      "16384",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8090",
+      "--admin-port",
+      "8091",
+      "--head-parallel"
+    ]
+  },
+  "request_sha256": {
+    "fixed": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+    "mixed": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961"
+  },
+  "drift_percent": {
+    "fixed": {
+      "CPU_A2_over_A1": 1.0091662475288476,
+      "GPU_B2_over_B1": -0.394076304127422
+    },
+    "mixed": {
+      "CPU_A2_over_A1": 0.3335018577555138,
+      "GPU_B2_over_B1": 0.2554393205105754
+    }
+  },
+  "timing_gate_passed": true
+}

@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "runtime_source_commit": "78d2dc90afb4c9782c2893caf8106bf2e754e827",
+  "model_bytes": 441574130240,
+  "model_sha256": "9d15a1d6f263b25bb3bf0eb1b887c9c6d7176083b8a9bd55c998e8658e52000c",
+  "scope": "Tested Ubuntu24.04 V100 CUDA runtime binaries; platform/dependencies recorded in archive manifest; not a portable system image",
+  "files": {
+    "runtime.tar.gz": {
+      "bytes": 72327569,
+      "sha256": "6c257ccdddea4901a50016b5dfd0911c10a893d56b9b2306c66b624b519776c2"
+    },
+    "source.tar.gz": {
+      "bytes": 8984031,
+      "sha256": "dff1e52077449d78b4e590443d324736abdda2b093529ab238cce8d363122bdd"
+    }
+  },
+  "verification": "All three cached artifacts uploaded and downloaded via rclone check: zero differences, three matches. Workstation bulk cap214MiB/s with control headroom.",
+  "note": "Private R2 object locations omitted. Initial packaging failed because zstd was absent; bounded gzip packaging succeeded without GPU work."
+}

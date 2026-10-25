@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Parse existing VOLTA_STEPT text; optional same-process V2 trace labels t. CPU only."""
+import argparse
+from collections import Counter, defaultdict
+import importlib.util
+import json
+import math
+from pathlib import Path
+import re
+import statistics
+import tempfile
+
+PATTERN = re.compile(r'^GPU(\d+) step at ([\d.]+): begin ([\d.]+) ms, layers ([\d.]+), finish ([\d.]+)$')
+
+
+def require(ok, message):
+    if not ok: raise ValueError(message)
+
+
+def stats(rows):
+    if not rows: return None
+    result = {'steps':len(rows)}
+    for field in ['begin_ms','layers_ms','finish_ms']:
+        v=sorted(r[field] for r in rows)
+        result[field]={'sum':sum(v),'mean':statistics.fmean(v),'median':statistics.median(v),
+                       'p95':v[math.ceil(.95*len(v))-1],'min':v[0],'max':v[-1]}
+    total=sum(r['begin_ms']+r['layers_ms']+r['finish_ms'] for r in rows)
+    result['observed_phase_sum_ms']=total
+    result['finish_share_of_observed_phase_sum']=sum(r['finish_ms'] for r in rows)/total if total else None
+    return result
+
+
+def category(t):
+    if t is None:return 'unknown_t'
+    if 1<=t<=6:return 't1_6_hint'
+    if t==32:return 't32'
+    if t==64:return 't64'
+    if 7<=t<=9:return 't7_9_hint'
+    return 'other_positive_t'
+
+
+def parse(log, trace_dir=None, config_path=None, wall_seconds=None, start=1, end=None):
+    grouped=defaultdict(list)
+    for line in log.read_text().splitlines():
+        m=PATTERN.match(line.strip())
+        if not m:continue
+        gpu=int(m[1]);require(0<=gpu<8,'unexpected GPU ordinal')
+        values=list(map(float,m.groups()[1:]));require(all(math.isfinite(v) and v>=0 for v in values),'invalid STEPT duration')
+        grouped[gpu].append(dict(gpu=gpu,at_ms=values[0],begin_ms=values[1],layers_ms=values[2],finish_ms=values[3],t=None,trace_seq=None))
+    require(grouped,'no VOLTA_STEPT lines found')
+    cfg=None
+    if trace_dir:
+        require(config_path is not None,'same-process configuration receipt is required for trace labeling')
+        cfg=json.loads(config_path.read_text())
+        require(cfg.get('profile') is True and cfg.get('graph_trace') is True,'configuration must enable STEPT and graph trace together')
+        require(cfg.get('engine')=='graph-diag' and cfg.get('binary')=='/root/volta-graph-diag-v2/target-v2/release/volta-server','need V2 diagnostic binary')
+        require(cfg.get('binary_sha256')=='fd6c71b58683a113b2b4746526c32681dd43933af5fcd5e37eb81500e7f593e1','unexpected binary hash')
+        require(cfg.get('volta_environment',{}).get('VOLTA_GRAPH_TRACE')=='/root/graph-traces/'+cfg['name'],'trace directory provenance differs from configuration')
+        require(log.name==Path(cfg['log']).name or (log.name=='server.log' and log.parent.resolve()==trace_dir.resolve()),
+                'use original configured stderr filename or server.log archived beside this run trace')
+        require(trace_dir.name==cfg['name'],'local trace directory must retain configured run name')
+        spec=importlib.util.spec_from_file_location('graph_validator',Path(__file__).with_name('analyze-graph-trace.py'))
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        require({p.name for p in trace_dir.glob('gpu*.jsonl')}=={f'gpu{i}.jsonl' for i in range(8)},'need eight complete-prefix trace files')
+        for gpu in range(8):
+            steps,_,_,_,header=module.validate(trace_dir/f'gpu{gpu}.jsonl',gpu,1)
+            require(header.get('version')==2,'wall alignment requires V2 trace')
+            require(cfg['started_epoch']<=header['wall_epoch_ns']/1e9<=cfg['started_epoch']+480,'trace header outside configured launch/load window')
+            positive=[r for r in steps if r['t']>0]
+            lines=grouped[gpu]
+            require(len(lines)>=len(positive),f'GPU{gpu}: STEPT log lacks prefix lines for visible nonzero-t records')
+            require(all(b['at_ms']>=a['at_ms'] for a,b in zip(lines,lines[1:])),f'GPU{gpu}: STEPT order regressed')
+            # Existing STEPT omits t0, whereas graph trace includes it. Join positive-t ordinals only.
+            for line,row in zip(lines,positive):
+                line.update(t=row['t'],trace_seq=row['seq'],record_epoch_ns=header['wall_epoch_ns']+row['elapsed_ns'])
+    all_rows=[r for g in sorted(grouped) for r in grouped[g]]
+    selected=[r for r in all_rows if (r['trace_seq'] is not None and r['trace_seq']>=start and (end is None or r['trace_seq']<=end)) or (not trace_dir)]
+    require(selected,'selected STEPT interval empty')
+    output={'evidence':'ACTUAL_LOG_INPUT; no standalone GPU experiment launched by parser',
+            'log':str(log),'same_process_trace':str(trace_dir) if trace_dir else None,
+            'classification':'same-process positive-t ordinal join' if trace_dir else 'unknown_t; existing STEPT text has no token count',
+            'selected_seq_interval':{'start':start,'end':end},
+            'parsed_lines':len(all_rows),'selected_lines':len(selected),
+            'unclassified_tail_lines':sum(r['t'] is None for r in all_rows),
+            'gpus':[],'limits':['STEPT synchronizes after begin/layers and perturbs scheduling; this is diagnostic timing, not primary throughput',
+                'finish includes HC pre/RMS, head, sampler/argmax and download; it is an upper bound on removable head cost',
+                'v2 elapsed timestamp is after host layer enqueue, not a synchronized GPU boundary',
+                't1..6 imply generation only under verified prompt-tail/slots protocol; t32/64 are prefill hints, not universal phase labels',
+                'all per-GPU phase sums overlap across GPUs; never add them as serial request wall time',
+                'same-process configuration/full-log provenance is required; separate run traces cannot label this log',
+                'first4096trace steps and complete64-step batches only; unflushed or later STEPT tail has unknown t']}
+    for gpu in range(8):
+        rows=[r for r in selected if r['gpu']==gpu]
+        output['gpus'].append({'gpu':gpu,'overall':stats(rows),
+            'by_t_class':{label:stats([r for r in rows if category(r['t'])==label]) for label in ['t1_6_hint','t32','t64','t7_9_hint','other_positive_t','unknown_t']}})
+    if trace_dir:
+        bystep=defaultdict(list)
+        for r in selected:bystep[r['trace_seq']].append(r)
+        candidate=sum(max(r['finish_ms'] for r in rows if 32<=r['t']<=64) for rows in bystep.values() if any(32<=r['t']<=64 for r in rows))
+        output['head_screen_upper_bound']={'potential_t32_through64_steps':sum(any(32<=r['t']<=64 for r in rows) for rows in bystep.values()),
+            'sum_per_step_max_t32_through64_finish_ms':candidate,
+            'scope':'upper bound only for selected t32..64 candidate GPUs; other tail sizes and unknown records excluded',
+            'dp_slots1_configuration':cfg.get('slots')==1 and not cfg.get('head_parallel',False)}
+        if wall_seconds is not None:
+            require(wall_seconds>0,'wall seconds must be positive')
+            output['head_screen_upper_bound'].update(caller_supplied_matching_interval_wall_s=wall_seconds,
+                fraction_of_matching_wall=candidate/(wall_seconds*1000),
+                below_five_percent_for_covered_steps=candidate/(wall_seconds*1000)<.05,
+                denominator_warning='Caller must match this exact selected profile interval; omitted tail/prefill sizes or truncated coverage prevent a whole-trace kill conclusion.')
+    return output
+
+
+def self_test():
+    with tempfile.TemporaryDirectory() as tmp:
+        p=Path(tmp)/'plain.log';p.write_text('model mapped\nGPU0 step at 0.00: begin 1.00 ms, layers 8.00, finish 1.00\nGPU0 step at 10.00: begin 1.00 ms, layers 8.00, finish 1.00\nGPU1 step at 0.00: begin 2.00 ms, layers 6.00, finish 2.00\n')
+        r=parse(p);assert r['classification'].startswith('unknown_t')
+        assert r['gpus'][0]['by_t_class']['unknown_t']['steps']==2
+        assert r['gpus'][0]['overall']['finish_share_of_observed_phase_sum']==.1
+        assert r['gpus'][1]['overall']['finish_share_of_observed_phase_sum']==.2
+        try:parse(p,Path(tmp))
+        except ValueError:pass
+        else:raise AssertionError('trace labeling without provenance accepted')
+        # Complete same-process fixture includes idle t0 records, which STEPT does not print.
+        run=Path(tmp)/'profile-fixture';run.mkdir();lines=[]
+        labels=['hit','warm','capture','budget','full','failure','forced']
+        for gpu in range(8):
+            trace=[];counts={};resident=set();warm=set()
+            for seq in range(1,65):
+                t=(64 if seq<=32 else 6) if gpu==0 else (6 if gpu==1 and seq%2==0 else 0)
+                key=(t,256 if t==64 else 8192 if t else 64)
+                if key in resident:decision='hit'
+                elif key in warm:decision='capture';resident.add(key)
+                else:decision='warm';warm.add(key)
+                counts.setdefault(key,[0]*7)[labels.index(decision)]+=1
+                trace.append({'kind':'step','gpu':gpu,'seq':seq,'t':t,'bucket':key[1],'decision':decision,
+                    'resident_count':len(resident),'resident_keys':sorted(map(list,resident)),'resident_keys_truncated':False,
+                    'small_t_hint':1<=t<=9,'full':False,'limit':4,'capture_ns':0,'elapsed_ns':seq*10000000,'host_enqueue_backpressure_ns':123000})
+                if t:lines.append(f'GPU{gpu} step at {seq*10:.2f}: begin 1.00 ms, layers 8.00, finish 1.00')
+            rows=[{'kind':'header','version':2,'wall_epoch_ns':1700000000000000000,'gpu':gpu,
+                   'labels':labels,'step_limit':4096,'file_byte_limit':4194304}]+trace+[
+                   {'kind':'summary','gpu':gpu,'observed_steps':64,'trace_steps':64,'trace_truncated':False,
+                    'counts':[[*key,c] for key,c in sorted(counts.items())]}]
+            (run/f'gpu{gpu}.jsonl').write_text(''.join(json.dumps(x)+'\n' for x in rows))
+        log=Path(tmp)/'server-profile-fixture.log';log.write_text('\n'.join(lines)+'\n')
+        cfg={'profile':True,'graph_trace':True,'engine':'graph-diag','name':'profile-fixture','slots':1,'head_parallel':False,
+             'binary':'/root/volta-graph-diag-v2/target-v2/release/volta-server',
+             'binary_sha256':'fd6c71b58683a113b2b4746526c32681dd43933af5fcd5e37eb81500e7f593e1',
+             'volta_environment':{'VOLTA_GRAPH_TRACE':'/root/graph-traces/profile-fixture'},'started_epoch':1699999999,
+             'log':'/root/server-profile-fixture.log'}
+        cfgpath=Path(tmp)/'configuration.json';cfgpath.write_text(json.dumps(cfg))
+        joined=parse(log,run,cfgpath,1)
+        assert joined['gpus'][0]['by_t_class']['t64']['steps']==32
+        assert joined['gpus'][0]['by_t_class']['t1_6_hint']['steps']==32
+        assert joined['gpus'][1]['overall']['steps']==32 and joined['gpus'][2]['overall'] is None
+        assert joined['head_screen_upper_bound']['sum_per_step_max_t32_through64_finish_ms']==32
+        assert joined['head_screen_upper_bound']['fraction_of_matching_wall']==.032
+        return {'evidence':'SYNTHETIC_CPU_FIXTURE_ONLY','status':'passed','actual_log_analyzed':False,
+                'checks':['existing STEPT regex','per-GPU durations/shares','standalone log remains unknown_t','trace join requires provenance','same-process join skips t0 correctly','t64/small-t grouping','per-step maximum finish bound']}
+
+
+def main():
+    ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('log',type=Path,nargs='?')
+    ap.add_argument('--trace-dir',type=Path);ap.add_argument('--configuration',type=Path)
+    ap.add_argument('--wall-seconds',type=float);ap.add_argument('--start-seq',type=int,default=1);ap.add_argument('--end-seq',type=int)
+    ap.add_argument('--out',type=Path);ap.add_argument('--self-test',action='store_true');a=ap.parse_args()
+    require(a.self_test or a.log is not None,'supply a log or --self-test')
+    result=self_test() if a.self_test else parse(a.log,a.trace_dir,a.configuration,a.wall_seconds,a.start_seq,a.end_seq)
+    data=json.dumps(result,indent=2)+'\n'
+    if a.out:
+        with a.out.open('x') as f:f.write(data)
+    else:print(data,end='')
+if __name__=='__main__':main()

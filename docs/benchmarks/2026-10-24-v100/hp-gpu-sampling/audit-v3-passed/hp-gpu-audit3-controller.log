@@ -1,0 +1,11 @@
+{"ready": true, "pid": 25169, "run": "/home/lxe/volta-sixhour-20261024/server-runs/hp-gpu-audit3"}
+{"first_observation_verified": true, "observation_path": "/root/memory-hp-gpu-audit3.jsonl", "server_pid": 25169, "guard_pid": 25352, "command": ["python3", "/root/memory-guard.py", "--name", "hp-gpu-audit3", "--receipt-name", "hp-gpu-audit3", "--min-free-mib", "192", "--until", "1792904727.3971384"], "ready_free_mib": [[0, 1847], [1, 1879], [2, 1879], [3, 1879], [4, 1879], [5, 1879], [6, 1879], [7, 1879]], "log": "/root/memory-guard-hp-gpu-audit3.log", "until": 1792904727.3971384}
+{"phase": "sampled-prefill-decode", "requests": 1, "prompt_tokens": 556, "output_tokens": 128, "max_active": 1, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "mixed-greedy-sampled", "requests": 4, "prompt_tokens": 2224, "output_tokens": 1024, "max_active": 4, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "top-p-fallback", "requests": 1, "prompt_tokens": 556, "output_tokens": 64, "max_active": 1, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "hesitation-fallback", "requests": 1, "prompt_tokens": 582, "output_tokens": 64, "max_active": 1, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "pure-greedy", "requests": 1, "prompt_tokens": 556, "output_tokens": 64, "max_active": 1, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "staggered-prefill", "requests": 4, "prompt_tokens": 9904, "output_tokens": 2048, "max_active": 4, "max_queued": 0, "cached_tokens_delta": 0}
+{"status": "PASS", "audits": 598, "missing": [], "errors": 0, "out": "/home/lxe/volta-sixhour-20261024/receipts/hp-gpu-audit3-analysis.json"}
+{"client_exit_code": 0, "analyzer_exit_code": 0, "actual_server_pid": 25169, "actual_server_binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363", "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605", "guard_observations": 52, "minimum_free_mib": 1643, "evidence_copied": [{"remote_file": "server-hp-gpu-audit3.log", "returncode": 0, "stderr": ""}, {"remote_file": "memory-hp-gpu-audit3.jsonl", "returncode": 0, "stderr": ""}]}
+HP_GPU_AUDIT3_PASSED

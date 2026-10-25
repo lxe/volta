@@ -1,0 +1,10 @@
+{
+  "source_archive_sha256": "8026da8eaf5e20ff9c25bd9a411296071f804b2b21ac2d46278e8349133c7260",
+  "source_matches_local": true,
+  "baseline_binary_sha256": "9c82a8e15e96855badeb4128a7af7e01ab28d015fa575c717a36fc156513d1a9",
+  "candidate_binary_sha256": "0af9878a69d9e04c981ac5f5e17c8036a9cfa4b2d3786413fdd06b06a812c22f",
+  "fresh_target_dir": "/root/volta-candidate/target",
+  "CUDA_ARCHS": "70",
+  "NVCC": "/usr/local/cuda-12.9/bin/nvcc",
+  "activated": false
+}

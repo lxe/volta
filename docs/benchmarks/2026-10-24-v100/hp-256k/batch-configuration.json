@@ -1,0 +1,8 @@
+{
+  "name": "hp4-256-profile",
+  "context": 262144,
+  "heads": true,
+  "active_capacity": 4,
+  "allow_queued": true,
+  "batch_source_sha256": "3bf07975a046188af9543edead2a836fc6402f880bc6556d771f98d8923ac3de"
+}

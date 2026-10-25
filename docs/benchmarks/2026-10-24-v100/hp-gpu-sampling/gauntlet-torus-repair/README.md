@@ -1,0 +1,9 @@
+# Separate HP torus repair attempt
+
+This archive records a parent-requested follow-up after source review found that the original torus discarded its normal lighting and used per-character depth. It is separate from gauntlet-original, whose four original source files, metrics and closed recording remain unchanged. The repair used five additional model requests and 2,317 generated tokens according to the preserved server-counter delta. These tokens and requests are not part of the original gauntlet's totals.
+
+The prompt, agent's final response, initial/final server statistics, actual repaired source, closed recording, repair launcher/closer and validator source are retained. The complete torus session log includes the original conversation followed by this repair; prompt.txt and agent-final.txt identify the repair request and final response. animation-evidence-after-repair.json binds the repaired source to three distinct observed live Braille frames. Raw captured frames are included for all four panes. No screenshot containing private desktop background is included.
+
+The repaired render.py SHA-256 is d61391d5a9473eeb4ebf2243ce71582fe060009a48012658fd1ce26598667880. The CPU source review confirms per-dot depth and intensity plus actual Bayer-thresholded normal shading. The parent owns live visual observation. Cube clipping and pyramid depth/coverage limitations remain; this record does not claim that every requested four-shape requirement passed.
+
+repair.cast.gz decompresses to the exact recording described by cast-receipt.json. archive-validation.json records the compression round trip and validator/source binding. SHA256SUMS.json covers all archived files except itself. Archive preparation and source review performed no renderer execution, remote operations or GPU work, and did not modify the running programs.

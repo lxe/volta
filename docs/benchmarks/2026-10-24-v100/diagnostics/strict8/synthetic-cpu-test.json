@@ -1,0 +1,19 @@
+{
+  "evidence": "SYNTHETIC_CPU_FIXTURE_ONLY",
+  "status": "passed",
+  "checks": [
+    "eight-file validation",
+    "per-key counts",
+    "resident integrity",
+    "hot/stale evidence gate",
+    "two hysteresis replacements",
+    "coverage gain gate",
+    "optional v1/v2 wall alignment and host enqueue statistics",
+    "strict8capacity parameter remains bounded",
+    "eight-replacement cap and64-step spacing",
+    "duplicate sequence rejected",
+    "missing GPU rejected"
+  ],
+  "actual_trace_analyzed": false,
+  "analyzer_sha256": "7eae7817275de70baffa8095b8835153b7f6fc777a70b60841c46327bbc2ade9"
+}

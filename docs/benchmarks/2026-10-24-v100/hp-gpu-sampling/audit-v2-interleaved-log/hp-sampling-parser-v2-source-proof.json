@@ -1,0 +1,13 @@
+{
+  "evidence": "CPU_ONLY_PARSER_PROVENANCE_UPDATE",
+  "source_commit": "48660962e1a80847e27b82a8dceca245564515af",
+  "expected_server_sha256": "f3939f58a70217130a11da15284083d9da22c23df03a8719c4c910f904b88227",
+  "files_sha256": {
+    "analyze-hp-sampling-audit.py": "f65a044894c258faf4b3f9e6055295f973bedb6b79bb317ffb9dec0d832be30a",
+    "test-hp-sampling-audit.py": "003fc2e54509b711b045dd8e38b51e96cb17149ffef840dadb91e424f874590f",
+    "hp-sampling-audit-parser-protocol.md": "7e652afbf8b019717976acf638191a351656ecf09557099394e263ad26f8f88e",
+    "receipts/hp-sampling-parser-v2-synthetic/summary.json": "c03d9e51caf0731d912ce494bff97fa77d7a17cab72de30162e4af6dbe510fda"
+  },
+  "synthetic_cases": 19,
+  "GPU_launches": 0
+}

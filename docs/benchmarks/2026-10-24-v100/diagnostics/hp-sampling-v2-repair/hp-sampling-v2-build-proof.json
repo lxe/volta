@@ -1,0 +1,51 @@
+{
+  "source_commit": "48660962e1a80847e27b82a8dceca245564515af",
+  "build_start_utc": "2026-10-25T04:22:17Z",
+  "build_end_utc": "2026-10-25T04:22:52Z",
+  "cargo_seconds": 34.34,
+  "source_receipt": {
+    "base_worktree_commit": "fc505a130a9dca7e85ec8f8d96e9c45666c4d021",
+    "prototype_source_commit": "acf798786b1962f5ea45ecbebc6cf114f2126b81",
+    "source_sha256": {
+      "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+      "engine/src/volta.rs": "9926e1c5cb86846c25a0dd7b6eb6669b8581e121ba1e320d1d94d01bea2082c9",
+      "engine/src/server/volta.rs": "2f871c5da82894bb573b95713a66e89473459cc1c10191a01b55fb44e0100051"
+    },
+    "source_archive_sha256": "431ab4e6310ad1d129977155b5fee702c657780a6814f8d36d2001636b111e16",
+    "repair_patch_sha256": "680b39c518f06a8ff95f7fd8620e3ee71b12bdb0f1659756f83ac685a72ba7e5",
+    "repair": "valid struct literals replace invalid zero-initialized Rust enums; pure constructor CPU test",
+    "kernel_changes": false,
+    "GPU_launches": 0
+  },
+  "remote_source_sha256": {
+    "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+    "engine/src/volta.rs": "9926e1c5cb86846c25a0dd7b6eb6669b8581e121ba1e320d1d94d01bea2082c9",
+    "engine/src/server/volta.rs": "2f871c5da82894bb573b95713a66e89473459cc1c10191a01b55fb44e0100051"
+  },
+  "binaries_sha256": {
+    "/root/volta-hp-sampling-v2/target-hp-sampling-v2/release/volta-server": "f3939f58a70217130a11da15284083d9da22c23df03a8719c4c910f904b88227",
+    "/root/volta-hp-sampling-v2/target-hp-sampling-v2/release/volta": "75bd7b33c0cc9464e66c7601e07c674c7444b63f5d834c2c27399b0efda9a6b5"
+  },
+  "fatbins": {
+    "/root/volta-hp-sampling-v2/target-hp-sampling-v2/release/build/dsx-b2944b73405876f5/out/dsx.fatbin": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5"
+  },
+  "kernel_sources_unchanged": true,
+  "v1_binaries_preserved": {
+    "volta-server": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+    "volta": "601306326a113c868adafb53525ae2eef72c66a5750b76fe2e1843930e277aa5"
+  },
+  "v1_gpu_source_preserved_sha256": "b84deb7f5a1117027798c763674ea81acea53c59e83721a32be03637387c0b2d",
+  "build_admission": {
+    "utc": "2026-10-25T04:22:16.504339+00:00",
+    "live_model_processes": [],
+    "GPU_compute_processes": "",
+    "v1_binaries_sha256": {
+      "volta-server": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+      "volta": "601306326a113c868adafb53525ae2eef72c66a5750b76fe2e1843930e277aa5"
+    },
+    "repair_source_commit": "48660962e1a80847e27b82a8dceca245564515af"
+  },
+  "compiler_processes": "",
+  "GPU_model_launches": 0,
+  "verified_utc": "2026-10-25T04:23:17.908225+00:00"
+}

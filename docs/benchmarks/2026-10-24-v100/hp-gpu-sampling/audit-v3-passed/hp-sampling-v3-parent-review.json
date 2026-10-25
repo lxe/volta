@@ -1,0 +1,13 @@
+{
+  "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+  "logging_only_diff_reviewed": "Both audit sites format the complete label/JSON/newline into one String before one locked stderr write_all; I/O failures propagate only inside audit branches. No numeric, copy, sampler or kernel change.",
+  "prior_initializer_review": "hp-sampling-v2-parent-review.json",
+  "source_matches_built_commit": "Verified for all three engine files by run-hp-audit-v3.py before launch.",
+  "server_binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+  "fatbin_sha256": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5",
+  "actual_numerical_audits": 598,
+  "actual_checked_bytes": 9032535040,
+  "actual_strict_log_errors": 0,
+  "coverage_complete": true,
+  "teacher_quality": "In progress; no throughput claim yet."
+}

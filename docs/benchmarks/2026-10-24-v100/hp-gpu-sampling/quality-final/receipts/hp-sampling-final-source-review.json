@@ -1,0 +1,23 @@
+{
+  "evidence": "FINAL_SOURCE_REVIEW_SUPPLEMENT_CPU_ONLY",
+  "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+  "working_source_sha256": {
+    "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+    "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+    "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+  },
+  "build_proof_sha256": "faf10e0091dafeaa9202fa57914ecafa9cde38cd75870387dd5aa03cad7f3152",
+  "literal_enums_and_reserved_fields_reviewed": true,
+  "complete_line_stderr_write_reviewed": true,
+  "runner_and_worker_compile_checked": true,
+  "runner_files_sha256": {
+    "teacher-hp-flag-pair.py": "cbce403783ed4e8b1a820da5fda3612809da282914b0ecf941cfd8b30d0941f1",
+    "teacher-hp-flag-pair-worker.py": "d5477d38b5bd64ed4b4314b239159c7385a8b586d94dfa8164b8a99f9084c669"
+  },
+  "path_preflight_sha256": "7a550e17e73d021be03b7e8ff8a570bc45048b84c697857b99c26ee45096b5c3",
+  "bugs_retained": [
+    "V1 invalid zero-initialized Rust CUDA enum aborted first sampled prefill",
+    "V2 fragmented serde display interleaved with stdout and failed strict JSON gate"
+  ],
+  "GPU_launches": 0
+}

@@ -1,0 +1,15 @@
+{"ready": true, "pid": 24433, "run": "/home/lxe/volta-sixhour-20261024/server-runs/hp-gpu-audit2"}
+{"first_observation_verified": true, "observation_path": "/root/memory-hp-gpu-audit2.jsonl", "server_pid": 24433, "guard_pid": 24616, "command": ["python3", "/root/memory-guard.py", "--name", "hp-gpu-audit2", "--receipt-name", "hp-gpu-audit2", "--min-free-mib", "192", "--until", "1792904201.3818831"], "ready_free_mib": [[0, 1847], [1, 1879], [2, 1879], [3, 1879], [4, 1879], [5, 1879], [6, 1879], [7, 1879]], "log": "/root/memory-guard-hp-gpu-audit2.log", "until": 1792904201.3818831}
+{"phase": "sampled-prefill-decode", "requests": 1, "prompt_tokens": 556, "output_tokens": 128, "max_active": 1, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "mixed-greedy-sampled", "requests": 4, "prompt_tokens": 2224, "output_tokens": 1024, "max_active": 4, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "top-p-fallback", "requests": 1, "prompt_tokens": 556, "output_tokens": 64, "max_active": 1, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "hesitation-fallback", "requests": 1, "prompt_tokens": 582, "output_tokens": 64, "max_active": 1, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "pure-greedy", "requests": 1, "prompt_tokens": 556, "output_tokens": 64, "max_active": 1, "max_queued": 0, "cached_tokens_delta": 0}
+{"phase": "staggered-prefill", "requests": 4, "prompt_tokens": 9904, "output_tokens": 2048, "max_active": 4, "max_queued": 0, "cached_tokens_delta": 0}
+{"status": "FAIL", "audits": 614, "missing": [], "errors": 1, "out": "/home/lxe/volta-sixhour-20261024/receipts/hp-gpu-audit2-analysis.json"}
+{"client_exit_code": 0, "analyzer_exit_code": 1, "actual_server_pid": 24433, "actual_server_binary_sha256": "f3939f58a70217130a11da15284083d9da22c23df03a8719c4c910f904b88227", "source_commit": "48660962e1a80847e27b82a8dceca245564515af", "guard_observations": 54, "minimum_free_mib": 1663, "evidence_copied": [{"remote_file": "server-hp-gpu-audit2.log", "returncode": 0, "stderr": ""}, {"remote_file": "memory-hp-gpu-audit2.jsonl", "returncode": 0, "stderr": ""}]}
+Traceback (most recent call last):
+  File "/home/lxe/volta-sixhour-20261024/run-hp-audit-v2.py", line 32, in <module>
+    assert client.returncode==analysis.returncode==0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

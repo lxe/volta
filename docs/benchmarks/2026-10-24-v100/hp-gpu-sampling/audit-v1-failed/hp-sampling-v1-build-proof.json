@@ -1,0 +1,40 @@
+{
+  "build_start_utc": "2026-10-25T03:57:12Z",
+  "build_end_utc": "2026-10-25T03:58:17Z",
+  "source_receipt": {
+    "source_base": "b93eebfc57bf44a2fb853f2755ad6fa238e6d80e",
+    "source_sha256": {
+      "engine/src/gpu.rs": "b84deb7f5a1117027798c763674ea81acea53c59e83721a32be03637387c0b2d",
+      "engine/src/volta.rs": "9926e1c5cb86846c25a0dd7b6eb6669b8581e121ba1e320d1d94d01bea2082c9",
+      "engine/src/server/volta.rs": "2f871c5da82894bb573b95713a66e89473459cc1c10191a01b55fb44e0100051"
+    },
+    "archive_sha256": "c88991104f5c2c6065b24b95e39491b6704619544d921c49e36c2b1ad5200fe7",
+    "patch_sha256": "6bb164b9406be8dd33ab6b36f807253979befc3a81026ef7b06d1d769e0d4408",
+    "opt_in": "VOLTA_HP_GPU_SAMPLE=1",
+    "audit": "VOLTA_HP_SAMPLE_AUDIT=1024 (0 default,4096max)",
+    "gpu_launches": 0
+  },
+  "remote_source_sha256": {
+    "engine/src/gpu.rs": "b84deb7f5a1117027798c763674ea81acea53c59e83721a32be03637387c0b2d",
+    "engine/src/volta.rs": "9926e1c5cb86846c25a0dd7b6eb6669b8581e121ba1e320d1d94d01bea2082c9",
+    "engine/src/server/volta.rs": "2f871c5da82894bb573b95713a66e89473459cc1c10191a01b55fb44e0100051"
+  },
+  "binaries_sha256": {
+    "/root/volta-hp-sampling-v1/target-hp-sampling-v1/release/volta-server": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+    "/root/volta-hp-sampling-v1/target-hp-sampling-v1/release/volta": "601306326a113c868adafb53525ae2eef72c66a5750b76fe2e1843930e277aa5"
+  },
+  "fatbins": {
+    "/root/volta-hp-sampling-v1/target-hp-sampling-v1/release/build/dsx-b2944b73405876f5/out/dsx.fatbin": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5"
+  },
+  "kernel_source_files_unchanged": 7,
+  "preserved_binaries_sha256": {
+    "frozen": "9c82a8e15e96855badeb4128a7af7e01ab28d015fa575c717a36fc156513d1a9",
+    "guard": "b9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4",
+    "V2": "fd6c71b58683a113b2b4746526c32681dd43933af5fcd5e37eb81500e7f593e1",
+    "V3": "c50eb1df6dc084b116dfe26a07a750ceb9e8b7db3797c38e2f4e956637de5972"
+  },
+  "guard_binding": "current spec-a1/hp-cpu-a1 configuration, not obsolete initial0af hash",
+  "compiler_processes": "",
+  "gpu_model_launches": 0,
+  "verified_utc": "2026-10-25T03:59:20.513280+00:00"
+}

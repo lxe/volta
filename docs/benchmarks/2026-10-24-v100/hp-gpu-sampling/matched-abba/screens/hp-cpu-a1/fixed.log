@@ -1,0 +1,24 @@
+{
+  "label": "sampler-hp-cpu-a1",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 41.809673840063624,
+  "monitor_wall_s": 42.132492584059946,
+  "completed": 4,
+  "requested_output_tokens": 2048,
+  "output_tokens": 2048,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 48.98387889449471,
+  "prompt_tokens": 16588,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 2048,
+  "ttft_s": [
+    14.226815741043538,
+    6.469711089041084,
+    22.51369217701722,
+    31.1812182769645
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.5385290148448043
+}

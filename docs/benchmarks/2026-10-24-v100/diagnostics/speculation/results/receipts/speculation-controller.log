@@ -1,0 +1,124 @@
+{"ready": true, "pid": 22364, "run": "/home/lxe/volta-sixhour-20261024/server-runs/spec-a1"}
+{"first_observation_verified": true, "observation_path": "/root/memory-spec-a1.jsonl", "server_pid": 22364, "guard_pid": 22715, "command": ["python3", "/root/memory-guard.py", "--name", "spec-a1", "--receipt-name", "spec-a1", "--min-free-mib", "192", "--until", "1792902599.4520116"], "ready_free_mib": [[0, 491], [1, 491], [2, 491], [3, 491], [4, 491], [5, 491], [6, 491], [7, 491]], "log": "/root/memory-guard-spec-a1.log", "until": 1792902599.4520116}
+{"arm": "spec-a1", "trace": "warm1", "label": "sampler-spec-a1", "clients": 4, "mixed": false, "wall_s": 2.378201088984497, "monitor_wall_s": 2.7660038319882005, "completed": 4, "requested_output_tokens": 256, "output_tokens": 256, "all_hit_output_budget": true, "output_tokens_per_wall_s": 107.64438767846718, "prompt_tokens": 2260, "cached_tokens_delta": 0, "server_tokens_out_delta": 256, "ttft_s": [1.4066699938848615, 1.407001957995817, 1.4067714689299464, 1.4067849880084395], "ctx": 131072, "heads": false, "acceptance_median": 0.5769230769230769}
+{"arm": "spec-a1", "trace": "warm2", "label": "sampler-spec-a1", "clients": 4, "mixed": false, "wall_s": 2.4996289430418983, "monitor_wall_s": 2.7210011730203405, "completed": 4, "requested_output_tokens": 256, "output_tokens": 256, "all_hit_output_budget": true, "output_tokens_per_wall_s": 102.41520074914133, "prompt_tokens": 2260, "cached_tokens_delta": 0, "server_tokens_out_delta": 256, "ttft_s": [1.4993446739390492, 1.499567040009424, 1.3680130969733, 1.4995270390063524], "ctx": 131072, "heads": false, "acceptance_median": 0.540453074433657}
+{"arm": "spec-a1", "trace": "fixed", "label": "sampler-spec-a1", "clients": 4, "mixed": false, "wall_s": 16.592294216970913, "monitor_wall_s": 16.726630874094553, "completed": 4, "requested_output_tokens": 2048, "output_tokens": 2048, "all_hit_output_budget": true, "output_tokens_per_wall_s": 123.4307910177525, "prompt_tokens": 16588, "cached_tokens_delta": 0, "server_tokens_out_delta": 2048, "ttft_s": [8.43632753600832, 8.436696600052528, 8.43667479394935, 8.331420915084891], "ctx": 131072, "heads": false, "acceptance_median": 0.5346358792184724}
+{"arm": "spec-a1", "trace": "mixed", "label": "sampler-spec-a1", "clients": 4, "mixed": true, "wall_s": 27.76842947595287, "monitor_wall_s": 28.091828785953112, "completed": 4, "requested_output_tokens": 2048, "output_tokens": 2048, "all_hit_output_budget": true, "output_tokens_per_wall_s": 73.75282069061714, "prompt_tokens": 20685, "cached_tokens_delta": 0, "server_tokens_out_delta": 2048, "ttft_s": [7.672168950899504, 7.768553077010438, 7.768652867060155, 12.973327052081004], "ctx": 131072, "heads": false, "acceptance_median": 0.5278495735332127}
+{
+  "label": "spec-a1",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 24.38701403804589,
+  "monitor_wall_s": 24.77060357609298,
+  "completed": 4,
+  "requested_output_tokens": 4096,
+  "output_tokens": 4096,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 167.95824177613048,
+  "prompt_tokens": 16584,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 4096,
+  "ttft_s": [
+    8.425129637005739,
+    8.42530560202431,
+    8.32875106704887,
+    8.328473875997588
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.5265061438984264
+}
+{"name": "spec-a1", "theta": 0.35, "tps": {"fixed": 123.4307910177525, "mixed": 73.75282069061714, "long": 167.95824177613048}}
+{"ready": true, "pid": 22923, "run": "/home/lxe/volta-sixhour-20261024/server-runs/spec-b1"}
+{"first_observation_verified": true, "observation_path": "/root/memory-spec-b1.jsonl", "server_pid": 22923, "guard_pid": 23107, "command": ["python3", "/root/memory-guard.py", "--name", "spec-b1", "--receipt-name", "spec-b1", "--min-free-mib", "192", "--until", "1792902886.8727458"], "ready_free_mib": [[0, 491], [1, 491], [2, 491], [3, 491], [4, 491], [5, 491], [6, 491], [7, 491]], "log": "/root/memory-guard-spec-b1.log", "until": 1792902886.8727458}
+{"arm": "spec-b1", "trace": "warm1", "label": "sampler-spec-b1", "clients": 4, "mixed": false, "wall_s": 2.3660711279371753, "monitor_wall_s": 2.4111329739680514, "completed": 4, "requested_output_tokens": 256, "output_tokens": 256, "all_hit_output_budget": true, "output_tokens_per_wall_s": 108.1962401625643, "prompt_tokens": 2260, "cached_tokens_delta": 0, "server_tokens_out_delta": 256, "ttft_s": [1.3852173750055954, 1.3858598989900202, 1.385599689092487, 1.3856070489855483], "ctx": 131072, "heads": false, "acceptance_median": 0.3783783783783784}
+{"arm": "spec-b1", "trace": "warm2", "label": "sampler-spec-b1", "clients": 4, "mixed": false, "wall_s": 2.3070578520419076, "monitor_wall_s": 2.70241004799027, "completed": 4, "requested_output_tokens": 256, "output_tokens": 256, "all_hit_output_budget": true, "output_tokens_per_wall_s": 110.96384070881538, "prompt_tokens": 2260, "cached_tokens_delta": 0, "server_tokens_out_delta": 256, "ttft_s": [1.4922680660383776, 1.4919247010257095, 1.4918368000071496, 1.3608763290103525], "ctx": 131072, "heads": false, "acceptance_median": 0.4699738903394256}
+{"arm": "spec-b1", "trace": "fixed", "label": "sampler-spec-b1", "clients": 4, "mixed": false, "wall_s": 15.791756163001992, "monitor_wall_s": 15.838313117041253, "completed": 4, "requested_output_tokens": 2048, "output_tokens": 2048, "all_hit_output_budget": true, "output_tokens_per_wall_s": 129.6879193713866, "prompt_tokens": 16588, "cached_tokens_delta": 0, "server_tokens_out_delta": 2048, "ttft_s": [8.329602712998167, 8.329852905939333, 8.406157799065113, 8.406588008976541], "ctx": 131072, "heads": false, "acceptance_median": 0.4654002713704206}
+{"arm": "spec-b1", "trace": "mixed", "label": "sampler-spec-b1", "clients": 4, "mixed": true, "wall_s": 27.37239777308423, "monitor_wall_s": 27.41662507003639, "completed": 4, "requested_output_tokens": 2048, "output_tokens": 2048, "all_hit_output_budget": true, "output_tokens_per_wall_s": 74.81989765667643, "prompt_tokens": 20685, "cached_tokens_delta": 0, "server_tokens_out_delta": 2048, "ttft_s": [7.705259602982551, 7.608367499080487, 7.705134816002101, 13.022329102968797], "ctx": 131072, "heads": false, "acceptance_median": 0.46030431015811135}
+{
+  "label": "spec-b1",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 23.475411035004072,
+  "monitor_wall_s": 23.856674850103445,
+  "completed": 4,
+  "requested_output_tokens": 4096,
+  "output_tokens": 4096,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 174.48043801629177,
+  "prompt_tokens": 16584,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 4096,
+  "ttft_s": [
+    8.319155531935394,
+    8.31929542706348,
+    8.415751410997473,
+    8.415945023996755
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.450486275364123
+}
+{"name": "spec-b1", "theta": 0.2, "tps": {"fixed": 129.6879193713866, "mixed": 74.81989765667643, "long": 174.48043801629177}}
+{"ready": true, "pid": 23309, "run": "/home/lxe/volta-sixhour-20261024/server-runs/spec-b2"}
+{"first_observation_verified": true, "observation_path": "/root/memory-spec-b2.jsonl", "server_pid": 23309, "guard_pid": 23493, "command": ["python3", "/root/memory-guard.py", "--name", "spec-b2", "--receipt-name", "spec-b2", "--min-free-mib", "192", "--until", "1792903169.0608351"], "ready_free_mib": [[0, 491], [1, 491], [2, 491], [3, 491], [4, 491], [5, 491], [6, 491], [7, 491]], "log": "/root/memory-guard-spec-b2.log", "until": 1792903169.0608351}
+{"arm": "spec-b2", "trace": "warm1", "label": "sampler-spec-b2", "clients": 4, "mixed": false, "wall_s": 2.392260718974285, "monitor_wall_s": 2.791623667930253, "completed": 4, "requested_output_tokens": 256, "output_tokens": 256, "all_hit_output_budget": true, "output_tokens_per_wall_s": 107.01174749454715, "prompt_tokens": 2260, "cached_tokens_delta": 0, "server_tokens_out_delta": 256, "ttft_s": [1.4045464639784768, 1.4047625350067392, 1.4047056089621037, 1.4046144851017743], "ctx": 131072, "heads": false, "acceptance_median": 0.4132290184921764}
+{"arm": "spec-b2", "trace": "warm2", "label": "sampler-spec-b2", "clients": 4, "mixed": false, "wall_s": 2.4330951520241797, "monitor_wall_s": 2.7258391180075705, "completed": 4, "requested_output_tokens": 256, "output_tokens": 256, "all_hit_output_budget": true, "output_tokens_per_wall_s": 105.21577825964773, "prompt_tokens": 2260, "cached_tokens_delta": 0, "server_tokens_out_delta": 256, "ttft_s": [1.543552451999858, 1.3964371489128098, 1.5434278480242938, 1.5433123039547354], "ctx": 131072, "heads": false, "acceptance_median": 0.43908629441624364}
+{"arm": "spec-b2", "trace": "fixed", "label": "sampler-spec-b2", "clients": 4, "mixed": false, "wall_s": 15.70277148205787, "monitor_wall_s": 15.751977927982807, "completed": 4, "requested_output_tokens": 2048, "output_tokens": 2048, "all_hit_output_budget": true, "output_tokens_per_wall_s": 130.42283665275673, "prompt_tokens": 16588, "cached_tokens_delta": 0, "server_tokens_out_delta": 2048, "ttft_s": [8.426969786989503, 8.427676860010251, 8.427185859996825, 8.334339160937816], "ctx": 131072, "heads": false, "acceptance_median": 0.4447513812154696}
+{"arm": "spec-b2", "trace": "mixed", "label": "sampler-spec-b2", "clients": 4, "mixed": true, "wall_s": 27.398919278988615, "monitor_wall_s": 27.78247402701527, "completed": 4, "requested_output_tokens": 2048, "output_tokens": 2048, "all_hit_output_budget": true, "output_tokens_per_wall_s": 74.74747376516227, "prompt_tokens": 20685, "cached_tokens_delta": 0, "server_tokens_out_delta": 2048, "ttft_s": [7.712958313990384, 7.713206568034366, 7.616025928989984, 13.122785076033324], "ctx": 131072, "heads": false, "acceptance_median": 0.45294855708908405}
+{
+  "label": "spec-b2",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 24.319723112974316,
+  "monitor_wall_s": 24.35273502394557,
+  "completed": 4,
+  "requested_output_tokens": 4096,
+  "output_tokens": 4096,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 168.4229701535881,
+  "prompt_tokens": 16584,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 4096,
+  "ttft_s": [
+    8.446041768998839,
+    8.342284284066409,
+    8.44634828506969,
+    8.445942144957371
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.4465130023640662
+}
+{"name": "spec-b2", "theta": 0.2, "tps": {"fixed": 130.42283665275673, "mixed": 74.74747376516227, "long": 168.4229701535881}}
+{"ready": true, "pid": 23697, "run": "/home/lxe/volta-sixhour-20261024/server-runs/spec-a2"}
+{"first_observation_verified": true, "observation_path": "/root/memory-spec-a2.jsonl", "server_pid": 23697, "guard_pid": 23881, "command": ["python3", "/root/memory-guard.py", "--name", "spec-a2", "--receipt-name", "spec-a2", "--min-free-mib", "192", "--until", "1792903451.6167424"], "ready_free_mib": [[0, 491], [1, 491], [2, 491], [3, 491], [4, 491], [5, 491], [6, 491], [7, 491]], "log": "/root/memory-guard-spec-a2.log", "until": 1792903451.6167424}
+{"arm": "spec-a2", "trace": "warm1", "label": "sampler-spec-a2", "clients": 4, "mixed": false, "wall_s": 2.4672074009431526, "monitor_wall_s": 2.7491328079486266, "completed": 4, "requested_output_tokens": 256, "output_tokens": 256, "all_hit_output_budget": true, "output_tokens_per_wall_s": 103.76103764204724, "prompt_tokens": 2260, "cached_tokens_delta": 0, "server_tokens_out_delta": 256, "ttft_s": [1.4628369020065293, 1.365704842028208, 1.3655067989602685, 1.462638437980786], "ctx": 131072, "heads": false, "acceptance_median": 0.5}
+{"arm": "spec-a2", "trace": "warm2", "label": "sampler-spec-a2", "clients": 4, "mixed": false, "wall_s": 2.325022025965154, "monitor_wall_s": 2.7067755369935185, "completed": 4, "requested_output_tokens": 256, "output_tokens": 256, "all_hit_output_budget": true, "output_tokens_per_wall_s": 110.10648378426879, "prompt_tokens": 2260, "cached_tokens_delta": 0, "server_tokens_out_delta": 256, "ttft_s": [1.4758689120644704, 1.4759837680030614, 1.475561797968112, 1.3462205639807507], "ctx": 131072, "heads": false, "acceptance_median": 0.5387699728670485}
+{"arm": "spec-a2", "trace": "fixed", "label": "sampler-spec-a2", "clients": 4, "mixed": false, "wall_s": 16.310747257084586, "monitor_wall_s": 16.624731188989244, "completed": 4, "requested_output_tokens": 2048, "output_tokens": 2048, "all_hit_output_budget": true, "output_tokens_per_wall_s": 125.56138402000249, "prompt_tokens": 16588, "cached_tokens_delta": 0, "server_tokens_out_delta": 2048, "ttft_s": [8.454588704044, 8.45515727403108, 8.348979374975897, 8.454857854987495], "ctx": 131072, "heads": false, "acceptance_median": 0.5436241610738255}
+{"arm": "spec-a2", "trace": "mixed", "label": "sampler-spec-a2", "clients": 4, "mixed": true, "wall_s": 26.782696716021746, "monitor_wall_s": 27.06474092102144, "completed": 4, "requested_output_tokens": 2048, "output_tokens": 2048, "all_hit_output_budget": true, "output_tokens_per_wall_s": 76.46728115973701, "prompt_tokens": 20685, "cached_tokens_delta": 0, "server_tokens_out_delta": 2048, "ttft_s": [7.79808266996406, 7.706291715032421, 7.706590036978014, 12.97470449609682], "ctx": 131072, "heads": false, "acceptance_median": 0.5486649440137812}
+{
+  "label": "spec-a2",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 24.91637099906802,
+  "monitor_wall_s": 25.190804447047412,
+  "completed": 4,
+  "requested_output_tokens": 4096,
+  "output_tokens": 4096,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 164.38991055933496,
+  "prompt_tokens": 16584,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 4096,
+  "ttft_s": [
+    8.441014645970426,
+    8.44143157103099,
+    8.440726272994652,
+    8.365363080985844
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.5350451075641915
+}
+{"name": "spec-a2", "theta": 0.35, "tps": {"fixed": 125.56138402000249, "mixed": 76.46728115973701, "long": 164.38991055933496}}

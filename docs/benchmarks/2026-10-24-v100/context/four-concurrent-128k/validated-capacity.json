@@ -1,0 +1,28 @@
+{
+  "scope": "Four concurrent distinct-key retrievals on an existing instrumented DP128K server; not a matched throughput score or general context-quality test",
+  "actual_prompt_tokens_per_client": [
+    126045,
+    126045,
+    126045,
+    126045
+  ],
+  "output_tokens_per_client": [
+    17,
+    17,
+    17,
+    17
+  ],
+  "exact_keys_verified": true,
+  "cached_tokens": 0,
+  "max_observed_active": 4,
+  "max_observed_queued": 0,
+  "ttft_s": [
+    297.46573840710334,
+    297.4684104459593,
+    297.37701542000286,
+    296.8916172020836
+  ],
+  "wall_s": 297.69485445600003,
+  "continuous_memory_guard_active": false,
+  "memory_limit": "Guard exited before first observation because diagnostic V2 was absent from its allowlist. Retrieval/counter proof remains valid; no continuous free-memory bound is claimed. Startup verification was repaired and tested afterward."
+}

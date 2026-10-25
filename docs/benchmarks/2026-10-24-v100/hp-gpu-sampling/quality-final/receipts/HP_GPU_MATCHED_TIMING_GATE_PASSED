@@ -1,0 +1,6 @@
+{
+  "analysis_sha256": "2223f07d372b4e4b3f9e57d86641ee528e37c2924118c2d45c4ed37ee15d512e",
+  "analysis": "hp-gpu-abba-analysis.json",
+  "created_epoch": 1792904258.0982673,
+  "scope": "Matched HP timing only; not a promotion marker"
+}

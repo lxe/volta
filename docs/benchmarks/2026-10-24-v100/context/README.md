@@ -1,0 +1,9 @@
+# 128K retrieval and concurrency screens
+
+The frozen cc54d975 server successfully retrieved the exact deployment key placed at the beginning of a126041-token prompt on eight V100-SXM2-32GB GPUs. The API reported zero cached tokens. The model returned the key in13generatedtokens, stopping naturally; this was a retrieval check with a64-token maximum, not a fixed-output throughput test. First-token latency was226.502seconds and total request time226.655seconds. Context131072,DPslots1,chunk64,spec-k5,graphs4,greedy. These receipts establish this specific near128K retrieval case, not general long-context quality or256K support.
+
+The supplemental frozen concurrency profile uses4K input and1024outputtokens per client, in1/4/8/8/4/1order. Every request reached its output budget. The cold one-client case measured51.99whole-requesttokens/s and81.56decode tokens/s for that client. The cold four-client case measured162.37whole-requestaggregate tokens/s; the cold eight-client repeat measured259.54aggregate tokens/s, with median57.06decode tokens/s per client. These are different total workloads, not a same-work speedup comparison.
+
+The original batch reused prompt nonces across concurrency counts, so some later cases reused prefixes. frozen-concurrency.json retains actual cache counts and labels every case; do not compare their whole-request rates as if all were cold. Future candidate measurements use a nonce unique to each client count. Visible-chunk gap measurements are client-observed SSE content events and may include multiple model tokens; they are not pure per-token GPU latency. The128K retrieval probe itself was cold and remains valid.
+
+All metrics are local measurements on the current rental. The source/hardware configuration and exact model hash remain those in the parent benchmark directory. A256K probe and optimized agent/tool run remain pending.

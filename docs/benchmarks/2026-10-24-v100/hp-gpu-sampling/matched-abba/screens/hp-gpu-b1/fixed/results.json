@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 24.644536891020834,
+    "start_monotonic": 980188.478026284,
+    "end_monotonic": 980213.122563175,
+    "ttft_s": 10.136254485929385,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "6bb95898ee732079b49b3f5ba0eabca3c7e0658b5b79dda9a66b34cfd18350eb",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 0)\n\n## Overview\n\nThe module under review is a collection of 108 (or more) near-identical functions named `record_0` through `record_107` (with the last one truncated in the provided listing). Each function accepts a `values` iterable, computes `sum(v * k for v in values)` where `k` is the function index plus one, and returns a dictionary with three keys: `record`, `total`, and `count`.\n\nThis is a textbook example of copy-paste code generation. While functionally correct for small inputs, it has numerous structural, maintainability, and performance problems. Below is a detailed, numbered review.\n\n---\n\n## Detailed Findings\n\n### 1. Massive code duplication (DRY violation)\nEvery function is identical except for two constants: the `record` index and the multiplier. This is 100+ copies of the same logic. Any bug fix (e.g., handling of non-numeric input) must be applied 100+ times. This is the single most severe issue.\n\n### 2. No shared helper / no dispatch mechanism\nThere is no `dispatch` table, no factory, no `functools.partial`-based generation. Callers who need \"record N\" must hardcode the function name, which defeats any data-driven use. A caller with a runtime index cannot call `record_{n}` without `globals()` lookup or an `if/elif` chain.\n\n### 3. `sum(v * 1 for v in values)` is unnecessarily verbose for index 0\nFor `record_0`, the generator expression `v * 1` is a no-op multiply. Minor, but indicative of mechanical generation rather than thoughtful code.\n\n### 4. Generator expressions allocate per call\n`sum(v * k for v in values)` creates a generator object each call. For large inputs this is slower than a direct loop or (better) `sum(values) * k` when `values` is homogeneous. More importantly, it prevents short-circuit / vectorized optimizations.\n\n### 5. No input validation\n- `values` is assumed to be an iterable of numbers. Passing `None`, a string, or a dict will raise a confusing `TypeError` deep inside the generator.\n- Passing an iterable of non-numeric items (e.g., `Decimal`, `Fraction`, `complex`, numpy arrays) may work or fail",
+    "decode_tokens_per_s": 35.2212609137435
+  },
+  {
+    "wall_s": 22.89757266594097,
+    "start_monotonic": 980188.477695586,
+    "end_monotonic": 980211.375268252,
+    "ttft_s": 4.9308741939021274,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "f6a5acc66a0b9fd9b5b6a9331b83ef50f877f898f48059a0c3e4a46e8717cb54",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 1)\n\n## Summary\n\nThe module contains 108 nearly identical functions (`record_0` through `record_107`) that differ only in two constants: the record index and the multiplier (`index + 1`). Each function computes a weighted sum over `values` and returns a dict with the record index, total, and count. The structure is a textbook case of mechanical duplication \u2014 almost certainly generated code \u2014 and while it is functionally correct per-function, it has significant maintainability, performance, and correctness-under-change problems.\n\nBelow are numbered findings, ordered roughly by severity/impact.\n\n---\n\n## Findings\n\n### 1. Massive mechanical duplication (DRY violation)\n108 functions, each ~3 lines, all structurally identical. The only varying inputs are `record` (0..107) and `multiplier` (1..108). This is the single largest issue: any bug fix, behavioral change, or new field must be applied 108 times. It is trivially error-prone (see finding #2) and inflates the module to ~540 lines of what should be ~10 lines of logic.\n\n### 2. Fragile invariant coupling between record index and multiplier\nThe invariant is `multiplier == record_index + 1`. It holds in all 108 current functions, but nothing enforces it. A single off-by-one edit (e.g., copying `record_50` and forgetting to bump the multiplier) silently produces wrong totals with no error. This is a latent correctness hazard baked into the design.\n\n### 3. No shared helper / no dispatch table\nThere is no `_record(index, values)` primitive and no `RECORDS` dispatch table or `__getitem__`-style lookup. Callers must know 108 distinct function names and cannot iterate over records programmatically (e.g., \"compute all records for these values\") without listing all 108 names by hand.\n\n### 4. `sum(v * k for v in values)` \u2014 generator overhead\nEach call builds a generator and performs Python-level multiplication per element. For `k == 1` this is pure waste (should be plain `sum(values)`). For general `k`, `sum(values) * k` is mathematically equivalent and vastly faster (one C-level sum, one multiply) \u2014 see finding #5 for the caveat.\n\n### 5. Floating-point / numeric-type caveat on `sum(values) *",
+    "decode_tokens_per_s": 28.441508093167894
+  },
+  {
+    "wall_s": 27.16232023492921,
+    "start_monotonic": 980188.478197611,
+    "end_monotonic": 980215.640517846,
+    "ttft_s": 21.71477740094997,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "36f3cc8d08418141d148b884688f544da240d32876940e3fe78dea7096478073",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 2)\n\n## Overview\n\nThe module under review consists of 108 near-identical functions named `record_0` through `record_107`. Each function:\n\n1. Takes a single argument `values` (presumably an iterable of numbers).\n2. Computes `total = sum(v * K for v in values)` where `K = n + 1` for function `record_n`.\n3. Returns a dict `{\"record\": n, \"total\": total, \"count\": len(values)}`.\n\nThe file appears to be truncated mid-definition at `record_107` (the return dict is cut off after `\"total\":`). Below is a detailed review followed by a revised implementation.\n\n---\n\n## Findings\n\n### 1. Massive code duplication (critical)\n\nThere are 108 functions that differ only in two constants: the record index `n` and the multiplier `n + 1`. This is textbook copy-paste programming. Any bug fix or behavioral change must be applied 108 times, and the probability of a divergence bug (as seen in the truncated `record_107`) approaches certainty at this scale.\n\n**Impact:** High. Maintainability, correctness, reviewability.\n\n**Recommendation:** Replace with a single parameterized function, or a factory that generates the functions, plus a dispatch table.\n\n### 2. File is syntactically invalid / truncated (critical)\n\n`record_107` is incomplete:\n\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\n\nThis is a `SyntaxError` \u2014 the module cannot be imported at all. If this is the actual shipped file, nothing in it works. If it's a truncation artifact of the review paste, the reviewer must confirm the real file. Either way, this must be flagged as a blocker.\n\n**Impact:** Blocker \u2014 module does not import.\n\n**Recommendation:** Complete or regenerate the function. Better: eliminate the pattern entirely (see Finding 1).\n\n### 3. Inconsistent multiplier semantics (design smell)\n\nFor `record_n`, the multiplier is `n + 1`. So `record_0` multiplies by 1 (a no-op `v * 1`), `record_1` by 2, \u2026, `record_107` by 108. The off-by-one is implicit and undocumented. A reader",
+    "decode_tokens_per_s": 93.80375989200478
+  },
+  {
+    "wall_s": 26.340701078996062,
+    "start_monotonic": 980188.477854709,
+    "end_monotonic": 980214.818555788,
+    "ttft_s": 15.682043700944632,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "b7748ff003ebc4c5310d35a6a72984b8020c2cc130266628c386f06d0442a239",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 3)\n\n## Overview\n\nThe module consists of 108 nearly identical functions (`record_0` through `record_107`), each of which computes a weighted sum of a list of values and returns a dictionary containing an index, the weighted total, and the count of values. The pattern is fully mechanical: `record_N` multiplies each value by `N+1`.\n\nThis is a textbook example of copy-paste code generation that should be collapsed into a single parameterized function. Below are the numbered findings, followed by a revised implementation.\n\n---\n\n## Findings\n\n### 1. Massive duplication (108 copies of the same logic)\n\nEvery function body is identical except for two literals: the record index and the multiplier. `record_0` multiplies by 1, `record_1` by 2, \u2026 `record_107` by 108. The index and multiplier are always `N` and `N+1` respectively. This is ~108\u00d7 more code than necessary and violates DRY at every level.\n\n**Impact:** Any bug fix, feature addition, or behavioral change must be replicated 108 times (or more, if the module grows). Maintenance cost scales linearly with the number of records for zero functional benefit.\n\n### 2. Redundant multiplication by 1 in `record_0`\n\n```python\ntotal = sum(v * 1 for v in values)\n```\n\nThe `* 1` is a no-op and adds a tiny amount of overhead and noise. It's harmless functionally but indicates the code was mechanically generated without review.\n\n### 3. The `sum(v * k for v in values)` idiom is slower than necessary\n\nA generator expression inside `sum()` incurs per-element generator overhead (frame setup, `next()` calls). For numeric workloads this is measurably slower than alternatives:\n\n- `sum(values) * k` \u2014 **only correct if all multipliers are the same**, which they are not here per-function, but per-function it *is* constant, so this transformation is valid inside each function.\n- `math.fsum` for float accuracy (if values are floats).\n- A list comprehension `sum([v * k for v in values])` is sometimes faster for small inputs but allocates.\n\nFor each individual function, `total = sum(values) * k` would be both faster and clearer, since `k` is constant per call. The current form recomputes the",
+    "decode_tokens_per_s": 47.94224843480416
+  }
+]

@@ -1,0 +1,7 @@
+{"worker_pid": 27280, "remote": "/root/teacher-hp-v3-flag-pair"}
+{"phase": "preflight", "budget_exceeded": false}
+{"phase": "flag0", "budget_exceeded": false}
+{"phase": "flag1", "budget_exceeded": false}
+{"phase": "flag1", "budget_exceeded": true}
+{"phase": "flag1", "budget_exceeded": true}
+{"phase": "COMPLETE", "budget_exceeded": true}

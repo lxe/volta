@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 5.864212795975618,
+    "start_monotonic": 980666.094699139,
+    "end_monotonic": 980671.958911935,
+    "ttft_s": 4.615312005975284,
+    "usage": {
+      "prompt_tokens": 565,
+      "completion_tokens": 64,
+      "total_tokens": 629,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 565
+    },
+    "finish_reason": "length",
+    "output_sha256": "00c66291fd0c7bfad34c417cc0858343451b10aa1afee7467f9bb0b094b6102e",
+    "output": "# Code Review: `hp-gpu-01-warm2` (client 0)\n\n## Overview\n\nThe module under review consists of a series of nearly identical functions `record_0` through `record_13` (and presumably beyond, since the snippet is truncated mid-expression at `record_13`).",
+    "decode_tokens_per_s": 50.444359155208105
+  },
+  {
+    "wall_s": 5.145562745979987,
+    "start_monotonic": 980666.09485988,
+    "end_monotonic": 980671.240422626,
+    "ttft_s": 2.427395151928067,
+    "usage": {
+      "prompt_tokens": 565,
+      "completion_tokens": 64,
+      "total_tokens": 629,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 565
+    },
+    "finish_reason": "length",
+    "output_sha256": "9c0ebe47d58bfcbc3522d048109149aecac2739eb47c8eb6f4ad2fa28810b8c5",
+    "output": "# Code Review: `hp-gpu-01-warm2` Python Module\n\n## Overview\n\nThe submitted module consists of fourteen nearly identical functions named `record_0` through `record_13`. Each function accepts a single argument `values`, computes a weighted sum using a constant multiplier that increases linearly with the function",
+    "decode_tokens_per_s": 23.177378811321606
+  },
+  {
+    "wall_s": 5.1937987939454615,
+    "start_monotonic": 980666.095002764,
+    "end_monotonic": 980671.288801558,
+    "ttft_s": 3.40105379500892,
+    "usage": {
+      "prompt_tokens": 565,
+      "completion_tokens": 64,
+      "total_tokens": 629,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 565
+    },
+    "finish_reason": "length",
+    "output_sha256": "1e76eca943b980acc12649c5e28f4fc980ad7c949ce1e33023b4b4818c3a6cb3",
+    "output": "# Code Review: `hp-gpu-01-warm2` (client 2)\n\n## Overview\n\nThis module consists of 14 (or more \u2014 the snippet is truncated mid-expression at `record_13`) nearly identical functions named `record_0` through `record_13`. Each function:\n\n1.",
+    "decode_tokens_per_s": 35.141640354524306
+  },
+  {
+    "wall_s": 4.408145876950584,
+    "start_monotonic": 980666.094532246,
+    "end_monotonic": 980670.502678123,
+    "ttft_s": 1.3789501830469817,
+    "usage": {
+      "prompt_tokens": 565,
+      "completion_tokens": 64,
+      "total_tokens": 629,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 565
+    },
+    "finish_reason": "length",
+    "output_sha256": "97e16f681b817c9ef18e94e62005db92c2a1c5203ef09e32a27bacd3ff17cb29",
+    "output": "# Code Review: `hp-gpu-01-warm2` / Client 3\n\n## Overview\n\nThe submitted module consists of a series of near-identical functions, `record_0` through `record_13` (and the source appears truncated mid-expression in `record_13`, which is itself a",
+    "decode_tokens_per_s": 20.797599879991388
+  }
+]

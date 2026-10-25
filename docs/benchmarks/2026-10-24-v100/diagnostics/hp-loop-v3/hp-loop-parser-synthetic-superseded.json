@@ -1,0 +1,48 @@
+{
+  "evidence": "SYNTHETIC_PARSER_VALIDATION_ONLY",
+  "cases": [
+    "ANSI removal",
+    "17 exact controlled admissions/completions",
+    "final loop log after done included",
+    "idle iter_ms excluded from denominator",
+    "fixed and mixed attribution separated"
+  ],
+  "expected_each_phase_cpu_ms": 16,
+  "actual": {
+    "fixed": {
+      "admitted_utc": "2026-10-25T03:40:00.370000Z",
+      "done_utc": "2026-10-25T03:40:00.510000Z",
+      "profile_first_utc": "2026-10-25T03:40:00.380000Z",
+      "profile_last_utc": "2026-10-25T03:40:00.520000Z",
+      "profile_records": 8,
+      "SSE_wall_s": 1,
+      "cpu_sample_sum_ms": 16.0,
+      "cpu_sample_wall_fraction": 0.016,
+      "cpu_distribution_5percent_gate": false,
+      "step_sum_ms": 24.0,
+      "cpu_sample_median_ms": 2.0,
+      "max_counter_accounting_rounding_error_ms": 0.0,
+      "output_tokens": 2048,
+      "cached_tokens_delta": 0
+    },
+    "mixed": {
+      "admitted_utc": "2026-10-25T03:40:00.530000Z",
+      "done_utc": "2026-10-25T03:40:00.670000Z",
+      "profile_first_utc": "2026-10-25T03:40:00.540000Z",
+      "profile_last_utc": "2026-10-25T03:40:00.680000Z",
+      "profile_records": 8,
+      "SSE_wall_s": 1,
+      "cpu_sample_sum_ms": 16.0,
+      "cpu_sample_wall_fraction": 0.016,
+      "cpu_distribution_5percent_gate": false,
+      "step_sum_ms": 24.0,
+      "cpu_sample_median_ms": 2.0,
+      "max_counter_accounting_rounding_error_ms": 0.0,
+      "output_tokens": 2048,
+      "cached_tokens_delta": 0
+    }
+  },
+  "passed": true,
+  "status": "SUPERSEDED_INVALID_SOURCE_ORDER_ASSUMPTION",
+  "limits": "Initial synthetic fixture assumed done before loop log; source and actual logs show the reverse. No actual result accepted by this parser version."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "hp-gpu-concurrency",
+  "context": 262144,
+  "heads": true,
+  "active_capacity": 4,
+  "allow_queued": true,
+  "batch_source_sha256": "c983f4ead1cb0d1f1a96b30b858224face86b9ccba39abe046ff6ed1fce1fba2"
+}

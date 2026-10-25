@@ -1,0 +1,52 @@
+{
+  "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+  "build_start_utc": "2026-10-25T04:31:08Z",
+  "build_end_utc": "2026-10-25T04:31:42Z",
+  "cargo_seconds": 33.65,
+  "source_receipt": {
+    "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+    "source_sha256": {
+      "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+      "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+      "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+    },
+    "source_archive_sha256": "41f5afd1a7b2867ae2c69758d303150f6ed3873cb48bfc926b10382c94e93d48",
+    "patch_sha256": "88a67dbe48cedf335482d732d0353e11bd7806672a5644881073dbf0bf330d17",
+    "scope": "audit logging only, preformat whole line and one write_all under stderr lock",
+    "GPU_launches": 0
+  },
+  "remote_source_sha256": {
+    "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+    "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+    "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+  },
+  "binaries_sha256": {
+    "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta-server": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+    "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta": "bcfe792f228ba7216237c13e5d582dd7e4a34e0872ddd4c293c77d10a237cd67"
+  },
+  "fatbins": {
+    "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/build/dsx-b2944b73405876f5/out/dsx.fatbin": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5"
+  },
+  "kernel_sources_unchanged": true,
+  "v2_sources_preserved_sha256": {
+    "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+    "engine/src/volta.rs": "9926e1c5cb86846c25a0dd7b6eb6669b8581e121ba1e320d1d94d01bea2082c9",
+    "engine/src/server/volta.rs": "2f871c5da82894bb573b95713a66e89473459cc1c10191a01b55fb44e0100051"
+  },
+  "v2_binaries_preserved": {
+    "volta-server": "f3939f58a70217130a11da15284083d9da22c23df03a8719c4c910f904b88227",
+    "volta": "75bd7b33c0cc9464e66c7601e07c674c7444b63f5d834c2c27399b0efda9a6b5"
+  },
+  "build_admission": {
+    "utc": "2026-10-25T04:31:07.370848+00:00",
+    "live_model_processes": [],
+    "GPU_compute_processes": "",
+    "v2_binaries_sha256": {
+      "volta-server": "f3939f58a70217130a11da15284083d9da22c23df03a8719c4c910f904b88227",
+      "volta": "75bd7b33c0cc9464e66c7601e07c674c7444b63f5d834c2c27399b0efda9a6b5"
+    }
+  },
+  "compiler_processes": "",
+  "GPU_model_launches": 0,
+  "verified_utc": "2026-10-25T04:32:12.061754+00:00"
+}

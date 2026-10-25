@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""CPU-only UTC alignment of diag-v2-001 controlled fixed/mixed intervals."""
+from collections import Counter
+from datetime import datetime,timezone
+import hashlib,importlib.util,json,re,statistics,sys
+from pathlib import Path
+root=Path(__file__).parent;run=sys.argv[1] if len(sys.argv)>1 else 'diag-v2-001';trace=root/'graph-traces'/run
+spec=importlib.util.spec_from_file_location('ga',root/'analyze-graph-trace.py');ga=importlib.util.module_from_spec(spec);spec.loader.exec_module(ga)
+clean=re.sub(r'\x1b\[[0-9;]*m','',(trace/'server.log').read_text());admitted=[];done={}
+def ns(s):
+ d=datetime.fromisoformat(s.replace('Z','+00:00'));return int(d.timestamp())*10**9+d.microsecond*1000
+for line in clean.splitlines():
+ if ' admitted ' not in line and ' done ' not in line:continue
+ fields=dict(re.findall(r'(\w+)=([^ ]+)',line));stamp=ns(line.split()[0]);item={**fields,'epoch_ns':stamp}
+ if ' admitted ' in line:admitted.append(item)
+ else:done[fields['id']]=item
+assert [int(x['prompt_tokens']) for x in admitted]==[39]+[563]*8+[4145]*7+[8242]
+phases={name:{'requests':admitted[a:b],'start_epoch_ns':min(x['epoch_ns'] for x in admitted[a:b]),
+              'end_epoch_ns':max(done[x['id']]['epoch_ns'] for x in admitted[a:b])}
+        for name,a,b in [('fixed',9,13),('mixed',13,17)]}
+out={'evidence':'ACTUAL_V2_HOST_TRACE_ONLY','run':run,'original_eight_replacement_gate':'failed; retained original receipts/diag-v2-001-graph-analysis.json',
+     'alignment':'server UTC admission/done timestamps versus header wall epoch + per-step monotonic elapsed; approximate host record alignment',
+     'phases':{},'limits':['record timestamp is after enqueue, not GPU completion','interval statistics cover visible completed snapshots only; uncovered tails are calculated per phase','enqueue costs are host backpressure observations, not GPU elapsed or causal saved time','whole-prefix simulation starts at first smoke; no phase cache reset']}
+for name,phase in phases.items():
+ summary=json.loads((root/'screens'/run/name/'summary.json').read_text())
+ row={'start_utc':datetime.fromtimestamp(phase['start_epoch_ns']/1e9,timezone.utc).isoformat(),
+      'end_utc':datetime.fromtimestamp(phase['end_epoch_ns']/1e9,timezone.utc).isoformat(),
+      'api_wall_s':summary['wall_s'],'output_tokens':summary['output_tokens'],'cached_tokens_delta':summary['cached_tokens_delta'],'gpus':[]}
+ for gpu in range(8):
+  steps,_,_,_,h=ga.validate(trace/f'gpu{gpu}.jsonl',gpu,128)
+  selected=[x for x in steps if phase['start_epoch_ns']<=h['wall_epoch_ns']+x['elapsed_ns']<=phase['end_epoch_ns']]
+  small=[x for x in selected if 1<=x['t']<=6];miss=Counter((x['t'],x['bucket']) for x in small if x['decision']=='budget')
+  replay={(x['t'],x['bucket']) for x in small if x['decision']=='hit'}
+  stale=sorted(set.intersection(*(set(map(tuple,x['resident_keys'])) for x in small))-replay) if small else []
+  def timing(items,field):
+   v=sorted(x[field]/1e6 for x in items)
+   return {'n':len(v),'mean_ms':statistics.fmean(v),'median_ms':statistics.median(v),'p95_ms':v[max(0,__import__('math').ceil(.95*len(v))-1)],'sum_ms':sum(v)} if v else None
+  sim=ga.simulate(steps);decs=sim.pop('step_decisions');selseq={x['seq'] for x in selected};simsel=Counter(d for x,d in zip(steps,decs) if x['seq'] in selseq)
+  counts=Counter(x['decision'] for x in selected)
+  row['gpus'].append({'gpu':gpu,'seq_min':min((x['seq'] for x in selected),default=None),'seq_max':max((x['seq'] for x in selected),default=None),'steps':len(selected),
+    'visible_end_utc':datetime.fromtimestamp((h['wall_epoch_ns']+selected[-1]['elapsed_ns'])/1e9,timezone.utc).isoformat() if selected else None,
+    'uncovered_tail_s':max(0,(phase['end_epoch_ns']-(h['wall_epoch_ns']+steps[-1]['elapsed_ns']))/1e9),
+    'decisions':dict(counts),'small_t_steps':len(small),'small_t_budget_miss_fraction':sum(miss.values())/max(1,len(small)),
+    'repeated_hot_miss_keys':[{'key':list(k),'misses':v} for k,v in sorted(miss.items()) if v>=20],
+    'persistently_resident_never_replayed_in_small_t_phase':stale,
+    'phase_admission_evidence_gate':bool(stale) and any(v>=20 for v in miss.values()) and sum(miss.values())>=.25*max(1,len(small)),
+    'host_enqueue_by_decision':{k:timing([x for x in selected if x['decision']==k],'host_enqueue_backpressure_ns') for k in ga.LABELS},
+    'capture_host_time':timing([x for x in selected if x['decision']=='capture'],'capture_ns'),
+    'original8_simulated_phase_decisions':dict(simsel),'original8_simulated_phase_hit_gain_pp':100*(simsel['hit']-counts['hit'])/max(1,len(selected))})
+ out['phases'][name]=row
+out['input_sha256']={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [trace/'server.log',*[trace/f'gpu{i}.jsonl' for i in range(8)]]}
+p=root/'receipts'/f'{run}-primary-interval-analysis.json';p.write_text(json.dumps(out,indent=2)+'\n')
+for name,phase in out['phases'].items():
+ print(name,phase['start_utc'],phase['end_utc'],'APIwall',phase['api_wall_s'])
+ for g in phase['gpus'][:4]:print(g['gpu'],g['seq_min'],g['seq_max'],g['small_t_budget_miss_fraction'],g['phase_admission_evidence_gate'],g['original8_simulated_phase_hit_gain_pp'],g['host_enqueue_by_decision']['budget'])

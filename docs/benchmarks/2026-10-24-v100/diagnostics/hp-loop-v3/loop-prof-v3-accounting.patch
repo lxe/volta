@@ -1,0 +1,30 @@
+--- a/engine/src/server/volta.rs
++++ b/engine/src/server/volta.rs
+@@ -292,7 +292,10 @@
+                 pf[1] += tc.elapsed().as_secs_f64();
+                 at.into_iter().map(|(g, k)| r[g][k]).collect()
+             } else if sampled {
++                let tc = Instant::now();
+                 let lg = self.e.step(plan)?;
++                pf[1] += tc.elapsed().as_secs_f64();
++                let tc = Instant::now();
+                 let v = self.e.vocab;
+                 let mut work: Vec<(usize, Rng, Option<Hesitation>)> = rows.iter().map(|&(i, ..)| (i, seqs[i].rng.clone(), seqs[i].hes.clone())).collect();
+                 let out: Vec<(usize, u32)> = work
+@@ -348,6 +351,7 @@
+                         q.hes = None;
+                     }
+                 }
++                pf[3] += tc.elapsed().as_secs_f64();
+                 out
+             } else {
+                 let tc = Instant::now();
+@@ -425,7 +429,7 @@
+                 if pf_i == prof_n {
+                     let all = t_iter.elapsed().as_secs_f64();
+                     let ms = |x: f64| x * 1e3 / prof_n as f64;
+-                    tracing::info!(iter_ms = format!("{:.2}", ms(all)), spark_ms = format!("{:.2}", ms(pf[0])), step_ms = format!("{:.2}", ms(pf[1])), rewind_ms = format!("{:.2}", ms(pf[2])), rest_ms = format!("{:.2}", ms(all - pf[0] - pf[1] - pf[2])), "loop profile");
++                    tracing::info!(iter_ms = format!("{:.2}", ms(all)), spark_ms = format!("{:.2}", ms(pf[0])), step_ms = format!("{:.2}", ms(pf[1])), rewind_ms = format!("{:.2}", ms(pf[2])), cpu_sample_ms = format!("{:.2}", ms(pf[3])), rest_ms = format!("{:.2}", ms(all - pf[0] - pf[1] - pf[2] - pf[3])), "loop profile");
+                     (pf, pf_i, t_iter) = ([0f64; 4], 0, Instant::now());
+                 }
+             }

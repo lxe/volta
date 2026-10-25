@@ -1,0 +1,14 @@
+{
+  "source_archive_sha256": "8026da8eaf5e20ff9c25bd9a411296071f804b2b21ac2d46278e8349133c7260",
+  "source_matches_local": true,
+  "baseline_binary_sha256": "9c82a8e15e96855badeb4128a7af7e01ab28d015fa575c717a36fc156513d1a9",
+  "candidate_binary_sha256": "b9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4",
+  "fresh_target_dir": "/root/volta-candidate/target",
+  "CUDA_ARCHS": "70",
+  "NVCC": "/usr/local/cuda-12.9/bin/nvcc",
+  "activated": false,
+  "cuda_fatbin_sha256": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5",
+  "frozen_candidate_cuda_module_byte_identical": true,
+  "kernel_source_files_byte_identical": 7,
+  "build_note": "Candidate rebuilt using exact frozen CUDA module after source parity check; only Rust sampling eligibility changes. Independent initial NVCC compilations produced distinct fatbin containers, so this controls that variable."
+}

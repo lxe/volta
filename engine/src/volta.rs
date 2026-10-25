@@ -16,6 +16,7 @@ use crate::gpumodel::{DMat, f32buf, upload_dmat};
 use crate::model::{Mat, Model};
 use anyhow::{Context, Result, bail, ensure};
 use std::collections::HashMap;
+use std::cell::Cell;
 use std::sync::mpsc;
 use std::sync::{Arc, Barrier, Mutex};
 
@@ -1166,6 +1167,10 @@ struct Shard<'m> {
     greedy: bool,
     /// StepSample: the table rows uploaded to `samp` this step (vspec_sample in finish), 0 otherwise
     sample_rows: usize,
+    /// Explicit HP sampled command, including workers that return no sampled rows.
+    hp_sample: Option<Arc<HpSampleStep>>,
+    hp_logits: Option<Buf>,
+    head_sources: Vec<PeerBufs>,
     /// vspec_sample's table: [TMAX][10] ints (rb, nd, drafts), then [TMAX][10] floats (temperature, uniforms)
     samp: Buf,
     spark_ids: Buf,
@@ -1219,6 +1224,8 @@ struct Shard<'m> {
 /// device addresses of one GPU's exchange buffers (written by every peer)
 #[derive(Clone, Copy, Debug, Default)]
 struct PeerBufs {
+    logits: u64,
+    context: usize,
     xg: u64,
     selg: u64,
     wtg: u64,
@@ -1478,6 +1485,9 @@ impl<'m> Shard<'m> {
             spark,
             greedy: false,
             sample_rows: 0,
+            hp_sample: None,
+            hp_logits: if gi == 0 && hp_sampling_enabled(m, o) { Some(g.alloc_zeroed(TMAX * c.vocab * 4)?) } else { None },
+            head_sources: vec![],
             samp: g.alloc_zeroed(TMAX * 20 * 4)?,
             spark_ids: g.alloc_zeroed(2 * TMAX * 4)?,
             evs: [g.event()?, g.event()?, g.event()?, g.event()?],
@@ -1521,7 +1531,7 @@ impl<'m> Shard<'m> {
 
     fn peer_bufs(&self) -> PeerBufs {
         let w = &self.w;
-        PeerBufs { xg: w.xg.ptr, selg: w.selg.ptr, wtg: w.wtg.ptr, parts: w.parts.ptr, flags: w.flags.ptr, relay: w.relay.ptr, vx_fa: w.vx_fa.ptr, vx_fb: w.vx_fb.ptr, ll_a: w.ll_a.ptr, ll_m: w.ll_m.ptr, ll_x: w.ll_x.ptr }
+        PeerBufs { logits: w.logits.ptr, context: self.g.context_token(), xg: w.xg.ptr, selg: w.selg.ptr, wtg: w.wtg.ptr, parts: w.parts.ptr, flags: w.flags.ptr, relay: w.relay.ptr, vx_fa: w.vx_fa.ptr, vx_fb: w.vx_fb.ptr, ll_a: w.ll_a.ptr, ll_m: w.ll_m.ptr, ll_x: w.ll_x.ptr }
     }
 
     // ------------------------------------------------------------ kernel helpers (dsx's GEMV dispatch, t <= 8)
@@ -2664,7 +2674,71 @@ impl<'m> Shard<'m> {
         self.g.launch(self.k["vsum_parts_h"], (((t * d) as u32).div_ceil(256), 1, 1), 256, 0, &[Arg::P(w.a.ptr), Arg::P(w.parts.ptr), Arg::I(self.ngpu as i32), Arg::I((TMAX * d) as i32), Arg::I((t * d) as i32)])
     }
 
-    fn finish(&mut self, toks: &[(usize, u32)]) -> Result<Vec<f32>> {
+    /// HP-only finish for an explicit sampled command. All workers reach readiness even if only GPU0 samples.
+    fn finish_hp_sample(&self, t: usize, barrier: &Barrier) -> Result<Vec<f32>> {
+        let step = self.hp_sample.as_ref().context("missing HP sampled command")?;
+        let vocab = self.m.cfg.vocab;
+        let vs = vocab / self.ngpu;
+        ensure!(self.head_hp.as_ref().is_some_and(|h| h.rows == vs) && self.head_sources.len() == self.ngpu, "HP sampling source topology mismatch");
+        if let Some(audit) = &step.audit {
+            let local: Vec<u32> = self.g.download(self.w.logits.ptr, t * vs)?;
+            audit.lock().map_err(|_| anyhow::anyhow!("HP audit mutex poisoned"))?[self.gi] = Some(local);
+        }
+        self.g.sync()?;
+        // Every packed head is complete. Nonzero workers return afterward, but the caller cannot issue another
+        // command until GPU0's sampling/download (and audit when requested) has returned through Engine.
+        barrier.wait();
+        if self.gi != 0 { return Ok(vec![]); }
+        let dst = self.hp_logits.as_ref().context("missing HP collection workspace")?.ptr;
+        for (gi, source) in self.head_sources.iter().enumerate() {
+            self.g.collect_vocab_slice(source.logits, source.context, dst, vs * 4, vocab * 4, gi * vs * 4, t)?;
+        }
+        let sample = |ptr: u64| -> Result<Vec<u32>> {
+            self.g.launch(self.k["vspec_sample"], (self.sample_rows as u32, 1, 1), 1024, 0,
+                &[Arg::P(ptr), Arg::I(vocab as i32), Arg::P(self.samp.ptr), Arg::P(self.samp.ptr + (TMAX * 40) as u64), Arg::P(self.spark_ids.ptr)])?;
+            self.g.download(self.spark_ids.ptr, 2 * self.sample_rows)
+        };
+        let result = sample(dst)?;
+        if let Some(audit) = &step.audit {
+            // Download as integer bits to preserve NaN payloads and signed zero during exact comparison.
+            let actual: Vec<u32> = self.g.download(dst, t * vocab)?;
+            let mut reference = vec![0u32; t * vocab];
+            {
+                let slices = audit.lock().map_err(|_| anyhow::anyhow!("HP audit mutex poisoned"))?;
+                for (gi, local) in slices.iter().enumerate() {
+                    let local = local.as_ref().context("missing HP audit source slice")?;
+                    ensure!(local.len() == t * vs, "HP audit source slice length mismatch");
+                    for row in 0..t {
+                        reference[row * vocab + gi * vs..row * vocab + (gi + 1) * vs].copy_from_slice(&local[row * vs..(row + 1) * vs]);
+                    }
+                }
+            }
+            if let Some(i) = actual.iter().zip(&reference).position(|(a, b)| a != b) {
+                bail!("HP collected-logit audit {} failed at row {} vocabulary {}: GPU={:08x}, CPU={:08x}", step.audit_id, i / vocab, i % vocab, actual[i], reference[i]);
+            }
+            let fingerprint = |values: &mut dyn Iterator<Item = u32>| values.fold(0xcbf29ce484222325u64, |a, b| (a ^ b as u64).wrapping_mul(0x100000001b3));
+            let logits_hash = fingerprint(&mut reference.iter().copied());
+            drop(actual);
+            // Production copies and result download have completed before overwriting only GPU0's packed head
+            // workspace. Its allocation is full-sized; all peers keep their original source buffers untouched.
+            self.g.htod_sync(self.w.logits.ptr, &reference)?;
+            let replay = sample(self.w.logits.ptr)?;
+            ensure!(result == replay, "HP sampler supplied-table/uniform replay audit {} failed", step.audit_id);
+            let rows: Vec<_> = step.ints.chunks_exact(10).zip(step.floats.chunks_exact(10)).zip(result.chunks_exact(2)).map(|((ti, tf), out)| {
+                serde_json::json!({"rb":ti[0], "nd":ti[1], "greedy":tf[0] <= 0.0,
+                    "drafts":&ti[2..2 + ti[1] as usize], "accepted":out[0], "token":out[1]})
+            }).collect();
+            let ints_hash = fingerprint(&mut step.ints.iter().map(|&x| x as u32));
+            let floats_hash = fingerprint(&mut step.floats.iter().map(|x| x.to_bits()));
+            write_hp_audit_record("HP_SAMPLE_AUDIT", &serde_json::json!({"audit_id":step.audit_id, "logit_rows":t, "vocab":vocab,
+                "checked_u32":t*vocab, "logits_equal":true, "sampler_replay_equal":true,
+                "logits_fnv_u32":format!("{logits_hash:016x}"), "table_ints_fnv_u32":format!("{ints_hash:016x}"),
+                "table_floats_fnv_u32":format!("{floats_hash:016x}"), "rows":rows}))?;
+        }
+        Ok(result.into_iter().map(f32::from_bits).collect())
+    }
+
+    fn finish(&mut self, toks: &[(usize, u32)], barrier: &Barrier) -> Result<Vec<f32>> {
         let c = &self.m.cfg;
         let (d, hc) = (c.dim, c.hc);
         let t = toks.len();
@@ -2679,6 +2753,9 @@ impl<'m> Shard<'m> {
             // head-parallel: this GPU's slice of the vocabulary (Engine::step / step_greedy put the GPUs' together)
             let vs = hs.rows;
             self.vmm(hs, w.x.ptr, d, w.logits.ptr, t)?;
+            if self.hp_sample.is_some() {
+                return self.finish_hp_sample(t, barrier);
+            }
             if self.greedy {
                 // per token: (global id as f32 bits, its logit)
                 self.g.launch(self.k["vargmax_rows"], (t as u32, 1, 1), 1024, 0, &[Arg::P(w.logits.ptr), Arg::I(vs as i32), Arg::P(self.spark_ids.ptr), Arg::P(self.spark_ids.ptr + (TMAX * 4) as u64)])?;
@@ -2749,7 +2826,49 @@ enum Cmd {
     Spark(Arc<SparkPlan>),
     /// drop slots' last tokens: (slot, n) per GPU
     Rewind(Arc<Vec<Vec<(usize, usize)>>>),
+    /// HP collective vocabulary collection followed by the unchanged GPU sampler on GPU0.
+    StepSampleHp(Arc<Vec<Vec<(usize, u32)>>>, Arc<HpSampleStep>),
     Stop,
+}
+
+fn hp_audit_line(label: &str, value: &serde_json::Value) -> String {
+    format!("{label} {value}\n")
+}
+
+/// Format before I/O: serde's Display must never emit fragments directly to merged stdout/stderr logs.
+pub(crate) fn write_hp_audit_record(label: &str, value: &serde_json::Value) -> Result<()> {
+    use std::io::Write;
+    let line = hp_audit_line(label, value);
+    std::io::stderr().lock().write_all(line.as_bytes()).context("write complete HP audit record")
+}
+
+/// One explicit HP sampled step. Debug CPU slices are per-command and bounded by TMAX*vocab words.
+struct HpSampleStep {
+    ints: Vec<i32>,
+    floats: Vec<f32>,
+    audit: Option<Mutex<Vec<Option<Vec<u32>>>>>,
+    audit_id: usize,
+}
+
+fn hp_sampling_enabled(m: &Model, o: &Opts) -> bool {
+    o.heads && o.ngpu == 8 && m.cfg.vocab % (32 * o.ngpu) == 0 && v4_ok(&m.head)
+        && std::env::var("VOLTA_HP_GPU_SAMPLE").is_ok_and(|v| v == "1")
+}
+
+/// Validate every address and random input read by the unchanged vspec_sample table interface.
+fn validate_hp_sample_table(t: usize, vocab: usize, ints: &[i32], floats: &[f32]) -> Result<usize> {
+    ensure!(t > 0 && t <= TMAX && vocab > 0, "HP sampling: rows must be 1..={TMAX}, vocabulary positive");
+    ensure!(ints.len() % 10 == 0 && floats.len() == ints.len(), "HP sampling: ten ints and ten floats per table row");
+    let n = ints.len() / 10;
+    ensure!(n > 0 && n <= TMAX, "HP sampling: table rows must be 1..={TMAX}");
+    for (r, (ti, tf)) in ints.chunks_exact(10).zip(floats.chunks_exact(10)).enumerate() {
+        let (rb, nd) = (ti[0], ti[1]);
+        ensure!(rb >= 0 && (0..=8).contains(&nd) && (rb as usize).checked_add(nd as usize).is_some_and(|last| last < t), "HP sampling table {r}: rb={rb}, nd={nd}, available rows={t}");
+        ensure!(tf[0].is_finite(), "HP sampling table {r}: nonfinite temperature");
+        for &id in &ti[2..2 + nd as usize] { ensure!(id >= 0 && (id as usize) < vocab, "HP sampling table {r}: draft id {id} outside vocabulary {vocab}"); }
+        for &u in &tf[1..2 + nd as usize] { ensure!(u.is_finite() && (0.0..1.0).contains(&u), "HP sampling table {r}: uniform {u} outside [0,1)"); }
+    }
+    Ok(n)
 }
 
 /// a draft step's work, per GPU: main tokens to observe (slot, row of the last main step, position) and sessions
@@ -2763,6 +2882,9 @@ pub struct Engine {
     spark_block: Option<usize>,
     /// head-parallel with the head split by vocabulary (Shard::head_hp): results come back in slices
     split_head: bool,
+    hp_gpu_sample: bool,
+    hp_audit_limit: usize,
+    hp_sample_steps: Cell<usize>,
     tx: Vec<mpsc::Sender<Cmd>>,
     rx: mpsc::Receiver<(usize, Result<Vec<f32>>)>,
     pub opts: Opts,
@@ -2773,6 +2895,10 @@ pub struct Engine {
 impl Engine {
     /// load the dense half onto every GPU and each GPU's experts (in parallel), connect the peers
     pub fn new(m: &'static Model, o: Opts) -> Result<Engine> {
+        let hp_gpu_sample = hp_sampling_enabled(m, &o);
+        let hp_audit_limit = std::env::var("VOLTA_HP_SAMPLE_AUDIT").ok().map(|v| v.parse::<usize>()).transpose().context("VOLTA_HP_SAMPLE_AUDIT must be a nonnegative integer")?.unwrap_or(0);
+        ensure!(hp_audit_limit <= 4096, "VOLTA_HP_SAMPLE_AUDIT capped at 4096 steps");
+        ensure!(hp_audit_limit == 0 || hp_gpu_sample, "VOLTA_HP_SAMPLE_AUDIT requires enabled split-head HP sampling");
         // Engram rows are hashed: every step touches ~800 random pages of the 190 GB tables. Map them all up front
         // (MADV_POPULATE_READ) so a lookup is a memory read, not a page fault; runs alongside the GPU loads
         let populate = std::thread::spawn(move || populate_engram(m));
@@ -2856,6 +2982,7 @@ impl Engine {
                     ready.wait();
                     // peer access to every other GPU's exchange buffers
                     let all: Vec<PeerBufs> = peers.lock().unwrap().iter().map(|p| p.unwrap()).collect();
+                    sh.head_sources = all.clone();
                     for (j, p) in all.iter().enumerate() {
                         if j != gi {
                             sh.peers.push(*p);
@@ -2899,6 +3026,23 @@ impl Engine {
                                 sh.greedy = false;
                                 rtx.send((gi, r)).ok();
                             }
+                            Cmd::StepSampleHp(plan, step) => {
+                                let n = step.ints.len() / 10;
+                                let up = (|| -> Result<()> {
+                                    ensure!(sh.head_hp.is_some() && plan[gi].len() > 0, "HP sample command requires a nonempty split-head plan on every worker");
+                                    if gi == 0 {
+                                        sh.g.htod_sync(sh.samp.ptr, &step.ints)?;
+                                        sh.g.htod_sync(sh.samp.ptr + (TMAX * 40) as u64, &step.floats)?;
+                                    }
+                                    Ok(())
+                                })();
+                                sh.sample_rows = if gi == 0 { n } else { 0 };
+                                sh.hp_sample = Some(step);
+                                let r = up.and_then(|_| run_step(&mut sh, &plan, &barrier));
+                                sh.hp_sample = None;
+                                sh.sample_rows = 0;
+                                rtx.send((gi, r)).ok();
+                            }
                             Cmd::StepSample(plan, tabs) => {
                                 let (ti, tf) = &tabs[gi];
                                 let n = ti.len() / 10;
@@ -2926,7 +3070,8 @@ impl Engine {
             }));
         }
         let split_head = o.heads && m.cfg.vocab % (32 * o.ngpu) == 0 && v4_ok(&m.head);
-        let e = Engine { spark_block: ds.map(|d| d.block), split_head, tx, rx, opts: o, vocab: m.cfg.vocab, joins };
+        eprintln!("HP GPU sampling: {hp_gpu_sample}, audit budget {hp_audit_limit}");
+        let e = Engine { spark_block: ds.map(|d| d.block), split_head, hp_gpu_sample, hp_audit_limit, hp_sample_steps: Cell::new(0), tx, rx, opts: o, vocab: m.cfg.vocab, joins };
         let _ = populate.join();
         for _ in 0..n {
             let (gi, r) = e.rx.recv()?;
@@ -3059,7 +3204,9 @@ impl Engine {
     /// a main step whose next tokens are chosen on the GPU (DP only): tabs[gpu] = (ints, floats), 10 of each per
     /// row: rb, nd, nd drafts | temperature, nd + 1 uniforms (vspec_sample). Returns (drafts kept, token) per row
     pub fn step_sample(&self, plan: Vec<Vec<(usize, u32)>>, tabs: Vec<(Vec<i32>, Vec<f32>)>) -> Result<Vec<Vec<(usize, u32)>>> {
-        ensure!(!self.opts.heads, "step_sample: not with --head-parallel (the head is split by vocabulary)");
+        if self.opts.heads {
+            return self.step_sample_hp(plan, tabs);
+        }
         ensure!(plan.len() == self.gpus() && tabs.len() == self.gpus() && plan.iter().all(|p| p.len() <= TMAX), "plan: one list per GPU, <= {TMAX} tokens each");
         let (plan, tabs) = (Arc::new(plan), Arc::new(tabs));
         for t in &self.tx {
@@ -3076,6 +3223,40 @@ impl Engine {
             out[gi] = v.chunks(2).map(|p| (p[0] as usize, p[1])).collect();
         }
         Ok(out)
+    }
+
+    /// Whether the explicit opt-in has an actual split vocabulary head and its collection workspace.
+    pub fn hp_gpu_sampling(&self) -> bool {
+        self.hp_gpu_sample && self.split_head
+    }
+
+    pub fn hp_sampling_audit_limit(&self) -> usize { self.hp_audit_limit }
+
+    fn step_sample_hp(&self, plan: Vec<Vec<(usize, u32)>>, mut tabs: Vec<(Vec<i32>, Vec<f32>)>) -> Result<Vec<Vec<(usize, u32)>>> {
+        ensure!(self.hp_gpu_sampling() && self.opts.ngpu == 8, "HP GPU sampling requires opt-in and an actual eight-way split head");
+        ensure!(plan.len() == 1 && tabs.len() == 1, "HP sampling: one caller-visible plan and table");
+        validate_hp_sample_table(plan[0].len(), self.vocab, &tabs[0].0, &tabs[0].1)?;
+        let id = self.hp_sample_steps.get();
+        self.hp_sample_steps.set(id.saturating_add(1));
+        let (ints, floats) = tabs.pop().unwrap();
+        let step = Arc::new(HpSampleStep { ints, floats, audit: (id < self.hp_audit_limit).then(|| Mutex::new(vec![None; self.opts.ngpu])), audit_id: id });
+        let plan = Arc::new(self.spread(plan));
+        for tx in &self.tx { tx.send(Cmd::StepSampleHp(plan.clone(), step.clone()))?; }
+        let mut result = None;
+        for _ in 0..self.opts.ngpu {
+            let (gi, r) = self.rx.recv()?;
+            if let Err(e) = &r {
+                // A worker can fail before the HP readiness barrier. Exit immediately rather than joining peers.
+                eprintln!("GPU{gi} HP sampled step failed: {e:#}");
+                std::process::exit(1);
+            }
+            let v = r?;
+            if gi == 0 {
+                ensure!(v.len() == 2 * (step.ints.len() / 10), "HP sample result length mismatch");
+                result = Some(v.chunks_exact(2).map(|p| (p[0].to_bits() as usize, p[1].to_bits())).collect());
+            } else { ensure!(v.is_empty(), "HP nonzero worker returned sampled results"); }
+        }
+        Ok(vec![result.context("HP sampling missing GPU0 result")?])
     }
 
     /// head-parallel (the vocabulary is split over the GPUs)
@@ -3209,7 +3390,7 @@ fn run_step(sh: &mut Shard, plan: &[Vec<(usize, u32)>], _barrier: &Barrier) -> R
         eprintln!("GPU{} h {:016x} sel {:016x}", sh.gi, fnv(&mut h.into_iter()), fnv(&mut sel.into_iter().map(|x| x as u32)));
     }
     let t_finish = std::time::Instant::now();
-    let r = sh.finish(toks);
+    let r = sh.finish(toks, _barrier);
     if stept {
         let ms = |a: std::time::Instant, b: std::time::Instant| (b - a).as_secs_f64() * 1e3;
         let end = std::time::Instant::now();
@@ -3434,4 +3615,45 @@ fn populate_engram(m: &Model) {
         }
     }
     eprintln!("engram: {:.0} GB mapped in {:.0} s", bytes as f64 / 1e9, t0.elapsed().as_secs_f64());
+}
+
+#[cfg(test)]
+mod hp_sampling_table_tests {
+    use super::validate_hp_sample_table;
+    #[test]
+    fn audit_record_is_complete_before_io() {
+        let value = serde_json::json!({"rows":[{"rb":63,"nd":0}],"text":"a\nb"});
+        let line = super::hp_audit_line("HP_SAMPLE_AUDIT", &value);
+        assert!(line.ends_with('\n'));
+        assert_eq!(line.bytes().filter(|&x| x == b'\n').count(), 1);
+        let json = line.strip_prefix("HP_SAMPLE_AUDIT ").unwrap().trim_end();
+        assert_eq!(serde_json::from_str::<serde_json::Value>(json).unwrap(), value);
+    }
+    #[test]
+    fn hp_table_bounds_and_uniforms() {
+        let mut ints = vec![0; 10];
+        let mut floats = vec![0.5; 10];
+        floats[0] = 0.7;
+        ints[0] = 63;
+        assert_eq!(validate_hp_sample_table(64, 129280, &ints, &floats).unwrap(), 1);
+        ints[1] = 1;
+        assert!(validate_hp_sample_table(64, 129280, &ints, &floats).is_err());
+        ints[0] = 55; ints[1] = 8;
+        assert!(validate_hp_sample_table(64, 129280, &ints, &floats).is_ok());
+        ints[1] = 9;
+        assert!(validate_hp_sample_table(64, 129280, &ints, &floats).is_err());
+        ints[1] = -1;
+        assert!(validate_hp_sample_table(64, 129280, &ints, &floats).is_err());
+        ints[1] = 1; ints[2] = 129280;
+        assert!(validate_hp_sample_table(64, 129280, &ints, &floats).is_err());
+        ints[2] = 129279;
+        floats[1] = 1.0;
+        assert!(validate_hp_sample_table(64, 129280, &ints, &floats).is_err());
+        floats[1] = 0.99999994; floats[0] = 0.0;
+        assert!(validate_hp_sample_table(64, 129280, &ints, &floats).is_ok());
+        floats[0] = f32::NAN;
+        assert!(validate_hp_sample_table(64, 129280, &ints, &floats).is_err());
+        assert!(validate_hp_sample_table(64, 129280, &ints[..9], &floats).is_err());
+        assert!(validate_hp_sample_table(0, 129280, &ints, &floats).is_err());
+    }
 }

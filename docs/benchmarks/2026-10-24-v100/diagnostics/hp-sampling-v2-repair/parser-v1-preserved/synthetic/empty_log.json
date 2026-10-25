@@ -1,0 +1,91 @@
+{
+  "status": "FAIL",
+  "audit_log_gate_passed": false,
+  "input_log": "/home/lxe/volta-sixhour-20261024/receipts/hp-sampling-parser-synthetic/empty_log.log",
+  "input_sha256": "9612b489d4729caac550562617473bd0831156f8458368d17df83e2258b2925d",
+  "source_schema_binding": {
+    "engine_commit": "acf798786b1962f5ea45ecbebc6cf114f2126b81",
+    "expected_server_sha256": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+    "binary_identity_verified_here": false
+  },
+  "counts": {},
+  "checked_u32_total": 0,
+  "checked_bytes_total": 0,
+  "matrix_rows_histogram": {},
+  "draft_nd_histogram": {},
+  "command_histogram": {},
+  "distinct_logit_fingerprints": 0,
+  "coverage": {
+    "row_base_63": {
+      "observed": false,
+      "evidence": []
+    },
+    "speculative_nd_positive": {
+      "observed": false,
+      "evidence": []
+    },
+    "accepted_positive": {
+      "observed": false,
+      "evidence": []
+    },
+    "draft_rejection": {
+      "observed": false,
+      "evidence": []
+    },
+    "all_drafts_accepted": {
+      "observed": false,
+      "evidence": []
+    },
+    "multiple_tables": {
+      "observed": false,
+      "evidence": []
+    },
+    "mixed_greedy_sample_tables": {
+      "observed": false,
+      "evidence": []
+    },
+    "matrix_t_lt64": {
+      "observed": false,
+      "evidence": []
+    },
+    "cpu_top_p_fallback": {
+      "observed": false,
+      "evidence": []
+    },
+    "cpu_positive_hesitation_fallback": {
+      "observed": false,
+      "evidence": []
+    },
+    "pure_greedy_step": {
+      "observed": false,
+      "evidence": []
+    }
+  },
+  "missing_required_coverage": [
+    "row_base_63",
+    "speculative_nd_positive",
+    "accepted_positive",
+    "draft_rejection",
+    "all_drafts_accepted",
+    "multiple_tables",
+    "mixed_greedy_sample_tables",
+    "matrix_t_lt64",
+    "cpu_top_p_fallback",
+    "cpu_positive_hesitation_fallback",
+    "pure_greedy_step"
+  ],
+  "errors_total": 1,
+  "errors_first100": [
+    {
+      "line": 0,
+      "error": "at least one valid parity audit is required"
+    }
+  ],
+  "limits": [
+    "This gate covers observed audit/dispatch records only; teacher quality, memory, performance and long-context gates remain separate.",
+    "Fingerprints are validated for encoding; original full tensors/tables are not retained in logs, so their hashes cannot be independently recomputed here.",
+    "t<64 establishes a smaller logical matrix, not a prefill/decode phase classification.",
+    "Coverage is never inferred from submitted requests; CPU fallback and greedy coverage require dispatch records.",
+    "IDs are checked within one fresh source-bound server log; do not concatenate independent runs."
+  ]
+}

@@ -1,0 +1,29 @@
+/home/lxe/volta-sixhour-20261024/hp-256k-gauntlet/gauntlet/03-to
+ rus/render.py, a standard-library-only Python 3 program that:
+
+ - Renders a solid 3D torus (major radius 1.0, tube 0.42) sampled
+   densely on (u, v) grids so every braille dot gets covered.
+ - Rotates about two axes — spins around Y (1.1 rad/s) and tips
+   around X (0.7 rad/s) simultaneously.
+ - Shades by surface normals — computes the true torus normal
+   (cos v·cos u, sin v, cos v·sin u), rotates it, and takes a dot
+   product with a fixed light direction, modulating brightness
+   with a depth cue.
+ - Uses braille characters (U+2800–U+28FF) — each 2×4 dot cell is
+   a pixel grid with an 8-bit dot mask; a per-cell depth buffer
+   keeps only the nearest surface point.
+ - Fills the terminal adaptively — reads
+   shutil.get_terminal_size() every frame and scales the
+   projection to fit.
+ - Runs at ~30 fps — paces each loop iteration with time.sleep.
+ - Hides the cursor (\x1b[?25l) and restores it (\x1b[?25h) on
+   Ctrl-C / SIGTERM via a signal handler and finally block.
+
+ It's now running live in tmux pane %140, filling the 66×29 pane
+ with a rotating, shaded braille donut.
+
+──────────────────────────────────────────────────────────────────
+
+──────────────────────────────────────────────────────────────────
+~/volta-sixhour-20261024/hp-256k-gauntlet/gauntlet/03-torus
+↑55k ↓3.3k 3.4%/262k (auto)     deepseek-v4.1-flash • thinking off

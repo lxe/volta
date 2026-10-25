@@ -1,0 +1,6 @@
+{
+  "api_error": "ConnectionResetError(104, 'Connection reset by peer')",
+  "remote_returncode": 0,
+  "known_live_servers": "[]\n",
+  "remote_stderr": ""
+}

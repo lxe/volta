@@ -1,0 +1,105 @@
+{
+  "experiment": "Single theta0.2 hypothesis against theta0.35; no source or quantization change",
+  "order": [
+    "spec-a1",
+    "spec-b1",
+    "spec-b2",
+    "spec-a2"
+  ],
+  "throughput_tps": {
+    "spec-a1": {
+      "fixed": 123.4307910177525,
+      "mixed": 73.75282069061714,
+      "long": 167.95824177613048
+    },
+    "spec-b1": {
+      "fixed": 129.6879193713866,
+      "mixed": 74.81989765667643,
+      "long": 174.48043801629177
+    },
+    "spec-b2": {
+      "fixed": 130.42283665275673,
+      "mixed": 74.74747376516227,
+      "long": 168.4229701535881
+    },
+    "spec-a2": {
+      "fixed": 125.56138402000249,
+      "mixed": 76.46728115973701,
+      "long": 164.38991055933496
+    }
+  },
+  "pairs": [
+    {
+      "baseline": "spec-a1",
+      "candidate": "spec-b1",
+      "throughput_ratio": {
+        "fixed": 1.0506934153304923,
+        "mixed": 1.0144682868542145,
+        "long": 1.0388322488446542
+      },
+      "gain_percent": {
+        "fixed": 5.069341533049232,
+        "mixed": 1.446828685421453,
+        "long": 3.8832248844654194
+      },
+      "mixed_worst_ttft_ratio": 1.003777138330906,
+      "primary_at_least_5_percent": false,
+      "mixed_within_3_percent": true
+    },
+    {
+      "baseline": "spec-a2",
+      "candidate": "spec-b2",
+      "throughput_ratio": {
+        "fixed": 1.038717736911691,
+        "mixed": 0.9775092383501627,
+        "long": 1.0245334983183012
+      },
+      "gain_percent": {
+        "fixed": 3.871773691169089,
+        "mixed": -2.249076164983732,
+        "long": 2.4533498318301206
+      },
+      "mixed_worst_ttft_ratio": 1.0114130213895085,
+      "primary_at_least_5_percent": false,
+      "mixed_within_3_percent": true
+    }
+  ],
+  "baseline_A2_over_A1_TPS": {
+    "fixed": 1.0172614384521246,
+    "mixed": 1.036804835987313,
+    "long": 0.9787546524715846
+  },
+  "candidate_B2_over_B1_TPS": {
+    "fixed": 1.0056668137243032,
+    "mixed": 0.9990320236490232,
+    "long": 0.965282825217701
+  },
+  "guards": {
+    "spec-a1": {
+      "observations": 75,
+      "minimum_free_mib": 319,
+      "max_observation_gap_s": 1.1318402290344238
+    },
+    "spec-b1": {
+      "observations": 72,
+      "minimum_free_mib": 297,
+      "max_observation_gap_s": 1.13509202003479
+    },
+    "spec-b2": {
+      "observations": 73,
+      "minimum_free_mib": 297,
+      "max_observation_gap_s": 1.1041183471679688
+    },
+    "spec-a2": {
+      "observations": 74,
+      "minimum_free_mib": 319,
+      "max_observation_gap_s": 1.1345105171203613
+    }
+  },
+  "promotion_gate_passed": false,
+  "limits": [
+    "Prompts, seeds and full output work match; sampled text and routing can differ.",
+    "Rolling acceptance summaries do not identify the scheduler EWMA or per-position prefix probabilities.",
+    "This gate is configuration-specific; no global optimum is established."
+  ]
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "wall_s": 468.69586223596707,
+    "start_monotonic": 973677.356141936,
+    "end_monotonic": 974146.052004172,
+    "ttft_s": 468.5657215259271,
+    "usage": {
+      "prompt_tokens": 250042,
+      "completion_tokens": 13,
+      "total_tokens": 250055,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 250042
+    },
+    "finish_reason": "stop",
+    "content_event_times_monotonic": [
+      974145.921862932,
+      974145.946686002,
+      974145.946700575,
+      974145.968314038,
+      974145.968328201,
+      974145.992745337,
+      974145.992759312,
+      974145.992766467,
+      974146.019180472,
+      974146.019194379,
+      974146.01920197,
+      974146.019208992,
+      974146.051912796
+    ],
+    "visible_chunk_gap_scope": "client-observed SSE content chunks, which may contain multiple model tokens",
+    "output_sha256": "81bab5d7370126ff1625a668e1ca0c86dc73c4ded40ffa81b80a43d6c2294502",
+    "output": "VOLTA_LONG_8a271d60b7fc",
+    "decode_tokens_per_s": 92.20788788006527
+  }
+]

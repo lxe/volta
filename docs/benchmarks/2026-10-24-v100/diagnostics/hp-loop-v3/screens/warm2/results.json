@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 4.813619420980103,
+    "start_monotonic": 976138.551106959,
+    "end_monotonic": 976143.36472638,
+    "ttft_s": 2.5653673650231212,
+    "usage": {
+      "prompt_tokens": 563,
+      "completion_tokens": 64,
+      "total_tokens": 627,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 563
+    },
+    "finish_reason": "length",
+    "output_sha256": "7bb2ebcb9bcf6c77c811d2512f40ca831d10b51570b2482f01dbbb1615230b95",
+    "output": "# Code Review: `guard-02-warm2` (client 0)\n\n## Overview\n\nThe module under review consists of 14 near-identical functions, `record_0` through `record_13` (with `record_13` truncated mid-expression in the provided snippet). Each function accepts a single",
+    "decode_tokens_per_s": 28.021769104169092
+  },
+  {
+    "wall_s": 4.273470589891076,
+    "start_monotonic": 976138.550815575,
+    "end_monotonic": 976142.824286165,
+    "ttft_s": 1.466915701981634,
+    "usage": {
+      "prompt_tokens": 563,
+      "completion_tokens": 64,
+      "total_tokens": 627,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 563
+    },
+    "finish_reason": "length",
+    "output_sha256": "54a2a8b4be190fa3c89319691d1900e311144eb8cac37f7cfeb064fa57d562da",
+    "output": "# Code Review: `guard-02-warm2` (client 1)\n\n## Overview\n\nThe module under review consists of a family of near-identical functions `record_0` through `record_13` (and presumably beyond, given the truncated final line). Each function:\n\n1. Accepts an iter",
+    "decode_tokens_per_s": 22.447449815217293
+  },
+  {
+    "wall_s": 5.408690265961923,
+    "start_monotonic": 976138.550970966,
+    "end_monotonic": 976143.959661232,
+    "ttft_s": 3.6966464640572667,
+    "usage": {
+      "prompt_tokens": 563,
+      "completion_tokens": 64,
+      "total_tokens": 627,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 563
+    },
+    "finish_reason": "length",
+    "output_sha256": "fdb86a36657f88d92d54baf712f631368d71285e9042e6a5fd49c726e32f5554",
+    "output": "# Code Review: `guard-02-warm2` (client 2)\n\n## Summary\n\nThis module consists of 14 near-identical functions (`record_0` through `record_13`) that each compute a weighted sum over an input iterable and return a small dictionary describing the result. The functions are",
+    "decode_tokens_per_s": 36.79812393229206
+  },
+  {
+    "wall_s": 5.852050455054268,
+    "start_monotonic": 976138.551308444,
+    "end_monotonic": 976144.403358899,
+    "ttft_s": 4.8133914730278775,
+    "usage": {
+      "prompt_tokens": 563,
+      "completion_tokens": 64,
+      "total_tokens": 627,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 563
+    },
+    "finish_reason": "length",
+    "output_sha256": "5ef9d3097b9ee49e6acf8dfa4968c68392a6a265f16379635ca186ee4ba195f2",
+    "output": "# Code Review: `record_*` module (work item guard-02-warm2, client 3)\n\n## Overview\n\nThe module consists of a series of near-identical functions `record_0` through `record_13` (and presumably more, since the file is truncated mid-definition at `",
+    "decode_tokens_per_s": 60.65513425502661
+  }
+]

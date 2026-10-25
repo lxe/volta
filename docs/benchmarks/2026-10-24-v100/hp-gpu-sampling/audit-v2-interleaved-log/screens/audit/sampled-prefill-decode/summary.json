@@ -1,0 +1,9 @@
+{
+  "phase": "sampled-prefill-decode",
+  "requests": 1,
+  "prompt_tokens": 556,
+  "output_tokens": 128,
+  "max_active": 1,
+  "max_queued": 0,
+  "cached_tokens_delta": 0
+}

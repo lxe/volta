@@ -1,0 +1,14 @@
+{
+  "base_worktree_commit": "fc505a130a9dca7e85ec8f8d96e9c45666c4d021",
+  "prototype_source_commit": "acf798786b1962f5ea45ecbebc6cf114f2126b81",
+  "source_sha256": {
+    "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+    "engine/src/volta.rs": "9926e1c5cb86846c25a0dd7b6eb6669b8581e121ba1e320d1d94d01bea2082c9",
+    "engine/src/server/volta.rs": "2f871c5da82894bb573b95713a66e89473459cc1c10191a01b55fb44e0100051"
+  },
+  "source_archive_sha256": "431ab4e6310ad1d129977155b5fee702c657780a6814f8d36d2001636b111e16",
+  "repair_patch_sha256": "680b39c518f06a8ff95f7fd8620e3ee71b12bdb0f1659756f83ac685a72ba7e5",
+  "repair": "valid struct literals replace invalid zero-initialized Rust enums; pure constructor CPU test",
+  "kernel_changes": false,
+  "GPU_launches": 0
+}

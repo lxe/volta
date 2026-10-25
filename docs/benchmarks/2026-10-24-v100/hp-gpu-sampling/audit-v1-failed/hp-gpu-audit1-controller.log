@@ -1,0 +1,44 @@
+{"ready": true, "pid": 24089, "run": "/home/lxe/volta-sixhour-20261024/server-runs/hp-gpu-audit1"}
+{"first_observation_verified": true, "observation_path": "/root/memory-hp-gpu-audit1.jsonl", "server_pid": 24089, "guard_pid": 24272, "command": ["python3", "/root/memory-guard.py", "--name", "hp-gpu-audit1", "--receipt-name", "hp-gpu-audit1", "--min-free-mib", "192", "--until", "1792903702.0862901"], "ready_free_mib": [[0, 1847], [1, 1879], [2, 1879], [3, 1879], [4, 1879], [5, 1879], [6, 1879], [7, 1879]], "log": "/root/memory-guard-hp-gpu-audit1.log", "until": 1792903702.0862901}
+Traceback (most recent call last):
+  File "/home/lxe/volta-sixhour-20261024/hp-sampling-audit-client.py", line 41, in <module>
+    phase('sampled-prefill-decode',[body(512,128,.7,0)])
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lxe/volta-sixhour-20261024/hp-sampling-audit-client.py", line 33, in phase
+    s=get_stats(admin);s.pop('history',None);s['observed_epoch']=time.time();rows.append(s);time.sleep(.25)
+  File "/home/lxe/volta-sixhour-20261024/screen.py", line 18, in get_stats
+    with urllib.request.urlopen(url, timeout=10) as f:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/urllib/request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/urllib/request.py", line 487, in open
+    response = self._open(req, data)
+  File "/usr/lib/python3.14/urllib/request.py", line 504, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+                              '_open', req)
+  File "/usr/lib/python3.14/urllib/request.py", line 464, in _call_chain
+    result = func(*args)
+  File "/usr/lib/python3.14/urllib/request.py", line 1362, in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/urllib/request.py", line 1337, in do_open
+    r = h.getresponse()
+  File "/usr/lib/python3.14/http/client.py", line 1478, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/client.py", line 343, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/client.py", line 312, in _read_status
+    raise RemoteDisconnected("Remote end closed connection without"
+                             " response")
+http.client.RemoteDisconnected: Remote end closed connection without response
+Traceback (most recent call last):
+  File "/home/lxe/volta-sixhour-20261024/after-spec-hp-audit.py", line 26, in <module>
+    subprocess.run([str(r/'venv/bin/python'),str(r/'hp-sampling-audit-client.py'),'--name',name],check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/home/lxe/volta-sixhour-20261024/venv/bin/python', '/home/lxe/volta-sixhour-20261024/hp-sampling-audit-client.py', '--name', 'hp-gpu-audit1']' returned non-zero exit status 1.

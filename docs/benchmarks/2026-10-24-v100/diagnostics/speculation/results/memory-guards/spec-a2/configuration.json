@@ -1,0 +1,54 @@
+{
+  "first_observation_verified": true,
+  "observation_path": "/root/memory-spec-a2.jsonl",
+  "server_pid": 23697,
+  "guard_pid": 23881,
+  "command": [
+    "python3",
+    "/root/memory-guard.py",
+    "--name",
+    "spec-a2",
+    "--receipt-name",
+    "spec-a2",
+    "--min-free-mib",
+    "192",
+    "--until",
+    "1792903451.6167424"
+  ],
+  "ready_free_mib": [
+    [
+      0,
+      491
+    ],
+    [
+      1,
+      491
+    ],
+    [
+      2,
+      491
+    ],
+    [
+      3,
+      491
+    ],
+    [
+      4,
+      491
+    ],
+    [
+      5,
+      491
+    ],
+    [
+      6,
+      491
+    ],
+    [
+      7,
+      491
+    ]
+  ],
+  "log": "/root/memory-guard-spec-a2.log",
+  "until": 1792903451.6167424
+}

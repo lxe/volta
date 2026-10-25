@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 2.1908130299998447,
+    "start_monotonic": 977910.672707565,
+    "end_monotonic": 977912.863520595,
+    "ttft_s": 1.4922680660383776,
+    "usage": {
+      "prompt_tokens": 565,
+      "completion_tokens": 64,
+      "total_tokens": 629,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 565
+    },
+    "finish_reason": "length",
+    "output_sha256": "63263bf8e77938ea014103fc5e7432e64534f9e5eeff0fb957f5c8c8b042337d",
+    "output": "# Code Review: `spec-theta-01-warm2` (client 0)\n\n## Overview\n\nThe submitted module consists of a sequence of near-identical functions named `record_0` through `record_13` (and the file appears truncated mid-definition at `record_13`). Each function",
+    "decode_tokens_per_s": 90.18746573266425
+  },
+  {
+    "wall_s": 2.306757113081403,
+    "start_monotonic": 977910.673008304,
+    "end_monotonic": 977912.979765417,
+    "ttft_s": 1.4919247010257095,
+    "usage": {
+      "prompt_tokens": 565,
+      "completion_tokens": 64,
+      "total_tokens": 629,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 565
+    },
+    "finish_reason": "length",
+    "output_sha256": "22b816f1488e9a4db198d018285e130b9499733bb1e2370c75f069a7cf789dd7",
+    "output": "# Code Review: `spec-theta-01-warm2` (Client 1)\n\n## Module Overview\n\nThe module under review defines a series of near-identical functions, `record_0` through `record_13` (and presumably beyond, since the listing is truncated mid-expression on `record_13",
+    "decode_tokens_per_s": 77.3165120433304
+  },
+  {
+    "wall_s": 2.255636653979309,
+    "start_monotonic": 977910.672864421,
+    "end_monotonic": 977912.928501075,
+    "ttft_s": 1.4918368000071496,
+    "usage": {
+      "prompt_tokens": 565,
+      "completion_tokens": 64,
+      "total_tokens": 629,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 565
+    },
+    "finish_reason": "length",
+    "output_sha256": "315cd4563569f44d8626e8f577cc74c06c29651d3b635228189f8149df3beaf5",
+    "output": "# Code Review: `spec-theta-01-warm2` (Client 2)\n\n## Overview\n\nThe module consists of a series of nearly identical functions `record_0` through `record_13` (with the file appearing truncated mid-expression in `record_13`). Each function accepts a single argument",
+    "decode_tokens_per_s": 82.48234098549116
+  },
+  {
+    "wall_s": 2.2549364420119673,
+    "start_monotonic": 977910.673131027,
+    "end_monotonic": 977912.928067469,
+    "ttft_s": 1.3608763290103525,
+    "usage": {
+      "prompt_tokens": 565,
+      "completion_tokens": 64,
+      "total_tokens": 629,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 565
+    },
+    "finish_reason": "length",
+    "output_sha256": "9eaebde108f30bed6279753bc7d5100ef6c2658ef22452423f98c9b72021d263",
+    "output": "# Code Review: `spec-theta-01-warm2`, Client 3\n\n## Overview\n\nThe submitted module consists of fourteen functions (`record_0` through `record_13`) that share an identical structure: each takes a `values` iterable, computes a weighted sum where the weight is a function",
+    "decode_tokens_per_s": 70.46506055223851
+  }
+]

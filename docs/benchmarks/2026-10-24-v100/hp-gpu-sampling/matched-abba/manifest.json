@@ -1,0 +1,726 @@
+{
+  "schema": 1,
+  "scope": "Actual HP A/B/B/A matched timing; no final promotion claim",
+  "files": {
+    "README.md": {
+      "bytes": 3764,
+      "sha256": "db7aa401f9b32a5ace718976fdcaf6c10fd5ab7aec3a5fba0d98a420322072aa"
+    },
+    "analyze-hp-gpu-abba.py": {
+      "bytes": 8744,
+      "sha256": "bcdc31f653e34a4ff1b98b213eb090f7c25797c1bb79d1f2c463c587c4a5342d"
+    },
+    "hp-gpu-abba-attribution.md": {
+      "bytes": 4647,
+      "sha256": "1ce7708bca3edcf7c96779dd9d76a5b614f871664c0ed87d278a49e512b88c6c"
+    },
+    "hp-sampling-v3-build-proof.json": {
+      "bytes": 2744,
+      "sha256": "faf10e0091dafeaa9202fa57914ecafa9cde38cd75870387dd5aa03cad7f3152"
+    },
+    "hp-sampling-v3-source.json": {
+      "bytes": 674,
+      "sha256": "e38c20626ac46d07a999dee1cff387ac4926e54f3b5c2a62d609f66f33a848d7"
+    },
+    "hp-sampling-validation-protocol.md": {
+      "bytes": 4338,
+      "sha256": "5e6fe1be76e856d337d88e5c22db97f5005851b8ce9483d4971187880e1a6c35"
+    },
+    "memory-guard.py": {
+      "bytes": 2517,
+      "sha256": "e92241ff30a6dfb0bf2795705e728ee1b91837a5cb324ce185729be5a6c99226"
+    },
+    "memory-guards/hp-cpu-a1/configuration.json": {
+      "bytes": 710,
+      "sha256": "aaa2d363ea2f09aa9df3a6c1197a8cff4186e6bfbfe31ae6eec0c4fcb39ef74e"
+    },
+    "memory-guards/hp-cpu-a1/launch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "memory-guards/hp-cpu-a1/observations-through-arm.jsonl": {
+      "bytes": 25221,
+      "sha256": "e8c50d1374c3933a78e5f5106a7d05caffa0d2b62625024cf06f65b7a3ad7840"
+    },
+    "memory-guards/hp-cpu-a2/configuration.json": {
+      "bytes": 710,
+      "sha256": "0910c99ad5bbe8851206709ff276af35988a37db12c9be536de9049309da0279"
+    },
+    "memory-guards/hp-cpu-a2/launch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "memory-guards/hp-cpu-a2/observations-through-arm.jsonl": {
+      "bytes": 25217,
+      "sha256": "8d050f396646580e78fd0c3035e2a75cdbcb748392b1367c922a612198b95f07"
+    },
+    "memory-guards/hp-gpu-b1/configuration.json": {
+      "bytes": 712,
+      "sha256": "1213d4844731115d43247c9aa838ced2d0846a4d0c679391bcab879576894fde"
+    },
+    "memory-guards/hp-gpu-b1/launch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "memory-guards/hp-gpu-b1/observations-through-arm.jsonl": {
+      "bytes": 17575,
+      "sha256": "215bdd233219ed25777e6d3f11ba5befdbc5eee1eeeda1b9f58b9ff156d39775"
+    },
+    "memory-guards/hp-gpu-b2/configuration.json": {
+      "bytes": 712,
+      "sha256": "04c403a62f0a78fdb285b80c9c0d13f7c837627c9af15520ec5d2cf3241da3f1"
+    },
+    "memory-guards/hp-gpu-b2/launch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "memory-guards/hp-gpu-b2/observations-through-arm.jsonl": {
+      "bytes": 17323,
+      "sha256": "6a99c880619cca9ece4c51241975fdec0242dc3170bb68f793f93c103e87ab54"
+    },
+    "receipts/HP_GPU_ABBA_DONE": {
+      "bytes": 19,
+      "sha256": "ac66e5483ceae80424a80c0028608533d4f40d84a741881946a0e1d8b2ef7b65"
+    },
+    "receipts/HP_GPU_AUDIT3_PASSED": {
+      "bytes": 19,
+      "sha256": "43def7411288e775b450cddd9a0fb80cf78c9a8df8bb796f54b61a44240876d9"
+    },
+    "receipts/HP_GPU_MATCHED_TIMING_GATE_PASSED": {
+      "bytes": 235,
+      "sha256": "1e15849de015c9d61fe89d0c0c3bbb371337dbc20d30a0c7326fee44acfeb637"
+    },
+    "receipts/candidate-build-proof.json": {
+      "bytes": 895,
+      "sha256": "ded3c35713b8f78b132aa225306bb0c9588670f6751a10c569be1fd077cea78b"
+    },
+    "receipts/hp-cpu-a1-controller.log": {
+      "bytes": 2808,
+      "sha256": "4213382ba5ed3bbe5c2b2025e7f737a6c0e56026f3c0812e193c4273fbf97795"
+    },
+    "receipts/hp-gpu-abba-analysis.json": {
+      "bytes": 9690,
+      "sha256": "2223f07d372b4e4b3f9e57d86641ee528e37c2924118c2d45c4ed37ee15d512e"
+    },
+    "receipts/hp-gpu-abba-controller.log": {
+      "bytes": 8723,
+      "sha256": "7144254f381fd313c599fbdd9d03ac2e40c85c69c2fee71da122c06a87a59502"
+    },
+    "run-arm.py": {
+      "bytes": 5466,
+      "sha256": "51949a2fe92a8bf6c4cb6f19eab30cfd036df03546a0436486e4cce81f245d7e"
+    },
+    "run-hp-cpu-a1.py": {
+      "bytes": 1077,
+      "sha256": "d865bd85f8e51925a3e8a1f6f75d8ddf799bb79b45ca6cafbafcea550af2dac2"
+    },
+    "run-hp-gpu-abba.py": {
+      "bytes": 2500,
+      "sha256": "3cde8d5b693e5a9b48444677c1004ce40247e784ce12cf8e3ba11ef60155e658"
+    },
+    "screen.py": {
+      "bytes": 9876,
+      "sha256": "5b77e8621748c7095d1566c821680afb38965f0a6df6ac499eb3f4faa250089c"
+    },
+    "screens/hp-cpu-a1/ARM_DONE": {
+      "bytes": 19,
+      "sha256": "acd6246ca3e55cfd126139f4d26578958476b240f0793b9e4a7b36eddbb1e8e2"
+    },
+    "screens/hp-cpu-a1/final-gpus.csv": {
+      "bytes": 421,
+      "sha256": "4de4587af76d366ae14e22dc697c04d2cc739169dc0ccf3731c219945430ada4"
+    },
+    "screens/hp-cpu-a1/fixed/final-stats.json": {
+      "bytes": 21552,
+      "sha256": "073f0081ef325caabb745a1e2f91d3705604477134ecf840fd6eb173b88ccfc6"
+    },
+    "screens/hp-cpu-a1/fixed/initial-stats.json": {
+      "bytes": 17670,
+      "sha256": "0747dd00cea382ecdb49bd012b2e8ed4f41b79261ff519cf003a3bb9d5211f51"
+    },
+    "screens/hp-cpu-a1/fixed/requests.json": {
+      "bytes": 61312,
+      "sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44"
+    },
+    "screens/hp-cpu-a1/fixed/results.json": {
+      "bytes": 11034,
+      "sha256": "5aefe40c0f79a55c46c70ee1c16d4b29dd5f9efd8e7f541ea0d070b115c4b137"
+    },
+    "screens/hp-cpu-a1/fixed/stats.jsonl": {
+      "bytes": 175953,
+      "sha256": "d33eaf30d4c2c65c806c59555f873962df65dbbb666d34bf426e8b95a0800205"
+    },
+    "screens/hp-cpu-a1/fixed/summary.json": {
+      "bytes": 576,
+      "sha256": "8bbfda3e0f1672a302f37e2885401225dd5bb633b032ce4899ca8af14824acff"
+    },
+    "screens/hp-cpu-a1/fixed.log": {
+      "bytes": 577,
+      "sha256": "6f230181faaa136c2954782a6eecfd7cea94f791ebb6de399f9955d6eb992958"
+    },
+    "screens/hp-cpu-a1/mixed/final-stats.json": {
+      "bytes": 27051,
+      "sha256": "9f2b8cfe107ad31d5ecbfc3de5a83c798d9d2166bd96f880c29337dffd57c741"
+    },
+    "screens/hp-cpu-a1/mixed/initial-stats.json": {
+      "bytes": 21820,
+      "sha256": "69d1b357d6f5a7ae9e426a9fecdeb7040e45522443e248cdf970d7caf2244a69"
+    },
+    "screens/hp-cpu-a1/mixed/requests.json": {
+      "bytes": 76515,
+      "sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961"
+    },
+    "screens/hp-cpu-a1/mixed/results.json": {
+      "bytes": 10982,
+      "sha256": "a3e3b03e35353e2482d10ca6d33502e3e8b630307ca2d888860d751b7fe06710"
+    },
+    "screens/hp-cpu-a1/mixed/stats.jsonl": {
+      "bytes": 206721,
+      "sha256": "49a1d70758732141219beaf2e7541abf27784c5d1f67a94b46d0531a8634f4e1"
+    },
+    "screens/hp-cpu-a1/mixed/summary.json": {
+      "bytes": 577,
+      "sha256": "ff358ce3169ce1897e04ecbf2975aa070852d7a1c4e9d3dfe11eced73e5e909c"
+    },
+    "screens/hp-cpu-a1/mixed.log": {
+      "bytes": 578,
+      "sha256": "d542d79b57c00d59b22caf52731598171f2bbdeb079a5d68499b222c462d4a34"
+    },
+    "screens/hp-cpu-a1/server.log": {
+      "bytes": 22254,
+      "sha256": "3575bcbe84c18c772e2af4165003011b759aefc7994eae96db4ce68f2fdd1427"
+    },
+    "screens/hp-cpu-a1/smoke.json": {
+      "bytes": 756,
+      "sha256": "2a31c2f426fd9be906a4f3e1af080fe6c356e84936bc2eaf681cf6fb3081e534"
+    },
+    "screens/hp-cpu-a1/warm1/final-stats.json": {
+      "bytes": 16128,
+      "sha256": "85a9fc3a9510cb3b93d8846fcec79ea4c69b75660f193d53199d7980c127a28d"
+    },
+    "screens/hp-cpu-a1/warm1/initial-stats.json": {
+      "bytes": 15590,
+      "sha256": "8349e0b258a79b33dd611ff84301a5f3a71f801bf12f0e05930b778bf353389d"
+    },
+    "screens/hp-cpu-a1/warm1/requests.json": {
+      "bytes": 9156,
+      "sha256": "1603fff898de8f5da9a24f2e63edac370cf44a09ed9be5f034edbc462a06d922"
+    },
+    "screens/hp-cpu-a1/warm1/results.json": {
+      "bytes": 3383,
+      "sha256": "9e527f142138ea2f39cdcc1036efae8ddc5ead83fce3d45046ed6a5125344106"
+    },
+    "screens/hp-cpu-a1/warm1/stats.jsonl": {
+      "bytes": 16284,
+      "sha256": "cdfc6376189ac408bf96ed9e864fdf1d94a4157a1e8a299c2659c80ba192bf92"
+    },
+    "screens/hp-cpu-a1/warm1/summary.json": {
+      "bytes": 571,
+      "sha256": "2e174cde5c06fb9029c753a3bfe79ac0529949855c79626462370bb75b375edb"
+    },
+    "screens/hp-cpu-a1/warm1.log": {
+      "bytes": 572,
+      "sha256": "8885c35abc22ac19b30b7142d180cd17567d359eda2e79a0ee9098324bdf5576"
+    },
+    "screens/hp-cpu-a1/warm2/final-stats.json": {
+      "bytes": 17566,
+      "sha256": "33d5f493182556c05182c76fbd7a8321a2201156b6f9051ad8569996f854770f"
+    },
+    "screens/hp-cpu-a1/warm2/initial-stats.json": {
+      "bytes": 16033,
+      "sha256": "066a831eb3b8e232e58e3c7d3d719dbd0b64be94ccf1057b730297254b06a8e0"
+    },
+    "screens/hp-cpu-a1/warm2/requests.json": {
+      "bytes": 9156,
+      "sha256": "c0473a563e58a7ac023c12feac3e1c6fe9a725cb50505a5e55afb1bad49c09e8"
+    },
+    "screens/hp-cpu-a1/warm2/results.json": {
+      "bytes": 3445,
+      "sha256": "e8a8f78d3ac68717f8f565c5d516a28203a51373ec3bb2ff9563adcc66d69d67"
+    },
+    "screens/hp-cpu-a1/warm2/stats.jsonl": {
+      "bytes": 19849,
+      "sha256": "d8c0c8b378e3c881d876d73f39d85b9243cc20b1d61a127c27623f16a6b65d43"
+    },
+    "screens/hp-cpu-a1/warm2/summary.json": {
+      "bytes": 573,
+      "sha256": "979ad73d3bd75fa201033d2822236862f56d84a554eedb4ed1fb6632e46abfef"
+    },
+    "screens/hp-cpu-a1/warm2.log": {
+      "bytes": 574,
+      "sha256": "12efa884d5fa9dcaf2858c873f8e57b0683a15097b284e1053a28cdcdc6997c1"
+    },
+    "screens/hp-cpu-a2/ARM_DONE": {
+      "bytes": 18,
+      "sha256": "eb59ba32bc798a454b4f03340c9355ec151959c426666e4062de57efceb5778e"
+    },
+    "screens/hp-cpu-a2/final-gpus.csv": {
+      "bytes": 421,
+      "sha256": "48e1ca2d68f4ec02e456deaef8645f1abe880ab7384675d1116d6aca7d6b0e9a"
+    },
+    "screens/hp-cpu-a2/fixed/final-stats.json": {
+      "bytes": 21276,
+      "sha256": "fd300a514ff87748ce441a5d46d6eff2735655727da573cfe6689822e9b70613"
+    },
+    "screens/hp-cpu-a2/fixed/initial-stats.json": {
+      "bytes": 17093,
+      "sha256": "d42e1e87771d25832f364efeadd626a218411796cb34265ada48865d65148429"
+    },
+    "screens/hp-cpu-a2/fixed/requests.json": {
+      "bytes": 61312,
+      "sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44"
+    },
+    "screens/hp-cpu-a2/fixed/results.json": {
+      "bytes": 11034,
+      "sha256": "5888cb1083cf0e90519649e6dd6d85346346cbc1075e97a650f989ab21d52531"
+    },
+    "screens/hp-cpu-a2/fixed/stats.jsonl": {
+      "bytes": 174106,
+      "sha256": "25de2c0c8f37411d3c21b61102c308d9bf999299e75b538d159b720d18765d3b"
+    },
+    "screens/hp-cpu-a2/fixed/summary.json": {
+      "bytes": 576,
+      "sha256": "9ee41396926c58011bc37a8005b3d3b3344b28801aca35c6c2f9cf12b3bd272b"
+    },
+    "screens/hp-cpu-a2/fixed.log": {
+      "bytes": 577,
+      "sha256": "a4902402f885c34996c38a3677518202f155a4679b6f93ee5a2ce1e9ec4e7841"
+    },
+    "screens/hp-cpu-a2/mixed/final-stats.json": {
+      "bytes": 26857,
+      "sha256": "b699a44d7c7f5792fc12328255037fa53885a1686daee5539ba4809778bfe052"
+    },
+    "screens/hp-cpu-a2/mixed/initial-stats.json": {
+      "bytes": 21654,
+      "sha256": "6f89ab5068466ff142b12531c7c9a3df5c44740f146a5afcd5277a7d99e63282"
+    },
+    "screens/hp-cpu-a2/mixed/requests.json": {
+      "bytes": 76515,
+      "sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961"
+    },
+    "screens/hp-cpu-a2/mixed/results.json": {
+      "bytes": 11075,
+      "sha256": "bc7dfb254bd3f35a2ff4520686e06eb5ae41cbb3125db80f0508ac18daf4df5c"
+    },
+    "screens/hp-cpu-a2/mixed/stats.jsonl": {
+      "bytes": 204569,
+      "sha256": "f6f40ef1897291a390b64814a60c27691998acb14ccf69a617243e087d8cf5cc"
+    },
+    "screens/hp-cpu-a2/mixed/summary.json": {
+      "bytes": 576,
+      "sha256": "cf6b7b2036819feae11804e42a017047b90c23ab47ff0a25b16f326085203654"
+    },
+    "screens/hp-cpu-a2/mixed.log": {
+      "bytes": 577,
+      "sha256": "528bf0dc015274d17a7678982d917f47dbecbb6b268990cfba91898c2dcf16b4"
+    },
+    "screens/hp-cpu-a2/server.log": {
+      "bytes": 22256,
+      "sha256": "25899d7474d5bec4f1a596923756fcc2da55885f89970fa7b57a2be9cf5cfef4"
+    },
+    "screens/hp-cpu-a2/smoke.json": {
+      "bytes": 749,
+      "sha256": "0094c03d7cd4d0ab75cd57df85e32d433869e4cb3daf044bbeb9b26bb6caa200"
+    },
+    "screens/hp-cpu-a2/warm1/final-stats.json": {
+      "bytes": 16304,
+      "sha256": "70d6909a195dfa601aa389c11a2d0a09cd4f95ed5fcc660a0353ed9407b52bc0"
+    },
+    "screens/hp-cpu-a2/warm1/initial-stats.json": {
+      "bytes": 15054,
+      "sha256": "133934b364c8f1aa669598558bc49dde9cdb2d6309327659f4f1d9d044dc3e92"
+    },
+    "screens/hp-cpu-a2/warm1/requests.json": {
+      "bytes": 9156,
+      "sha256": "1603fff898de8f5da9a24f2e63edac370cf44a09ed9be5f034edbc462a06d922"
+    },
+    "screens/hp-cpu-a2/warm1/results.json": {
+      "bytes": 3417,
+      "sha256": "6ea47b0cba56217a13c48174218da2cd34ef64ecf8f75172244cc2268827fa86"
+    },
+    "screens/hp-cpu-a2/warm1/stats.jsonl": {
+      "bytes": 17065,
+      "sha256": "53748be53e7c845d35c146d6141ada1a6a39167206998505c42ac9d8a1cb4373"
+    },
+    "screens/hp-cpu-a2/warm1/summary.json": {
+      "bytes": 572,
+      "sha256": "c9525574e49fecce48e31301b3f05124a32c4ffa9bcb3716d21bcff9030d3ace"
+    },
+    "screens/hp-cpu-a2/warm1.log": {
+      "bytes": 573,
+      "sha256": "884eb1043182ec6b4940a5e0bd5b7aed4321a995e5bcc1b1677afd0d882fd554"
+    },
+    "screens/hp-cpu-a2/warm2/final-stats.json": {
+      "bytes": 16781,
+      "sha256": "958e6d9f64f16e0a277fe762fd53d4816efb35b02726e2a3580536c0b6e9fbed"
+    },
+    "screens/hp-cpu-a2/warm2/initial-stats.json": {
+      "bytes": 15816,
+      "sha256": "a25953e3f38ff4157c7d98d82246560546005e4c0dd3c32045b40091b6cc5e6c"
+    },
+    "screens/hp-cpu-a2/warm2/requests.json": {
+      "bytes": 9156,
+      "sha256": "c0473a563e58a7ac023c12feac3e1c6fe9a725cb50505a5e55afb1bad49c09e8"
+    },
+    "screens/hp-cpu-a2/warm2/results.json": {
+      "bytes": 3423,
+      "sha256": "f61ebdb4c5b51f984a6bac820b471e204c1d1acb7f37a316b425784dbb826dc5"
+    },
+    "screens/hp-cpu-a2/warm2/stats.jsonl": {
+      "bytes": 20560,
+      "sha256": "7c536d40bb92c2110ed2d17e74253f0127c132a749190d8ad37ba8876c1c9f37"
+    },
+    "screens/hp-cpu-a2/warm2/summary.json": {
+      "bytes": 569,
+      "sha256": "2a8a6b0ab03a80489467b7f95f8bbd883feb3299a0ab57bdb678927a93261930"
+    },
+    "screens/hp-cpu-a2/warm2.log": {
+      "bytes": 570,
+      "sha256": "a0f683ae96fd0d86bfb93fe6f4e6fba8d6195981427f314a794cfaa3c4a1f44a"
+    },
+    "screens/hp-gpu-b1/ARM_DONE": {
+      "bytes": 19,
+      "sha256": "af7125fb4d454526c2c6e213958138306e1a6988afc530f1a20442648c854dd4"
+    },
+    "screens/hp-gpu-b1/final-gpus.csv": {
+      "bytes": 421,
+      "sha256": "c3cdacd1def0bc68efd5fd90f7d0b20e882eba2b7363f69553af38110ab5b989"
+    },
+    "screens/hp-gpu-b1/fixed/final-stats.json": {
+      "bytes": 19588,
+      "sha256": "6cdb7dd6d32ea5e977dfac11372a7548aeb723c3fc04431efcb6e6e654394fe3"
+    },
+    "screens/hp-gpu-b1/fixed/initial-stats.json": {
+      "bytes": 16129,
+      "sha256": "4a81c291d5f05c486f8c9d6798d868213f5d5663bf7d99754827df9e0abb6bdb"
+    },
+    "screens/hp-gpu-b1/fixed/requests.json": {
+      "bytes": 61312,
+      "sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44"
+    },
+    "screens/hp-gpu-b1/fixed/results.json": {
+      "bytes": 11118,
+      "sha256": "f340147cfc0b4dee606447399dce684d0333fa419761874fc854eac0ac56b592"
+    },
+    "screens/hp-gpu-b1/fixed/stats.jsonl": {
+      "bytes": 116696,
+      "sha256": "2484e4a54bc02a31306de4316ebd4e5634184802b2f614f7682fab07c699de7b"
+    },
+    "screens/hp-gpu-b1/fixed/summary.json": {
+      "bytes": 580,
+      "sha256": "29c16a67a102bb605423f18f5c110dfce00804a96a99b582a28c241c4516902f"
+    },
+    "screens/hp-gpu-b1/fixed.log": {
+      "bytes": 581,
+      "sha256": "dd81174306d90a84bebdc31087cc49e3efd46cf3bf2541189debea304a5e5643"
+    },
+    "screens/hp-gpu-b1/mixed/final-stats.json": {
+      "bytes": 22771,
+      "sha256": "68424a2e066f85cd0f964a3b5ee293a6c6892d0ae5b19ffbe983c9d94928e3ce"
+    },
+    "screens/hp-gpu-b1/mixed/initial-stats.json": {
+      "bytes": 19293,
+      "sha256": "3e4ddc7b9ddc6920538898533ee9b5881abaa26ffe3414d04b4ec2fa057c8102"
+    },
+    "screens/hp-gpu-b1/mixed/requests.json": {
+      "bytes": 76515,
+      "sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961"
+    },
+    "screens/hp-gpu-b1/mixed/results.json": {
+      "bytes": 11389,
+      "sha256": "0208d92687e46148f4f4f09653c58a6417f5023438cb0746d73306275b4da5b5"
+    },
+    "screens/hp-gpu-b1/mixed/stats.jsonl": {
+      "bytes": 142235,
+      "sha256": "97883abb2c96c6f87095785fc61c94d411b3c2fce59aa9e6fbe6776fe80aab04"
+    },
+    "screens/hp-gpu-b1/mixed/summary.json": {
+      "bytes": 577,
+      "sha256": "47f4ab4c18a69f4679a064376f093dc2d8d7cec688fa045923095a6a154e0991"
+    },
+    "screens/hp-gpu-b1/mixed.log": {
+      "bytes": 578,
+      "sha256": "ed11ba8edf6d2be20b679b8fe8707ec0f06936d0e88b07932b3d32e598807b57"
+    },
+    "screens/hp-gpu-b1/server.log": {
+      "bytes": 22288,
+      "sha256": "37877f3d78b8ab064983e0c88e2287517e0bd29537780eabf1e3f2bd9ae573c8"
+    },
+    "screens/hp-gpu-b1/smoke.json": {
+      "bytes": 749,
+      "sha256": "36e9ecb13670251e899c8ebd25536ca31c98129be0194472bf1d854f494f61e2"
+    },
+    "screens/hp-gpu-b1/warm1/final-stats.json": {
+      "bytes": 15859,
+      "sha256": "e582eb45fff25db75cedf4300ff792019260857ca48f7b39d6266cb73fe8c3be"
+    },
+    "screens/hp-gpu-b1/warm1/initial-stats.json": {
+      "bytes": 14786,
+      "sha256": "ebb18b904d0c33e7121d2de1be656da9e66efbfaddfc482cf43b06f745c54e23"
+    },
+    "screens/hp-gpu-b1/warm1/requests.json": {
+      "bytes": 9156,
+      "sha256": "1603fff898de8f5da9a24f2e63edac370cf44a09ed9be5f034edbc462a06d922"
+    },
+    "screens/hp-gpu-b1/warm1/results.json": {
+      "bytes": 3381,
+      "sha256": "12b74a4c96b933f9e77f1ecd1b9dbe5d222709c018d8fda777acae50a8008d89"
+    },
+    "screens/hp-gpu-b1/warm1/stats.jsonl": {
+      "bytes": 11126,
+      "sha256": "4e3098e09193b7fc3669fb026cf54caf86c0bac08b7a3654d9b9d3ad5bd42e6e"
+    },
+    "screens/hp-gpu-b1/warm1/summary.json": {
+      "bytes": 576,
+      "sha256": "40a57a2903ef2605dea35caf733993d2f535c434e45ae1705dfa475b5f0ec18e"
+    },
+    "screens/hp-gpu-b1/warm1.log": {
+      "bytes": 577,
+      "sha256": "d6c24939cb87bdcd291e8ba1300a334f36bb6f0d2431367af70b4fac4371de43"
+    },
+    "screens/hp-gpu-b1/warm2/final-stats.json": {
+      "bytes": 16642,
+      "sha256": "6c9a50b25b88c3ac5f390e798d150ebbce4f5be4711487dad6ef7008d93c28f4"
+    },
+    "screens/hp-gpu-b1/warm2/initial-stats.json": {
+      "bytes": 15474,
+      "sha256": "c23355b4c2835d7bbe7944486d78d17c224c383926bdb3819ff585fb4ab94b45"
+    },
+    "screens/hp-gpu-b1/warm2/requests.json": {
+      "bytes": 9156,
+      "sha256": "c0473a563e58a7ac023c12feac3e1c6fe9a725cb50505a5e55afb1bad49c09e8"
+    },
+    "screens/hp-gpu-b1/warm2/results.json": {
+      "bytes": 3377,
+      "sha256": "427aaf9a4b2454f075f15b5df9ed95323229b9ed583729ae619b4e9a03b7b067"
+    },
+    "screens/hp-gpu-b1/warm2/stats.jsonl": {
+      "bytes": 13487,
+      "sha256": "be56d4f3f5a075809ace557e1d9eff70b584d10c67fbc2e40c93b961778c0a80"
+    },
+    "screens/hp-gpu-b1/warm2/summary.json": {
+      "bytes": 575,
+      "sha256": "a503274fea2d165a37e6faf4e9bb2954bada91c35c591cd556e2281ec51b9a46"
+    },
+    "screens/hp-gpu-b1/warm2.log": {
+      "bytes": 576,
+      "sha256": "745b2bc05a5739fdc26a58c332db6bc7ff9fa47b585010883ea8f14497e259b9"
+    },
+    "screens/hp-gpu-b2/ARM_DONE": {
+      "bytes": 19,
+      "sha256": "aad5944aff9c3bb5d2329bc86449108ee36d702fbaf3f5d1245700e8f308e685"
+    },
+    "screens/hp-gpu-b2/final-gpus.csv": {
+      "bytes": 421,
+      "sha256": "688df914e58bb718f8fbd9b6d176a4482c590c4b0d3222c7d794e04d140ff359"
+    },
+    "screens/hp-gpu-b2/fixed/final-stats.json": {
+      "bytes": 19828,
+      "sha256": "302854ddbb79d2e9e1c429c97237fed241d6b1929b9df68a4fdb34b67a72b525"
+    },
+    "screens/hp-gpu-b2/fixed/initial-stats.json": {
+      "bytes": 17011,
+      "sha256": "ee4309530a0517e631489d8a693414b2fbb26f56d5f0dcea9b2eb3f0a554c54d"
+    },
+    "screens/hp-gpu-b2/fixed/requests.json": {
+      "bytes": 61312,
+      "sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44"
+    },
+    "screens/hp-gpu-b2/fixed/results.json": {
+      "bytes": 11169,
+      "sha256": "538ccee42d91b861bcadf11c3cdee9fc39507506cdbda6151728136e603d55b0"
+    },
+    "screens/hp-gpu-b2/fixed/stats.jsonl": {
+      "bytes": 116068,
+      "sha256": "1858afd27972ff367c8fbd59b153069b6f214c2b6f9ce722bb987662bcc303cd"
+    },
+    "screens/hp-gpu-b2/fixed/summary.json": {
+      "bytes": 579,
+      "sha256": "3784009e5a1fbb51651bb69e4c12a2a2001fdf36eb6f4231655b297a5d2c4199"
+    },
+    "screens/hp-gpu-b2/fixed.log": {
+      "bytes": 580,
+      "sha256": "ab98e3e57540f2d5a2f664752b3b01fd96e099feb78032cc610951f8d458b6d8"
+    },
+    "screens/hp-gpu-b2/mixed/final-stats.json": {
+      "bytes": 22880,
+      "sha256": "da80e27a0723364f7b4a0e61bffdeef9c969e14be9abb17f5a63fbe05ddd307b"
+    },
+    "screens/hp-gpu-b2/mixed/initial-stats.json": {
+      "bytes": 19300,
+      "sha256": "7df8a2e0bf25f0d5b0fad413f6c38d43637e2fdfa6d79237c4f0f3e3a286f7a3"
+    },
+    "screens/hp-gpu-b2/mixed/requests.json": {
+      "bytes": 76515,
+      "sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961"
+    },
+    "screens/hp-gpu-b2/mixed/results.json": {
+      "bytes": 11352,
+      "sha256": "02798cb8223ca8e3b37451408a298c6b9a86b5ac33b5ae4bbd480d8eaf94f11d"
+    },
+    "screens/hp-gpu-b2/mixed/stats.jsonl": {
+      "bytes": 139189,
+      "sha256": "bd6189c1125256fe9b0bc98726e6aecca5b4dd034bbcaf1d1c1377c8b75a1cca"
+    },
+    "screens/hp-gpu-b2/mixed/summary.json": {
+      "bytes": 576,
+      "sha256": "cae03f5dfbe77fef021ce801cd4badd38b205dc68490832f14f55f00f83f8522"
+    },
+    "screens/hp-gpu-b2/mixed.log": {
+      "bytes": 577,
+      "sha256": "9d04ba1be14c73d00e2e93c125005609bf5198e9418e3040a0581953c837652e"
+    },
+    "screens/hp-gpu-b2/server.log": {
+      "bytes": 22293,
+      "sha256": "30797a7b71376300d05dbd275269e2bc52357bb57e8707c0000358f5bca77eac"
+    },
+    "screens/hp-gpu-b2/smoke.json": {
+      "bytes": 756,
+      "sha256": "b572f6ad44a994b357a9e5ba3d8c5c03348d4429d21b6e747541ebcc2304e9ac"
+    },
+    "screens/hp-gpu-b2/warm1/final-stats.json": {
+      "bytes": 15675,
+      "sha256": "699037e334c99a58e1c942e69d4d7a6e31ee860e53a6463b4fe4ce71e77588eb"
+    },
+    "screens/hp-gpu-b2/warm1/initial-stats.json": {
+      "bytes": 15032,
+      "sha256": "dcc4b083a62475d48eaee5be7058ac5a75e9a6a828b5f1874990ebdb87ad73fd"
+    },
+    "screens/hp-gpu-b2/warm1/requests.json": {
+      "bytes": 9156,
+      "sha256": "1603fff898de8f5da9a24f2e63edac370cf44a09ed9be5f034edbc462a06d922"
+    },
+    "screens/hp-gpu-b2/warm1/results.json": {
+      "bytes": 3379,
+      "sha256": "15b52670b22b35d9cd6e25a0dda07d2ed988e91f92593016d51d9c9d92fce678"
+    },
+    "screens/hp-gpu-b2/warm1/stats.jsonl": {
+      "bytes": 10963,
+      "sha256": "76eb2d987ce983a74a5e9b60a6bea8ff10c6ec795037cbfb20c80746ca0717a6"
+    },
+    "screens/hp-gpu-b2/warm1/summary.json": {
+      "bytes": 576,
+      "sha256": "ddebed76d7d1683dee103d384d8f0638ec9a0e7811b86175cb59dc3b2c18ad4d"
+    },
+    "screens/hp-gpu-b2/warm1.log": {
+      "bytes": 577,
+      "sha256": "9c4904f5c04bc5b90944cb75287afa988a5b53a1d16437f8a451bc80e221ba54"
+    },
+    "screens/hp-gpu-b2/warm2/final-stats.json": {
+      "bytes": 16742,
+      "sha256": "646bd818dba4ddbb38d80644384599ca2940dd2b7d330d4efecf4c596e98c0c9"
+    },
+    "screens/hp-gpu-b2/warm2/initial-stats.json": {
+      "bytes": 16152,
+      "sha256": "f5fd31ce38f03b8e400951e37e14a202f80791f9386d0bb68b112554cc2306e0"
+    },
+    "screens/hp-gpu-b2/warm2/requests.json": {
+      "bytes": 9156,
+      "sha256": "c0473a563e58a7ac023c12feac3e1c6fe9a725cb50505a5e55afb1bad49c09e8"
+    },
+    "screens/hp-gpu-b2/warm2/results.json": {
+      "bytes": 3315,
+      "sha256": "a51eb989c105abf1cb07f9501dd423f6b5c3aad8c8c61e18fe61a7a805f2157e"
+    },
+    "screens/hp-gpu-b2/warm2/stats.jsonl": {
+      "bytes": 13459,
+      "sha256": "6227664d53bb69ac7284a60b1cbb106a46f28e9ab9afcfd3e43b6df088895f4a"
+    },
+    "screens/hp-gpu-b2/warm2/summary.json": {
+      "bytes": 576,
+      "sha256": "2da886a10b59b2c704ba2324add1e4c88ec213590b997a3af54a223ddf421d0b"
+    },
+    "screens/hp-gpu-b2/warm2.log": {
+      "bytes": 577,
+      "sha256": "9eaec34522fbb397c0d869e6583ee8bc38a6477fb56ac1473471373bb1f9b9c2"
+    },
+    "server-control.py": {
+      "bytes": 9372,
+      "sha256": "95dc4a81a4b01b47c72b3e33e45e1516fac95e8cce305cf04eda7db9e37510cc"
+    },
+    "server-runs/hp-cpu-a1/configuration.json": {
+      "bytes": 1286,
+      "sha256": "e29d22e0e941b7d7454a28c0c182949dfe04531a07643a5d83f373c6050ec0fc"
+    },
+    "server-runs/hp-cpu-a1/previous-stats.json": {
+      "bytes": 30043,
+      "sha256": "001abeb248dd340b57d7e92c9813dce400866ab655735b7f6d78aab2be9fcc2c"
+    },
+    "server-runs/hp-cpu-a1/ready-gpus.csv": {
+      "bytes": 605,
+      "sha256": "8b1743021717d9dd088e78fc3d50f997d135a952cfc26efae11c6f82585e88b5"
+    },
+    "server-runs/hp-cpu-a1/ready-stats.json": {
+      "bytes": 14888,
+      "sha256": "29409c71d132b6d4c2f0a3930c269eedbafb41cf8cf82d29d5918da2207a52fa"
+    },
+    "server-runs/hp-cpu-a1/switch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "server-runs/hp-cpu-a2/configuration.json": {
+      "bytes": 1335,
+      "sha256": "86b29bd475192a786522d24b4e5d20057c53777a5b24c171ef90ffa7277311b5"
+    },
+    "server-runs/hp-cpu-a2/previous-stats.json": {
+      "bytes": 23246,
+      "sha256": "8181893b7439255a6d7f68530977427a8fbb5270ad2a20c98b27bb414554782c"
+    },
+    "server-runs/hp-cpu-a2/ready-gpus.csv": {
+      "bytes": 605,
+      "sha256": "123d42861071cab162384fe9b45091730d18e69ae3820b75686f2f23190748f5"
+    },
+    "server-runs/hp-cpu-a2/ready-stats.json": {
+      "bytes": 15072,
+      "sha256": "485ede79ac40d27a8d7f23cd04d212119b3ffa731bce401d21f24da7347c3c7d"
+    },
+    "server-runs/hp-cpu-a2/switch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "server-runs/hp-gpu-b1/configuration.json": {
+      "bytes": 1396,
+      "sha256": "e0a2bf585820852a2003050651469c6bcddfc6a5042b5c9c94b160517069c884"
+    },
+    "server-runs/hp-gpu-b1/initial-api-observation.json": {
+      "bytes": 155,
+      "sha256": "abf5921292e4b46915ea162621ad56d20fba0c5d081cc17fa6dc921590f47221"
+    },
+    "server-runs/hp-gpu-b1/ready-gpus.csv": {
+      "bytes": 605,
+      "sha256": "b69de725c93bd50ab4c7ef6731e67738a169be665e6b1b4a0f5778f0b1349a0f"
+    },
+    "server-runs/hp-gpu-b1/ready-stats.json": {
+      "bytes": 14812,
+      "sha256": "625384f793e4a785ce33bf7131fb8c75b731298e1e80a955906ae070ff4d5861"
+    },
+    "server-runs/hp-gpu-b1/switch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "server-runs/hp-gpu-b2/configuration.json": {
+      "bytes": 1409,
+      "sha256": "e9536f161bf7cbaba943a1bbc48b088bd515aaa8de2b36d06a9a921ded3453ee"
+    },
+    "server-runs/hp-gpu-b2/previous-stats.json": {
+      "bytes": 22512,
+      "sha256": "8876bc4423ecc012f8de78b5f7fa4c70a2a20b8f4f7db1cfe29f42e766fe75bc"
+    },
+    "server-runs/hp-gpu-b2/ready-gpus.csv": {
+      "bytes": 605,
+      "sha256": "3c8cd09d920b7268aaee52d09d95bf1fb09a5de0a6620f9c0c91f4eb0362f346"
+    },
+    "server-runs/hp-gpu-b2/ready-stats.json": {
+      "bytes": 15050,
+      "sha256": "2a133994d504dc1886f281cd2e3c92978b5ad207e693cecfaa1910d873ff0e53"
+    },
+    "server-runs/hp-gpu-b2/switch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "start-memory-guard.py": {
+      "bytes": 3188,
+      "sha256": "2f49fc8e8c0967af50a4a875eb122eb515f371058d75c489fee1b583ca2809db"
+    }
+  }
+}

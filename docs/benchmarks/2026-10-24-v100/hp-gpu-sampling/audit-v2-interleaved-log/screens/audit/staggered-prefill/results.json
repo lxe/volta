@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 27.93449529306963,
+    "start_monotonic": 979243.40533951,
+    "end_monotonic": 979271.339834803,
+    "ttft_s": 3.933505811030045,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 512,
+      "total_tokens": 1068,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "b79483d6eeb0cad8950733b50cd2c017b98630a2454dc885c44a972b284ab585",
+    "output": "# Code Review: `hp-gpu-audit2`, Case 20\n\n## Executive Summary\n\nThe module under review consists of a series of near-identical functions `record_0` through `record_13`, each of which computes a weighted sum over an input sequence and returns a small dictionary containing the record index, the weighted total, and the count of elements. The pattern is mechanical, repetitive, and\u2014critically\u2014**truncated mid-expression** at `record_13`. The code is functionally straightforward but exhibits several significant issues: extreme duplication, an apparent copy-paste error, missing input validation, no typing, no documentation, and a design that invites future divergence. Below is a detailed review followed by a revised implementation.\n\n---\n\n## 1. Functional Analysis\n\nEach function has the shape:\n\n```python\ndef record_N(values):\n    total = sum(v * (N + 1) for v in values)\n    return {\"record\": N, \"total\": total, \"count\": len(values)}\n```\n\nSo `record_N` multiplies each element by `N + 1`. The mapping is:\n\n| Function | Multiplier |\n|----------|------------|\n| `record_0` | 1 |\n| `record_1` | 2 |\n| ... | ... |\n| `record_13` | 14 |\n\nThe multiplier is always `record_index + 1`. This is a clean, deterministic rule\u2014and it means the entire module can be collapsed into a single parameterized function.\n\n### 1.1 The Truncation Bug (Critical)\n\n`record_13` is **syntactically incomplete**:\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values\n```\n\nThe closing parenthesis of `sum(...)` is missing, and the `return` statement is absent entirely. As written, this module **will not import**\u2014it raises `SyntaxError: unexpected EOF while parsing` (or equivalent in CPython). Every consumer of this module is blocked. This is the single most urgent finding and must be fixed before any other consideration.\n\nIf the file were saved exactly as shown, `import` fails at parse time, so *none* of the functions are usable. This suggests the module was truncated during generation, copy-paste, or a merge. It should be treated as a release-blocking defect.\n\n### 1.2 Correctness of the Remaining Functions\n\nFor `record_0` through `record_",
+    "decode_tokens_per_s": 21.2907888811164
+  },
+  {
+    "wall_s": 26.98635766003281,
+    "start_monotonic": 979243.405227697,
+    "end_monotonic": 979270.391585357,
+    "ttft_s": 2.5470528850564733,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 512,
+      "total_tokens": 1068,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "c644d55fc3333022e5153294c5caffa8c7312ce07b0864f721a84f45c6e893d5",
+    "output": "# Code Review: `hp-gpu-audit2` (Case 21)\n\n## 1. Summary of What the Module Does\n\nThe module defines a series of near-identical functions `record_0` through `record_13` (and presumably more, since the snippet is truncated mid-function at `record_13`). Each function:\n\n1. Takes a single argument `values` (an iterable of numbers).\n2. Computes `sum(v * k for v in values)` where `k` is the 1-based index of the record (i.e., `record_0` uses `1`, `record_1` uses `2`, \u2026, `record_13` uses `14`).\n3. Returns a dict `{\"record\": i, \"total\": total, \"count\": len(values)}`.\n\nThis is a textbook example of **copy-paste boilerplate** with a single varying constant.\n\n---\n\n## 2. Issues Identified\n\n### 2.1 Massive Code Duplication (DRY violation)\n\nEvery function is identical except for two literals:\n- The record index `i`.\n- The multiplier `i + 1`.\n\nThis is the single most important finding. Fourteen (and likely more) copies of the same function create a maintenance hazard: a bug fix in one must be applied to all, and divergence is inevitable. If `record_13` were to be fixed for an off-by-one error, someone would have to remember to fix `record_0` \u2026 `record_12` identically.\n\n### 2.2 Truncated / Incomplete File\n\nThe snippet ends mid-expression:\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values\n```\n\nThis is a **syntax error** \u2014 the closing parenthesis and the rest of the body are missing. As submitted, the module cannot be imported. This must be flagged as a blocking defect regardless of any refactoring.\n\n### 2.3 Implicit Contract on `values`\n\n- `len(values)` is called, so `values` must be a *sized* iterable, not merely an iterable. A generator would raise `TypeError` on `len()`. This is an undocumented constraint.\n- `sum(v * k for v in values)` requires each element to support `__mul__` with an `int`. Nothing validates this.\n- `values` is iterated twice (once for `sum`, once for `len",
+    "decode_tokens_per_s": 20.908941752026365
+  },
+  {
+    "wall_s": 27.767893914016895,
+    "start_monotonic": 979243.405539525,
+    "end_monotonic": 979271.173433439,
+    "ttft_s": 1.3483823270071298,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 512,
+      "total_tokens": 1068,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "9e8a909b80a99f285a8c93b15d2862de927459f8add28b2924f3c6bd81397ba5",
+    "output": "# Code Review: `hp-gpu-audit2`, Case 22\n\n## Summary\n\nThe submitted module consists of fourteen near-identical functions (`record_0` through `record_13`, with the file truncated mid-expression in `record_13`). Each function takes a sequence `values` and returns a dict containing an index, a weighted sum, and the count of elements. The only variation between functions is a hard-coded multiplier and an echoed record index.\n\nWhile the code is syntactically straightforward, it exhibits several structural and correctness issues that would fail a typical review gate. Below is a detailed audit followed by a revised implementation.\n\n---\n\n## Findings\n\n### 1. **Blocking defect: `record_13` is syntactically invalid**\n\nThe file ends with:\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values\n```\n\nThe generator expression is missing its closing `)` and the function body is truncated \u2014 no `return`, no closing paren on `sum(...)`. Importing this module raises `SyntaxError`. This alone blocks merge.\n\n### 2. **Systematic copy-paste duplication (WET code, not DRY)**\n\nAll fourteen functions share the same body shape:\n\n```python\ntotal = sum(v * K for v in values)\nreturn {\"record\": N, \"total\": total, \"count\": len(values)}\n```\n\nThe only deltas are `K = N + 1` and the echoed index `N`. This is textbook copy-paste proliferation. Consequences:\n\n- Any behavioral change (e.g., excluding `None`, using `math.fsum` for float stability, adding validation) must be replicated fourteen times and kept in sync.\n- The multiplier is an implicit invariant (`K = N + 1`) that is nowhere documented or enforced. A future edit to one function's multiplier silently breaks the pattern.\n- Reviewers cannot distinguish intentional variation from accidental drift.\n\n### 3. **Off-by-one / naming ambiguity in the multiplier**\n\n`record_0` multiplies by `1`, `record_1` by `2`, \u2026, `record_N` by `N + 1`. Whether the contract is \"record index\" or \"weight\" is unclear. If callers assume `record_N` weights by `N`, every result is wrong by one. The invariant should be named and tested explicitly.\n\n### 4. **Redundant multiplication**\n\n`sum(v * 1 for v in values)` is exactly",
+    "decode_tokens_per_s": 19.341765585524833
+  },
+  {
+    "wall_s": 28.087309430004098,
+    "start_monotonic": 979247.43024602,
+    "end_monotonic": 979275.51755545,
+    "ttft_s": 22.23938890302088,
+    "usage": {
+      "prompt_tokens": 8236,
+      "completion_tokens": 512,
+      "total_tokens": 8748,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 8236
+    },
+    "finish_reason": "length",
+    "output_sha256": "98f0c9eb9d26fe6367a846b296b2592dc402d2dfdcb3fdfb16403ff640a450e4",
+    "output": "# Code Review: `hp-gpu-audit2` / case 23\n\n## Executive Summary\n\nThe module under review consists of **216 near-identical functions** (`record_0` through `record_215`), each of which:\n\n1. Accepts a single argument `values`.\n2. Computes `sum(v * k for v in values)` where `k` is a per-function constant (`1` through `216`).\n3. Returns a dictionary `{\"record\": n, \"total\": total, \"count\": len(values)}`.\n\nThe file is truncated mid-way through `record_215` (the final `return` statement is incomplete \u2014 `return {\"` is the last text). This is a **syntax error** and the module will not import.\n\nThis is a textbook example of **copy-paste duplication** and violates the DRY (Don't Repeat Yourself) principle in the most extreme form possible. The review below details the defects, risks, and a complete rewrite.\n\n---\n\n## 1. Correctness Defects\n\n### 1.1 Syntax error at end of file\n`record_215` ends with `return {\"` \u2014 an unterminated string literal. Python will raise `SyntaxError: unterminated string literal` (or `EOL while scanning string literal` on older versions) at import time. **Severity: Critical \u2014 the entire module is unusable.**\n\n### 1.2 No input validation\nEvery function assumes `values` is an iterable of numbers. If a caller passes `None`, a string, or a list containing a non-numeric element, the failure mode is:\n\n- `None` \u2192 `TypeError: 'NoneType' object is not iterable`\n- `\"abc\"` \u2192 `sum` will attempt `'a' * 1` \u2192 `TypeError` (str * int works but yields a string, then `sum` fails on str)\n- `[1, \"x\"]` \u2192 `TypeError: unsupported operand type(s) for *: 'str' and 'int'`\n\nNo caller gets a meaningful error message indicating *which* function or *what* the expected input shape is.\n\n### 1.3 Silent type coercion / precision issues\n`v * k` on floats is fine, but on `Decimal` or `Fraction` inputs, mixing with a Python `int` literal is fine \u2014 however, on `numpy` arrays, `sum(...)` will iterate",
+    "decode_tokens_per_s": 87.3814884525476
+  }
+]

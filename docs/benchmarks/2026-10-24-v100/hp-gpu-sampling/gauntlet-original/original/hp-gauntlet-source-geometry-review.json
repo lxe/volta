@@ -1,0 +1,27 @@
+{
+  "scope": "Static source and assigned TASK.md review only; renderer code was not executed or edited",
+  "files_sha256": {
+    "hp-256k-gauntlet/gauntlet/01-cube/render.py": "f503eaf4429fba2ee7cc440397a33a465be01813c243d30052b32e5350b95ee9",
+    "hp-256k-gauntlet/gauntlet/02-pyramid/render.py": "ddf85d529a749a7dc41f7438db2d23b7a7aab13b310503a09989140dba5c3983",
+    "hp-256k-gauntlet/gauntlet/03-torus/render.py": "83c4dcec85b8f92411a10afcef635ab3f04aed7c2e14df7bff80055ba221dd6f",
+    "hp-256k-gauntlet/gauntlet/04-sphere/render.py": "57aabbcc4789fb3ad7ee2e637e05b38fa7448959739d8070445d80260b0c9b96"
+  },
+  "material_requirement_failure": {
+    "shape": "torus",
+    "requirement": "shaded by surface normals",
+    "finding": "Computed luminance is stored in upper cell bits but never influences emitted dots or terminal colour. The emitted Braille mask is independent of lighting.",
+    "lines": [
+      129,
+      148
+    ]
+  },
+  "other_rendering_limits": {
+    "cube": "Rotated unit-cube extent can exceed the viewport at its selected scale, causing clipping. It uses fixed-light Lambert shading rather than a direct viewer-facing scalar.",
+    "pyramid": "Depth buffer initialized to zero discards all z<=0 samples; depth is averaged from edge projections instead of interpolated on the face plane.",
+    "torus": "Depth buffer is per character cell rather than per Braille dot, and old dot bits remain when a closer sample arrives.",
+    "sphere": "Sphere uses a correct analytic front hemisphere with Lambert/dither shading and rotating longitude pattern; no material geometry defect identified statically."
+  },
+  "braille_mapping": "All four use the standard 2x4 Braille bit mapping.",
+  "rotation_resize_cleanup": "All read terminal size in their frame loops and implement requested Ctrl-C cursor restoration. Rotation and frame pacing are present; actual FPS/appearance were not measured here.",
+  "runtime_visual_evidence": "Parent validates live panes, processes and pixels separately. Source findings prevent a claim that all four satisfy every requested visual requirement."
+}

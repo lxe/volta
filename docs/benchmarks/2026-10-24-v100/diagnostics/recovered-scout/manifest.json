@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "scope": "CPU-only recovery and conditional hypothesis; historical reports are not current-rental gains",
+  "files": {
+    "README.md": {
+      "bytes": 1607,
+      "sha256": "e671340d230e521c81977d6f064d6b29c16ce638a4703c055aab102e1b1700a3"
+    },
+    "historical-source-reports/REPORT_EXPERT.md": {
+      "bytes": 4801,
+      "sha256": "2fa41d9638b3a2095e62ec3c59b3645bd1ee97542212d8b41fd3b7de03ee8406"
+    },
+    "historical-source-reports/REPORT_RS.md": {
+      "bytes": 4024,
+      "sha256": "8b337e3b4fa1e2f3e812fb5f94547b623e5bcc573e6327787822a9d7cba78db3"
+    },
+    "vlut2-realweight-confirming-budget.md": {
+      "bytes": 9808,
+      "sha256": "561713db707a782173d6bf9795a1f6b3fa0d62f417561c2800e035a1d2d05bc3"
+    },
+    "vlut2-shared-feasibility.md": {
+      "bytes": 14278,
+      "sha256": "db66ec4e826ecbd20f9841174b746b86607c8e2eaf007fc4897c2d0e57759604"
+    }
+  }
+}

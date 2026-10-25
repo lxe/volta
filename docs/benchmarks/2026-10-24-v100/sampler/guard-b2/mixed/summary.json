@@ -1,0 +1,24 @@
+{
+  "label": "sampler-guard-b2",
+  "clients": 4,
+  "mixed": true,
+  "wall_s": 27.915657148929313,
+  "monitor_wall_s": 28.11677156202495,
+  "completed": 4,
+  "requested_output_tokens": 2048,
+  "output_tokens": 2048,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 73.36384700076995,
+  "prompt_tokens": 20677,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 2048,
+  "ttft_s": [
+    7.718394014984369,
+    7.643760393024422,
+    7.718155612936243,
+    13.053280606050976
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.5312676076920954
+}

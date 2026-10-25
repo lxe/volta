@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""CPU-only predeclared strict8 joint all-peer replay coverage criterion."""
+from pathlib import Path
+import importlib.util,json,hashlib
+root=Path(__file__).parent
+spec=importlib.util.spec_from_file_location('ga',root/'analyze-graph-trace.py');ga=importlib.util.module_from_spec(spec);spec.loader.exec_module(ga)
+prior=json.loads((root/'receipts/strict8-graph-policy-cpu-simulation.json').read_text())
+out={'evidence':'ACTUAL_TRACE_CPU_MODEL_ONLY','criterion_written_before_analysis':'graph-policy-strict8-joint-criterion.md',
+     'prior_per_gpu_failure_preserved':True,'policy':{'residents':8,'trial_replacement_limit':16,'window':64,'candidate_freq':8,'advantage':4,'minimum_replacement_spacing':64},
+     'definition':'all8GPUs replay hit on same main-step seq; idle t0 included; capture not hit','runs':{},
+     'limits':['coverage proxy,not GPU execution/throughput prediction','fullprefixsimulation;actual matchingphaseboundaries','mixedfinaldecoder tailoutside768snapshots','100msstresschargereported,notdiscarded','source/build/GPUunchanged']}
+for run in ['diag-v2-001','diag-v2-stept-001']:
+ phases=json.loads((root/f'receipts/{run}-primary-interval-analysis.json').read_text())['phases'];actual={};sim={}
+ for gpu in range(8):
+  rows,_,_,_,_=ga.validate(root/f'graph-traces/{run}/gpu{gpu}.jsonl',gpu,128)
+  assert [r['seq'] for r in rows]==list(range(1,769))
+  actual[gpu]=rows;sim[gpu]=ga.simulate(rows,16,8)['step_decisions']
+ item={}
+ for name,phase in phases.items():
+  bounds={(g['seq_min'],g['seq_max']) for g in phase['gpus']};assert len(bounds)==1,bounds
+  lo,hi=bounds.pop();ix=range(lo-1,hi)
+  baseline=[i+1 for i in ix if all(actual[g][i]['decision']=='hit' for g in range(8))]
+  candidate=[i+1 for i in ix if all(sim[g][i]=='hit' for g in range(8))]
+  gain=100*(len(candidate)-len(baseline))/(hi-lo+1)
+  proxy=prior['runs'][run]['capture_cost_proxies'][name]
+  sub={}
+  for label,pred in [('any_t32_plus',lambda i:any(actual[g][i]['t']>=32 for g in range(8))),('no_t32_plus',lambda i:all(actual[g][i]['t']<32 for g in range(8)))]:
+   indices=[i for i in ix if pred(i)];sub[label]={'steps':len(indices),'actual_all8_hits':sum(all(actual[g][i]['decision']=='hit' for g in range(8)) for i in indices),'strict8_all8_hits':sum(all(sim[g][i]=='hit' for g in range(8)) for i in indices)}
+  item[name]={'seq_interval':[lo,hi],'steps':hi-lo+1,'api_wall_s':phase['api_wall_s'],'actual_all8_replay_hits':len(baseline),
+    'strict8_all8_replay_hits':len(candidate),'joint_gain_pp':gain,'joint15pp_gate':gain>=15,
+    'measured_capture_proxy_seconds':proxy['same_gpu_same_t_median_seconds'],'measured_capture_proxy_wall_fraction':proxy['fraction_of_api_wall'],
+    'capture_proxy5pct_gate':proxy['fraction_of_api_wall']<=.05,'at100ms_stress_seconds':proxy['at100ms_ceiling_seconds'],
+    'stress_fraction_of_wall':proxy['ceiling_fraction_of_api_wall'],'subsets':sub,
+    'combined_phase_gate':gain>=15 and proxy['fraction_of_api_wall']<=.05,
+    'actual_joint_hit_seqs':baseline,'simulated_joint_hit_seqs':candidate,
+    'prior_per_gpu_gain_pp':[g['phases'][name]['gain_vs_actual_pp'] for g in prior['runs'][run]['gpus'][:4]]}
+ out['runs'][run]=item
+out['all_four_phase_gates_pass']=all(p['combined_phase_gate'] for r in out['runs'].values() for p in r.values())
+out['decision']='PROVISIONAL_CPU_GATE_ONLY; bounded realtrial requires separate authorization and resources' if out['all_four_phase_gates_pass'] else 'STRICT8_JOINT_HYPOTHESIS_REJECTED; no implementation/trial'
+out['criterion_sha256']=hashlib.sha256((root/'graph-policy-strict8-joint-criterion.md').read_bytes()).hexdigest()
+(root/'receipts/strict8-joint-step-simulation.json').write_text(json.dumps(out,indent=2)+'\n')
+for run,phases in out['runs'].items():
+ for name,p in phases.items():print(run,name,'joint',p['actual_all8_replay_hits'],p['strict8_all8_replay_hits'],'/',p['steps'],'gainpp',p['joint_gain_pp'],'cost',p['measured_capture_proxy_wall_fraction'],'gate',p['combined_phase_gate'])
+print(out['decision'])

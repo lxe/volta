@@ -1,0 +1,2706 @@
+{
+  "evidence": "ACTUAL_TRACE_INPUT; inference/performance claims require independent runtime receipts",
+  "directory": "/home/lxe/volta-sixhour-20261024/graph-traces/diag-v2-001",
+  "controlled_prompt_tail_protocol": true,
+  "selected_interval": {
+    "start_seq": 1,
+    "end_seq": null
+  },
+  "phase_rule": "t1..6 identify generated steps only for the supplied no-cache slots1 controlled4145/8242prompt protocol; 49/50-token prompt tails exceed9",
+  "gpus": [
+    {
+      "gpu": 0,
+      "file_bytes": 259203,
+      "coverage": {
+        "detailed_steps": 768,
+        "last_summary_observed_steps": 768,
+        "detailed_limit_reached": false,
+        "summary_after_detail": false,
+        "selected_steps": 768
+      },
+      "alignment": {
+        "header_wall_epoch_ns": 1792897527511723756,
+        "clock_note": "wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only",
+        "first_selected_elapsed_ns": 8255077436,
+        "last_selected_elapsed_ns": 58372445228,
+        "first_selected_record_epoch_ns": 1792897535766801192,
+        "last_selected_record_epoch_ns": 1792897585884168984
+      },
+      "host_enqueue_backpressure": {
+        "label": "unsynchronized host enqueue/backpressure time; not GPU elapsed time",
+        "timed_selected_steps": 768,
+        "all_selected": {
+          "count": 768,
+          "mean_ms": 11.498722799479166,
+          "median_ms": 6.255924,
+          "p95_ms": 24.109659,
+          "min_ms": 0.304447,
+          "max_ms": 96.253046
+        },
+        "by_decision": {
+          "hit": {
+            "count": 34,
+            "mean_ms": 0.47367644117647056,
+            "median_ms": 0.351875,
+            "p95_ms": 0.826717,
+            "min_ms": 0.304447,
+            "max_ms": 1.78628
+          },
+          "warm": {
+            "count": 11,
+            "mean_ms": 26.32729390909091,
+            "median_ms": 14.99883,
+            "p95_ms": 96.253046,
+            "min_ms": 4.952961,
+            "max_ms": 96.253046
+          },
+          "capture": {
+            "count": 6,
+            "mean_ms": 20.422961,
+            "median_ms": 19.672224,
+            "p95_ms": 30.177564,
+            "min_ms": 15.088711,
+            "max_ms": 30.177564
+          },
+          "budget": {
+            "count": 717,
+            "mean_ms": 11.719353015341701,
+            "median_ms": 6.300634,
+            "p95_ms": 24.080305,
+            "min_ms": 2.153845,
+            "max_ms": 52.612585
+          },
+          "full": null,
+          "failure": null,
+          "forced": null
+        },
+        "small_t_1_6": {
+          "count": 503,
+          "mean_ms": 10.596512636182903,
+          "median_ms": 6.280348,
+          "p95_ms": 21.994325,
+          "min_ms": 0.304447,
+          "max_ms": 96.253046
+        }
+      },
+      "per_key_whole_prefix": [
+        {
+          "key": [
+            0,
+            64
+          ],
+          "decisions": {
+            "budget": 116
+          }
+        },
+        {
+          "key": [
+            2,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 7
+          }
+        },
+        {
+          "key": [
+            2,
+            128
+          ],
+          "decisions": {
+            "warm": 1
+          }
+        },
+        {
+          "key": [
+            2,
+            1024
+          ],
+          "decisions": {
+            "budget": 1
+          }
+        },
+        {
+          "key": [
+            2,
+            8192
+          ],
+          "decisions": {
+            "budget": 109
+          }
+        },
+        {
+          "key": [
+            3,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 3
+          }
+        },
+        {
+          "key": [
+            3,
+            128
+          ],
+          "decisions": {
+            "warm": 1
+          }
+        },
+        {
+          "key": [
+            3,
+            1024
+          ],
+          "decisions": {
+            "budget": 11
+          }
+        },
+        {
+          "key": [
+            3,
+            8192
+          ],
+          "decisions": {
+            "budget": 143
+          }
+        },
+        {
+          "key": [
+            4,
+            64
+          ],
+          "decisions": {
+            "warm": 1
+          }
+        },
+        {
+          "key": [
+            4,
+            128
+          ],
+          "decisions": {
+            "warm": 1
+          }
+        },
+        {
+          "key": [
+            4,
+            1024
+          ],
+          "decisions": {
+            "budget": 15
+          }
+        },
+        {
+          "key": [
+            4,
+            8192
+          ],
+          "decisions": {
+            "budget": 97
+          }
+        },
+        {
+          "key": [
+            5,
+            1024
+          ],
+          "decisions": {
+            "budget": 7
+          }
+        },
+        {
+          "key": [
+            5,
+            8192
+          ],
+          "decisions": {
+            "budget": 41
+          }
+        },
+        {
+          "key": [
+            6,
+            1024
+          ],
+          "decisions": {
+            "budget": 9
+          }
+        },
+        {
+          "key": [
+            6,
+            8192
+          ],
+          "decisions": {
+            "budget": 52
+          }
+        },
+        {
+          "key": [
+            39,
+            64
+          ],
+          "decisions": {
+            "warm": 1
+          }
+        },
+        {
+          "key": [
+            49,
+            8192
+          ],
+          "decisions": {
+            "budget": 2
+          }
+        },
+        {
+          "key": [
+            51,
+            1024
+          ],
+          "decisions": {
+            "budget": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            128
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            256
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 6
+          }
+        },
+        {
+          "key": [
+            64,
+            512
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 14
+          }
+        },
+        {
+          "key": [
+            64,
+            1024
+          ],
+          "decisions": {
+            "budget": 16
+          }
+        },
+        {
+          "key": [
+            64,
+            2048
+          ],
+          "decisions": {
+            "budget": 32
+          }
+        },
+        {
+          "key": [
+            64,
+            4096
+          ],
+          "decisions": {
+            "budget": 64
+          }
+        }
+      ],
+      "selected_decisions": {
+        "warm": 11,
+        "capture": 6,
+        "hit": 34,
+        "budget": 717
+      },
+      "resident_count_min": 0,
+      "resident_count_max": 6,
+      "small_t_steps": 503,
+      "small_t_budget_misses": 485,
+      "small_t_budget_miss_fraction": 0.9642147117296223,
+      "repeated_small_t_budget_keys": [
+        {
+          "key": [
+            2,
+            8192
+          ],
+          "misses": 109
+        },
+        {
+          "key": [
+            3,
+            8192
+          ],
+          "misses": 143
+        },
+        {
+          "key": [
+            4,
+            8192
+          ],
+          "misses": 97
+        },
+        {
+          "key": [
+            5,
+            8192
+          ],
+          "misses": 41
+        },
+        {
+          "key": [
+            6,
+            8192
+          ],
+          "misses": 52
+        }
+      ],
+      "resident_keys_never_replayed_during_small_t_interval": [
+        [
+          64,
+          64
+        ],
+        [
+          64,
+          128
+        ],
+        [
+          64,
+          256
+        ],
+        [
+          64,
+          512
+        ]
+      ],
+      "resident_keys_present_every_small_t_step_never_replayed": [],
+      "admission_evidence_gate": false,
+      "capture_path_total_ns": 122532723,
+      "simulation": {
+        "steps": 768,
+        "decisions": {
+          "eager": 406,
+          "capture": 4,
+          "hit": 350,
+          "replacement_capture": 8
+        },
+        "hit_fraction": 0.4557291666666667,
+        "small_t_1_6_hits": 289,
+        "replacement_count": 8,
+        "replacement_limit_blocked_observations": 63,
+        "replacement_events": [
+          {
+            "seq": 45,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 113,
+            "key": [
+              64,
+              1024
+            ],
+            "victim": [
+              3,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 177,
+            "key": [
+              6,
+              8192
+            ],
+            "victim": [
+              2,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 241,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 18,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 305,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 378,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              1024
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 445,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              6,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 523,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 12,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            2,
+            8192
+          ],
+          [
+            3,
+            8192
+          ],
+          [
+            4,
+            8192
+          ],
+          [
+            64,
+            4096
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ],
+        "selected_interval_decisions": {
+          "eager": 406,
+          "capture": 4,
+          "hit": 350,
+          "replacement_capture": 8
+        },
+        "selected_interval_hit_fraction": 0.4557291666666667
+      },
+      "simulation_valid_for_policy_comparison": true,
+      "simulation_hit_coverage_gain_percentage_points": 41.145833333333336,
+      "simulation_selected_interval_hit_coverage_gain_percentage_points": 41.145833333333336,
+      "simulation_screen_gate": false
+    },
+    {
+      "gpu": 1,
+      "file_bytes": 273772,
+      "coverage": {
+        "detailed_steps": 768,
+        "last_summary_observed_steps": 768,
+        "detailed_limit_reached": false,
+        "summary_after_detail": false,
+        "selected_steps": 768
+      },
+      "alignment": {
+        "header_wall_epoch_ns": 1792897527468667690,
+        "clock_note": "wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only",
+        "first_selected_elapsed_ns": 8278431660,
+        "last_selected_elapsed_ns": 58410303799,
+        "first_selected_record_epoch_ns": 1792897535747099350,
+        "last_selected_record_epoch_ns": 1792897585878971489
+      },
+      "host_enqueue_backpressure": {
+        "label": "unsynchronized host enqueue/backpressure time; not GPU elapsed time",
+        "timed_selected_steps": 768,
+        "all_selected": {
+          "count": 768,
+          "mean_ms": 10.258808891927083,
+          "median_ms": 6.2532274999999995,
+          "p95_ms": 24.156941,
+          "min_ms": 0.122875,
+          "max_ms": 91.503481
+        },
+        "by_decision": {
+          "hit": {
+            "count": 203,
+            "mean_ms": 0.23841082266009853,
+            "median_ms": 0.171479,
+            "p95_ms": 0.363367,
+            "min_ms": 0.122875,
+            "max_ms": 2.071309
+          },
+          "warm": {
+            "count": 8,
+            "mean_ms": 19.278454,
+            "median_ms": 20.997417,
+            "p95_ms": 36.677192,
+            "min_ms": 4.254563,
+            "max_ms": 36.677192
+          },
+          "capture": {
+            "count": 8,
+            "mean_ms": 44.61613375,
+            "median_ms": 36.6392685,
+            "p95_ms": 91.503481,
+            "min_ms": 15.081317,
+            "max_ms": 91.503481
+          },
+          "budget": {
+            "count": 549,
+            "mean_ms": 13.331896411657558,
+            "median_ms": 6.54094,
+            "p95_ms": 24.158554,
+            "min_ms": 4.97663,
+            "max_ms": 37.632402
+          },
+          "full": null,
+          "failure": null,
+          "forced": null
+        },
+        "small_t_1_6": {
+          "count": 470,
+          "mean_ms": 10.151579868085108,
+          "median_ms": 6.3239415,
+          "p95_ms": 21.921875,
+          "min_ms": 0.240437,
+          "max_ms": 37.632402
+        }
+      },
+      "per_key_whole_prefix": [
+        {
+          "key": [
+            0,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 148
+          }
+        },
+        {
+          "key": [
+            2,
+            1024
+          ],
+          "decisions": {
+            "budget": 6
+          }
+        },
+        {
+          "key": [
+            2,
+            8192
+          ],
+          "decisions": {
+            "budget": 91
+          }
+        },
+        {
+          "key": [
+            3,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 15
+          }
+        },
+        {
+          "key": [
+            3,
+            8192
+          ],
+          "decisions": {
+            "budget": 115
+          }
+        },
+        {
+          "key": [
+            4,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 16
+          }
+        },
+        {
+          "key": [
+            4,
+            8192
+          ],
+          "decisions": {
+            "budget": 110
+          }
+        },
+        {
+          "key": [
+            5,
+            1024
+          ],
+          "decisions": {
+            "budget": 6
+          }
+        },
+        {
+          "key": [
+            5,
+            8192
+          ],
+          "decisions": {
+            "budget": 41
+          }
+        },
+        {
+          "key": [
+            6,
+            1024
+          ],
+          "decisions": {
+            "budget": 3
+          }
+        },
+        {
+          "key": [
+            6,
+            8192
+          ],
+          "decisions": {
+            "budget": 63
+          }
+        },
+        {
+          "key": [
+            49,
+            8192
+          ],
+          "decisions": {
+            "budget": 2
+          }
+        },
+        {
+          "key": [
+            51,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1
+          }
+        },
+        {
+          "key": [
+            64,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            128
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            256
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 6
+          }
+        },
+        {
+          "key": [
+            64,
+            512
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 14
+          }
+        },
+        {
+          "key": [
+            64,
+            1024
+          ],
+          "decisions": {
+            "budget": 16
+          }
+        },
+        {
+          "key": [
+            64,
+            2048
+          ],
+          "decisions": {
+            "budget": 32
+          }
+        },
+        {
+          "key": [
+            64,
+            4096
+          ],
+          "decisions": {
+            "budget": 64
+          }
+        }
+      ],
+      "selected_decisions": {
+        "warm": 8,
+        "capture": 8,
+        "hit": 203,
+        "budget": 549
+      },
+      "resident_count_min": 0,
+      "resident_count_max": 8,
+      "small_t_steps": 470,
+      "small_t_budget_misses": 435,
+      "small_t_budget_miss_fraction": 0.925531914893617,
+      "repeated_small_t_budget_keys": [
+        {
+          "key": [
+            2,
+            8192
+          ],
+          "misses": 91
+        },
+        {
+          "key": [
+            3,
+            8192
+          ],
+          "misses": 115
+        },
+        {
+          "key": [
+            4,
+            8192
+          ],
+          "misses": 110
+        },
+        {
+          "key": [
+            5,
+            8192
+          ],
+          "misses": 41
+        },
+        {
+          "key": [
+            6,
+            8192
+          ],
+          "misses": 63
+        }
+      ],
+      "resident_keys_never_replayed_during_small_t_interval": [
+        [
+          0,
+          64
+        ],
+        [
+          51,
+          1024
+        ],
+        [
+          64,
+          64
+        ],
+        [
+          64,
+          128
+        ],
+        [
+          64,
+          256
+        ],
+        [
+          64,
+          512
+        ]
+      ],
+      "resident_keys_present_every_small_t_step_never_replayed": [
+        [
+          0,
+          64
+        ],
+        [
+          64,
+          256
+        ],
+        [
+          64,
+          512
+        ]
+      ],
+      "admission_evidence_gate": true,
+      "capture_path_total_ns": 356920614,
+      "simulation": {
+        "steps": 768,
+        "decisions": {
+          "eager": 382,
+          "capture": 4,
+          "hit": 374,
+          "replacement_capture": 8
+        },
+        "hit_fraction": 0.4869791666666667,
+        "small_t_1_6_hits": 209,
+        "replacement_count": 8,
+        "replacement_limit_blocked_observations": 16,
+        "replacement_events": [
+          {
+            "seq": 53,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 124,
+            "key": [
+              64,
+              2048
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 10,
+            "victim_window_count": 6
+          },
+          {
+            "seq": 188,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 252,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 25,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 321,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 20,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 397,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              2048
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 461,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              4,
+              8192
+            ],
+            "candidate_window_count": 23,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 525,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              2,
+              8192
+            ],
+            "candidate_window_count": 23,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ],
+          [
+            3,
+            8192
+          ],
+          [
+            4,
+            8192
+          ],
+          [
+            64,
+            4096
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ],
+        "selected_interval_decisions": {
+          "eager": 382,
+          "capture": 4,
+          "hit": 374,
+          "replacement_capture": 8
+        },
+        "selected_interval_hit_fraction": 0.4869791666666667
+      },
+      "simulation_valid_for_policy_comparison": true,
+      "simulation_hit_coverage_gain_percentage_points": 22.265625,
+      "simulation_selected_interval_hit_coverage_gain_percentage_points": 22.265625,
+      "simulation_screen_gate": false
+    },
+    {
+      "gpu": 2,
+      "file_bytes": 273807,
+      "coverage": {
+        "detailed_steps": 768,
+        "last_summary_observed_steps": 768,
+        "detailed_limit_reached": false,
+        "summary_after_detail": false,
+        "selected_steps": 768
+      },
+      "alignment": {
+        "header_wall_epoch_ns": 1792897527501762760,
+        "clock_note": "wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only",
+        "first_selected_elapsed_ns": 8245856342,
+        "last_selected_elapsed_ns": 58377222022,
+        "first_selected_record_epoch_ns": 1792897535747619102,
+        "last_selected_record_epoch_ns": 1792897585878984782
+      },
+      "host_enqueue_backpressure": {
+        "label": "unsynchronized host enqueue/backpressure time; not GPU elapsed time",
+        "timed_selected_steps": 768,
+        "all_selected": {
+          "count": 768,
+          "mean_ms": 10.23554539453125,
+          "median_ms": 6.1643005,
+          "p95_ms": 24.193002,
+          "min_ms": 0.07917,
+          "max_ms": 89.987286
+        },
+        "by_decision": {
+          "hit": {
+            "count": 197,
+            "mean_ms": 0.1776622385786802,
+            "median_ms": 0.158209,
+            "p95_ms": 0.257059,
+            "min_ms": 0.07917,
+            "max_ms": 2.222393
+          },
+          "warm": {
+            "count": 8,
+            "mean_ms": 18.9645165,
+            "median_ms": 20.824075,
+            "p95_ms": 36.904091,
+            "min_ms": 4.820448,
+            "max_ms": 36.904091
+          },
+          "capture": {
+            "count": 8,
+            "mean_ms": 42.98735925,
+            "median_ms": 38.4338355,
+            "p95_ms": 89.987286,
+            "min_ms": 12.784593,
+            "max_ms": 89.987286
+          },
+          "budget": {
+            "count": 555,
+            "mean_ms": 13.207719632432433,
+            "median_ms": 6.418163,
+            "p95_ms": 24.202204,
+            "min_ms": 4.847701,
+            "max_ms": 37.82939
+          },
+          "full": null,
+          "failure": null,
+          "forced": null
+        },
+        "small_t_1_6": {
+          "count": 476,
+          "mean_ms": 10.032508918067228,
+          "median_ms": 6.196891,
+          "p95_ms": 21.959647,
+          "min_ms": 0.155274,
+          "max_ms": 37.82939
+        }
+      },
+      "per_key_whole_prefix": [
+        {
+          "key": [
+            0,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 142
+          }
+        },
+        {
+          "key": [
+            2,
+            1024
+          ],
+          "decisions": {
+            "budget": 15
+          }
+        },
+        {
+          "key": [
+            2,
+            8192
+          ],
+          "decisions": {
+            "budget": 79
+          }
+        },
+        {
+          "key": [
+            3,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 18
+          }
+        },
+        {
+          "key": [
+            3,
+            8192
+          ],
+          "decisions": {
+            "budget": 126
+          }
+        },
+        {
+          "key": [
+            4,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 13
+          }
+        },
+        {
+          "key": [
+            4,
+            8192
+          ],
+          "decisions": {
+            "budget": 98
+          }
+        },
+        {
+          "key": [
+            5,
+            1024
+          ],
+          "decisions": {
+            "budget": 3
+          }
+        },
+        {
+          "key": [
+            5,
+            8192
+          ],
+          "decisions": {
+            "budget": 52
+          }
+        },
+        {
+          "key": [
+            6,
+            1024
+          ],
+          "decisions": {
+            "budget": 5
+          }
+        },
+        {
+          "key": [
+            6,
+            8192
+          ],
+          "decisions": {
+            "budget": 63
+          }
+        },
+        {
+          "key": [
+            49,
+            8192
+          ],
+          "decisions": {
+            "budget": 2
+          }
+        },
+        {
+          "key": [
+            51,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1
+          }
+        },
+        {
+          "key": [
+            64,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            128
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            256
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 6
+          }
+        },
+        {
+          "key": [
+            64,
+            512
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 14
+          }
+        },
+        {
+          "key": [
+            64,
+            1024
+          ],
+          "decisions": {
+            "budget": 16
+          }
+        },
+        {
+          "key": [
+            64,
+            2048
+          ],
+          "decisions": {
+            "budget": 32
+          }
+        },
+        {
+          "key": [
+            64,
+            4096
+          ],
+          "decisions": {
+            "budget": 64
+          }
+        }
+      ],
+      "selected_decisions": {
+        "warm": 8,
+        "capture": 8,
+        "hit": 197,
+        "budget": 555
+      },
+      "resident_count_min": 0,
+      "resident_count_max": 8,
+      "small_t_steps": 476,
+      "small_t_budget_misses": 441,
+      "small_t_budget_miss_fraction": 0.9264705882352942,
+      "repeated_small_t_budget_keys": [
+        {
+          "key": [
+            2,
+            8192
+          ],
+          "misses": 79
+        },
+        {
+          "key": [
+            3,
+            8192
+          ],
+          "misses": 126
+        },
+        {
+          "key": [
+            4,
+            8192
+          ],
+          "misses": 98
+        },
+        {
+          "key": [
+            5,
+            8192
+          ],
+          "misses": 52
+        },
+        {
+          "key": [
+            6,
+            8192
+          ],
+          "misses": 63
+        }
+      ],
+      "resident_keys_never_replayed_during_small_t_interval": [
+        [
+          0,
+          64
+        ],
+        [
+          51,
+          1024
+        ],
+        [
+          64,
+          64
+        ],
+        [
+          64,
+          128
+        ],
+        [
+          64,
+          256
+        ],
+        [
+          64,
+          512
+        ]
+      ],
+      "resident_keys_present_every_small_t_step_never_replayed": [
+        [
+          0,
+          64
+        ],
+        [
+          64,
+          256
+        ],
+        [
+          64,
+          512
+        ]
+      ],
+      "admission_evidence_gate": true,
+      "capture_path_total_ns": 343893006,
+      "simulation": {
+        "steps": 768,
+        "decisions": {
+          "eager": 496,
+          "capture": 4,
+          "hit": 260,
+          "replacement_capture": 8
+        },
+        "hit_fraction": 0.3385416666666667,
+        "small_t_1_6_hits": 171,
+        "replacement_count": 8,
+        "replacement_limit_blocked_observations": 148,
+        "replacement_events": [
+          {
+            "seq": 57,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 2
+          },
+          {
+            "seq": 122,
+            "key": [
+              64,
+              2048
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 1
+          },
+          {
+            "seq": 186,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 11,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 250,
+            "key": [
+              6,
+              8192
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 18,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 315,
+            "key": [
+              5,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 16,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 379,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              2048
+            ],
+            "candidate_window_count": 28,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 446,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              3,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 510,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 14,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            4,
+            8192
+          ],
+          [
+            5,
+            8192
+          ],
+          [
+            6,
+            8192
+          ],
+          [
+            64,
+            4096
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ],
+        "selected_interval_decisions": {
+          "eager": 496,
+          "capture": 4,
+          "hit": 260,
+          "replacement_capture": 8
+        },
+        "selected_interval_hit_fraction": 0.3385416666666667
+      },
+      "simulation_valid_for_policy_comparison": true,
+      "simulation_hit_coverage_gain_percentage_points": 8.203125,
+      "simulation_selected_interval_hit_coverage_gain_percentage_points": 8.203125,
+      "simulation_screen_gate": false
+    },
+    {
+      "gpu": 3,
+      "file_bytes": 274961,
+      "coverage": {
+        "detailed_steps": 768,
+        "last_summary_observed_steps": 768,
+        "detailed_limit_reached": false,
+        "summary_after_detail": false,
+        "selected_steps": 768
+      },
+      "alignment": {
+        "header_wall_epoch_ns": 1792897527468735238,
+        "clock_note": "wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only",
+        "first_selected_elapsed_ns": 8277975047,
+        "last_selected_elapsed_ns": 58415026223,
+        "first_selected_record_epoch_ns": 1792897535746710285,
+        "last_selected_record_epoch_ns": 1792897585883761461
+      },
+      "host_enqueue_backpressure": {
+        "label": "unsynchronized host enqueue/backpressure time; not GPU elapsed time",
+        "timed_selected_steps": 768,
+        "all_selected": {
+          "count": 768,
+          "mean_ms": 8.595565385416666,
+          "median_ms": 6.024777500000001,
+          "p95_ms": 24.265238,
+          "min_ms": 0.12087,
+          "max_ms": 90.101737
+        },
+        "by_decision": {
+          "hit": {
+            "count": 156,
+            "mean_ms": 0.2268768717948718,
+            "median_ms": 0.162798,
+            "p95_ms": 0.387613,
+            "min_ms": 0.12087,
+            "max_ms": 1.735237
+          },
+          "warm": {
+            "count": 8,
+            "mean_ms": 19.686760250000003,
+            "median_ms": 21.998079500000003,
+            "p95_ms": 37.285814,
+            "min_ms": 3.848834,
+            "max_ms": 37.285814
+          },
+          "capture": {
+            "count": 8,
+            "mean_ms": 42.789041250000004,
+            "median_ms": 36.361436999999995,
+            "p95_ms": 90.101737,
+            "min_ms": 14.976744,
+            "max_ms": 90.101737
+          },
+          "budget": {
+            "count": 596,
+            "mean_ms": 10.178179550335571,
+            "median_ms": 6.231332,
+            "p95_ms": 24.215085,
+            "min_ms": 4.314815,
+            "max_ms": 24.963643
+          },
+          "full": null,
+          "failure": null,
+          "forced": null
+        },
+        "small_t_1_6": {
+          "count": 445,
+          "mean_ms": 5.573477701123595,
+          "median_ms": 5.906214,
+          "p95_ms": 6.577516,
+          "min_ms": 0.237421,
+          "max_ms": 34.926055
+        }
+      },
+      "per_key_whole_prefix": [
+        {
+          "key": [
+            0,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 109
+          }
+        },
+        {
+          "key": [
+            2,
+            1024
+          ],
+          "decisions": {
+            "budget": 2
+          }
+        },
+        {
+          "key": [
+            2,
+            8192
+          ],
+          "decisions": {
+            "budget": 79
+          }
+        },
+        {
+          "key": [
+            2,
+            16384
+          ],
+          "decisions": {
+            "budget": 40
+          }
+        },
+        {
+          "key": [
+            3,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 13
+          }
+        },
+        {
+          "key": [
+            3,
+            8192
+          ],
+          "decisions": {
+            "budget": 81
+          }
+        },
+        {
+          "key": [
+            3,
+            16384
+          ],
+          "decisions": {
+            "budget": 37
+          }
+        },
+        {
+          "key": [
+            4,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 10
+          }
+        },
+        {
+          "key": [
+            4,
+            8192
+          ],
+          "decisions": {
+            "budget": 53
+          }
+        },
+        {
+          "key": [
+            4,
+            16384
+          ],
+          "decisions": {
+            "budget": 38
+          }
+        },
+        {
+          "key": [
+            5,
+            1024
+          ],
+          "decisions": {
+            "budget": 7
+          }
+        },
+        {
+          "key": [
+            5,
+            8192
+          ],
+          "decisions": {
+            "budget": 14
+          }
+        },
+        {
+          "key": [
+            5,
+            16384
+          ],
+          "decisions": {
+            "budget": 18
+          }
+        },
+        {
+          "key": [
+            6,
+            1024
+          ],
+          "decisions": {
+            "budget": 8
+          }
+        },
+        {
+          "key": [
+            6,
+            8192
+          ],
+          "decisions": {
+            "budget": 15
+          }
+        },
+        {
+          "key": [
+            6,
+            16384
+          ],
+          "decisions": {
+            "budget": 26
+          }
+        },
+        {
+          "key": [
+            49,
+            8192
+          ],
+          "decisions": {
+            "budget": 1
+          }
+        },
+        {
+          "key": [
+            50,
+            16384
+          ],
+          "decisions": {
+            "budget": 1
+          }
+        },
+        {
+          "key": [
+            51,
+            1024
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1
+          }
+        },
+        {
+          "key": [
+            64,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            128
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 2
+          }
+        },
+        {
+          "key": [
+            64,
+            256
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 6
+          }
+        },
+        {
+          "key": [
+            64,
+            512
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 14
+          }
+        },
+        {
+          "key": [
+            64,
+            1024
+          ],
+          "decisions": {
+            "budget": 16
+          }
+        },
+        {
+          "key": [
+            64,
+            2048
+          ],
+          "decisions": {
+            "budget": 32
+          }
+        },
+        {
+          "key": [
+            64,
+            4096
+          ],
+          "decisions": {
+            "budget": 64
+          }
+        },
+        {
+          "key": [
+            64,
+            8192
+          ],
+          "decisions": {
+            "budget": 64
+          }
+        }
+      ],
+      "selected_decisions": {
+        "warm": 8,
+        "capture": 8,
+        "hit": 156,
+        "budget": 596
+      },
+      "resident_count_min": 0,
+      "resident_count_max": 8,
+      "small_t_steps": 445,
+      "small_t_budget_misses": 418,
+      "small_t_budget_miss_fraction": 0.9393258426966292,
+      "repeated_small_t_budget_keys": [
+        {
+          "key": [
+            2,
+            8192
+          ],
+          "misses": 79
+        },
+        {
+          "key": [
+            2,
+            16384
+          ],
+          "misses": 40
+        },
+        {
+          "key": [
+            3,
+            8192
+          ],
+          "misses": 81
+        },
+        {
+          "key": [
+            3,
+            16384
+          ],
+          "misses": 37
+        },
+        {
+          "key": [
+            4,
+            8192
+          ],
+          "misses": 53
+        },
+        {
+          "key": [
+            4,
+            16384
+          ],
+          "misses": 38
+        },
+        {
+          "key": [
+            6,
+            16384
+          ],
+          "misses": 26
+        }
+      ],
+      "resident_keys_never_replayed_during_small_t_interval": [
+        [
+          0,
+          64
+        ],
+        [
+          51,
+          1024
+        ],
+        [
+          64,
+          64
+        ],
+        [
+          64,
+          128
+        ],
+        [
+          64,
+          256
+        ],
+        [
+          64,
+          512
+        ]
+      ],
+      "resident_keys_present_every_small_t_step_never_replayed": [
+        [
+          0,
+          64
+        ],
+        [
+          64,
+          256
+        ],
+        [
+          64,
+          512
+        ]
+      ],
+      "admission_evidence_gate": true,
+      "capture_path_total_ns": 342304419,
+      "simulation": {
+        "steps": 768,
+        "decisions": {
+          "eager": 431,
+          "capture": 4,
+          "hit": 325,
+          "replacement_capture": 8
+        },
+        "hit_fraction": 0.4231770833333333,
+        "small_t_1_6_hits": 140,
+        "replacement_count": 8,
+        "replacement_limit_blocked_observations": 122,
+        "replacement_events": [
+          {
+            "seq": 74,
+            "key": [
+              4,
+              1024
+            ],
+            "victim": [
+              64,
+              256
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 4
+          },
+          {
+            "seq": 138,
+            "key": [
+              64,
+              4096
+            ],
+            "victim": [
+              4,
+              1024
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 4
+          },
+          {
+            "seq": 202,
+            "key": [
+              4,
+              8192
+            ],
+            "victim": [
+              3,
+              1024
+            ],
+            "candidate_window_count": 12,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 266,
+            "key": [
+              2,
+              8192
+            ],
+            "victim": [
+              0,
+              64
+            ],
+            "candidate_window_count": 22,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 331,
+            "key": [
+              3,
+              8192
+            ],
+            "victim": [
+              64,
+              512
+            ],
+            "candidate_window_count": 19,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 413,
+            "key": [
+              0,
+              64
+            ],
+            "victim": [
+              64,
+              4096
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 496,
+            "key": [
+              64,
+              1024
+            ],
+            "victim": [
+              2,
+              8192
+            ],
+            "candidate_window_count": 8,
+            "victim_window_count": 0
+          },
+          {
+            "seq": 560,
+            "key": [
+              64,
+              8192
+            ],
+            "victim": [
+              3,
+              8192
+            ],
+            "candidate_window_count": 16,
+            "victim_window_count": 0
+          }
+        ],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ],
+          [
+            4,
+            8192
+          ],
+          [
+            64,
+            1024
+          ],
+          [
+            64,
+            8192
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ],
+        "selected_interval_decisions": {
+          "eager": 431,
+          "capture": 4,
+          "hit": 325,
+          "replacement_capture": 8
+        },
+        "selected_interval_hit_fraction": 0.4231770833333333
+      },
+      "simulation_valid_for_policy_comparison": true,
+      "simulation_hit_coverage_gain_percentage_points": 22.005208333333332,
+      "simulation_selected_interval_hit_coverage_gain_percentage_points": 22.005208333333332,
+      "simulation_screen_gate": false
+    },
+    {
+      "gpu": 4,
+      "file_bytes": 207797,
+      "coverage": {
+        "detailed_steps": 768,
+        "last_summary_observed_steps": 768,
+        "detailed_limit_reached": false,
+        "summary_after_detail": false,
+        "selected_steps": 768
+      },
+      "alignment": {
+        "header_wall_epoch_ns": 1792897527449188420,
+        "clock_note": "wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only",
+        "first_selected_elapsed_ns": 8298686947,
+        "last_selected_elapsed_ns": 58429781902,
+        "first_selected_record_epoch_ns": 1792897535747875367,
+        "last_selected_record_epoch_ns": 1792897585878970322
+      },
+      "host_enqueue_backpressure": {
+        "label": "unsynchronized host enqueue/backpressure time; not GPU elapsed time",
+        "timed_selected_steps": 768,
+        "all_selected": {
+          "count": 768,
+          "mean_ms": 0.2968604036458333,
+          "median_ms": 0.164022,
+          "p95_ms": 0.219327,
+          "min_ms": 0.119779,
+          "max_ms": 90.465255
+        },
+        "by_decision": {
+          "hit": {
+            "count": 766,
+            "mean_ms": 0.17294791253263708,
+            "median_ms": 0.164014,
+            "p95_ms": 0.218781,
+            "min_ms": 0.119779,
+            "max_ms": 0.89355
+          },
+          "warm": {
+            "count": 1,
+            "mean_ms": 5.045434,
+            "median_ms": 5.045434,
+            "p95_ms": 5.045434,
+            "min_ms": 5.045434,
+            "max_ms": 5.045434
+          },
+          "capture": {
+            "count": 1,
+            "mean_ms": 90.465255,
+            "median_ms": 90.465255,
+            "p95_ms": 90.465255,
+            "min_ms": 90.465255,
+            "max_ms": 90.465255
+          },
+          "budget": null,
+          "full": null,
+          "failure": null,
+          "forced": null
+        },
+        "small_t_1_6": null
+      },
+      "per_key_whole_prefix": [
+        {
+          "key": [
+            0,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 766
+          }
+        }
+      ],
+      "selected_decisions": {
+        "warm": 1,
+        "capture": 1,
+        "hit": 766
+      },
+      "resident_count_min": 0,
+      "resident_count_max": 1,
+      "small_t_steps": 0,
+      "small_t_budget_misses": 0,
+      "small_t_budget_miss_fraction": 0.0,
+      "repeated_small_t_budget_keys": [],
+      "resident_keys_never_replayed_during_small_t_interval": [],
+      "resident_keys_present_every_small_t_step_never_replayed": [],
+      "admission_evidence_gate": false,
+      "capture_path_total_ns": 90464211,
+      "simulation": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ],
+        "selected_interval_decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "selected_interval_hit_fraction": 0.9973958333333334
+      },
+      "simulation_valid_for_policy_comparison": true,
+      "simulation_hit_coverage_gain_percentage_points": 0.0,
+      "simulation_selected_interval_hit_coverage_gain_percentage_points": 0.0,
+      "simulation_screen_gate": false
+    },
+    {
+      "gpu": 5,
+      "file_bytes": 207797,
+      "coverage": {
+        "detailed_steps": 768,
+        "last_summary_observed_steps": 768,
+        "detailed_limit_reached": false,
+        "summary_after_detail": false,
+        "selected_steps": 768
+      },
+      "alignment": {
+        "header_wall_epoch_ns": 1792897527512285313,
+        "clock_note": "wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only",
+        "first_selected_elapsed_ns": 8234520059,
+        "last_selected_elapsed_ns": 58366709901,
+        "first_selected_record_epoch_ns": 1792897535746805372,
+        "last_selected_record_epoch_ns": 1792897585878995214
+      },
+      "host_enqueue_backpressure": {
+        "label": "unsynchronized host enqueue/backpressure time; not GPU elapsed time",
+        "timed_selected_steps": 768,
+        "all_selected": {
+          "count": 768,
+          "mean_ms": 0.2921990703125,
+          "median_ms": 0.16236699999999998,
+          "p95_ms": 0.236372,
+          "min_ms": 0.120746,
+          "max_ms": 91.059992
+        },
+        "by_decision": {
+          "hit": {
+            "count": 766,
+            "mean_ms": 0.16897225587467363,
+            "median_ms": 0.1623545,
+            "p95_ms": 0.233232,
+            "min_ms": 0.120746,
+            "max_ms": 0.523583
+          },
+          "warm": {
+            "count": 1,
+            "mean_ms": 3.916146,
+            "median_ms": 3.916146,
+            "p95_ms": 3.916146,
+            "min_ms": 3.916146,
+            "max_ms": 3.916146
+          },
+          "capture": {
+            "count": 1,
+            "mean_ms": 91.059992,
+            "median_ms": 91.059992,
+            "p95_ms": 91.059992,
+            "min_ms": 91.059992,
+            "max_ms": 91.059992
+          },
+          "budget": null,
+          "full": null,
+          "failure": null,
+          "forced": null
+        },
+        "small_t_1_6": null
+      },
+      "per_key_whole_prefix": [
+        {
+          "key": [
+            0,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 766
+          }
+        }
+      ],
+      "selected_decisions": {
+        "warm": 1,
+        "capture": 1,
+        "hit": 766
+      },
+      "resident_count_min": 0,
+      "resident_count_max": 1,
+      "small_t_steps": 0,
+      "small_t_budget_misses": 0,
+      "small_t_budget_miss_fraction": 0.0,
+      "repeated_small_t_budget_keys": [],
+      "resident_keys_never_replayed_during_small_t_interval": [],
+      "resident_keys_present_every_small_t_step_never_replayed": [],
+      "admission_evidence_gate": false,
+      "capture_path_total_ns": 91059124,
+      "simulation": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ],
+        "selected_interval_decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "selected_interval_hit_fraction": 0.9973958333333334
+      },
+      "simulation_valid_for_policy_comparison": true,
+      "simulation_hit_coverage_gain_percentage_points": 0.0,
+      "simulation_selected_interval_hit_coverage_gain_percentage_points": 0.0,
+      "simulation_screen_gate": false
+    },
+    {
+      "gpu": 6,
+      "file_bytes": 207797,
+      "coverage": {
+        "detailed_steps": 768,
+        "last_summary_observed_steps": 768,
+        "detailed_limit_reached": false,
+        "summary_after_detail": false,
+        "selected_steps": 768
+      },
+      "alignment": {
+        "header_wall_epoch_ns": 1792897527469285094,
+        "clock_note": "wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only",
+        "first_selected_elapsed_ns": 8277542812,
+        "last_selected_elapsed_ns": 58409696218,
+        "first_selected_record_epoch_ns": 1792897535746827906,
+        "last_selected_record_epoch_ns": 1792897585878981312
+      },
+      "host_enqueue_backpressure": {
+        "label": "unsynchronized host enqueue/backpressure time; not GPU elapsed time",
+        "timed_selected_steps": 768,
+        "all_selected": {
+          "count": 768,
+          "mean_ms": 0.27019858723958334,
+          "median_ms": 0.1628015,
+          "p95_ms": 0.196531,
+          "min_ms": 0.103877,
+          "max_ms": 80.111716
+        },
+        "by_decision": {
+          "hit": {
+            "count": 766,
+            "mean_ms": 0.1611849686684073,
+            "median_ms": 0.1627885,
+            "p95_ms": 0.193815,
+            "min_ms": 0.103877,
+            "max_ms": 0.817129
+          },
+          "warm": {
+            "count": 1,
+            "mean_ms": 3.933113,
+            "median_ms": 3.933113,
+            "p95_ms": 3.933113,
+            "min_ms": 3.933113,
+            "max_ms": 3.933113
+          },
+          "capture": {
+            "count": 1,
+            "mean_ms": 80.111716,
+            "median_ms": 80.111716,
+            "p95_ms": 80.111716,
+            "min_ms": 80.111716,
+            "max_ms": 80.111716
+          },
+          "budget": null,
+          "full": null,
+          "failure": null,
+          "forced": null
+        },
+        "small_t_1_6": null
+      },
+      "per_key_whole_prefix": [
+        {
+          "key": [
+            0,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 766
+          }
+        }
+      ],
+      "selected_decisions": {
+        "warm": 1,
+        "capture": 1,
+        "hit": 766
+      },
+      "resident_count_min": 0,
+      "resident_count_max": 1,
+      "small_t_steps": 0,
+      "small_t_budget_misses": 0,
+      "small_t_budget_miss_fraction": 0.0,
+      "repeated_small_t_budget_keys": [],
+      "resident_keys_never_replayed_during_small_t_interval": [],
+      "resident_keys_present_every_small_t_step_never_replayed": [],
+      "admission_evidence_gate": false,
+      "capture_path_total_ns": 80110655,
+      "simulation": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ],
+        "selected_interval_decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "selected_interval_hit_fraction": 0.9973958333333334
+      },
+      "simulation_valid_for_policy_comparison": true,
+      "simulation_hit_coverage_gain_percentage_points": 0.0,
+      "simulation_selected_interval_hit_coverage_gain_percentage_points": 0.0,
+      "simulation_screen_gate": false
+    },
+    {
+      "gpu": 7,
+      "file_bytes": 207797,
+      "coverage": {
+        "detailed_steps": 768,
+        "last_summary_observed_steps": 768,
+        "detailed_limit_reached": false,
+        "summary_after_detail": false,
+        "selected_steps": 768
+      },
+      "alignment": {
+        "header_wall_epoch_ns": 1792897527501824214,
+        "clock_note": "wall epoch sampled adjacent to monotonic origin; record elapsed sampled after enqueue, before buffered formatting/write; approximate wall alignment only",
+        "first_selected_elapsed_ns": 8245648228,
+        "last_selected_elapsed_ns": 58377100689,
+        "first_selected_record_epoch_ns": 1792897535747472442,
+        "last_selected_record_epoch_ns": 1792897585878924903
+      },
+      "host_enqueue_backpressure": {
+        "label": "unsynchronized host enqueue/backpressure time; not GPU elapsed time",
+        "timed_selected_steps": 768,
+        "all_selected": {
+          "count": 768,
+          "mean_ms": 0.26240876432291665,
+          "median_ms": 0.129968,
+          "p95_ms": 0.169324,
+          "min_ms": 0.119466,
+          "max_ms": 92.090294
+        },
+        "by_decision": {
+          "hit": {
+            "count": 766,
+            "mean_ms": 0.13688354177545692,
+            "median_ms": 0.12996,
+            "p95_ms": 0.167935,
+            "min_ms": 0.119466,
+            "max_ms": 0.568897
+          },
+          "warm": {
+            "count": 1,
+            "mean_ms": 4.586844,
+            "median_ms": 4.586844,
+            "p95_ms": 4.586844,
+            "min_ms": 4.586844,
+            "max_ms": 4.586844
+          },
+          "capture": {
+            "count": 1,
+            "mean_ms": 92.090294,
+            "median_ms": 92.090294,
+            "p95_ms": 92.090294,
+            "min_ms": 92.090294,
+            "max_ms": 92.090294
+          },
+          "budget": null,
+          "full": null,
+          "failure": null,
+          "forced": null
+        },
+        "small_t_1_6": null
+      },
+      "per_key_whole_prefix": [
+        {
+          "key": [
+            0,
+            64
+          ],
+          "decisions": {
+            "warm": 1,
+            "capture": 1,
+            "hit": 766
+          }
+        }
+      ],
+      "selected_decisions": {
+        "warm": 1,
+        "capture": 1,
+        "hit": 766
+      },
+      "resident_count_min": 0,
+      "resident_count_max": 1,
+      "small_t_steps": 0,
+      "small_t_budget_misses": 0,
+      "small_t_budget_miss_fraction": 0.0,
+      "repeated_small_t_budget_keys": [],
+      "resident_keys_never_replayed_during_small_t_interval": [],
+      "resident_keys_present_every_small_t_step_never_replayed": [],
+      "admission_evidence_gate": false,
+      "capture_path_total_ns": 92089629,
+      "simulation": {
+        "steps": 768,
+        "decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "hit_fraction": 0.9973958333333334,
+        "small_t_1_6_hits": 0,
+        "replacement_count": 0,
+        "replacement_limit_blocked_observations": 0,
+        "replacement_events": [],
+        "final_resident_keys": [
+          [
+            0,
+            64
+          ]
+        ],
+        "model_limits": [
+          "key sequence only; no timing, memory, capture-failure or cross-GPU synchronization prediction",
+          "capture executes current step but is counted separately from replay hit",
+          "all recorded keys replayed, including idle t0; no token-count priority"
+        ],
+        "selected_interval_decisions": {
+          "eager": 1,
+          "capture": 1,
+          "hit": 766
+        },
+        "selected_interval_hit_fraction": 0.9973958333333334
+      },
+      "simulation_valid_for_policy_comparison": true,
+      "simulation_hit_coverage_gain_percentage_points": 0.0,
+      "simulation_selected_interval_hit_coverage_gain_percentage_points": 0.0,
+      "simulation_screen_gate": false
+    }
+  ],
+  "limits": [
+    "only completed snapshots are visible; SIGTERM may lose up to63 pending tail steps",
+    "detailed coverage stops at4096 steps/GPU; simulation excludes any later observations",
+    "per-GPU sequence intervals are not synchronized wall-clock phases"
+  ],
+  "small_t_active_gpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "admission_gate_gpus": [
+    1,
+    2,
+    3
+  ],
+  "simulation_gate_gpus": [],
+  "total_file_bytes": 1912931
+}

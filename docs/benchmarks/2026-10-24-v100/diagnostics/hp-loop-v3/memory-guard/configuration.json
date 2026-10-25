@@ -1,0 +1,54 @@
+{
+  "first_observation_verified": true,
+  "observation_path": "/root/memory-hp4-loop-prof-001.jsonl",
+  "server_pid": 19770,
+  "guard_pid": 19953,
+  "command": [
+    "python3",
+    "/root/memory-guard.py",
+    "--name",
+    "hp4-loop-prof-001",
+    "--receipt-name",
+    "hp4-loop-prof-001",
+    "--min-free-mib",
+    "192",
+    "--until",
+    "1792901111.2818425"
+  ],
+  "ready_free_mib": [
+    [
+      0,
+      1879
+    ],
+    [
+      1,
+      1879
+    ],
+    [
+      2,
+      1879
+    ],
+    [
+      3,
+      1879
+    ],
+    [
+      4,
+      1879
+    ],
+    [
+      5,
+      1879
+    ],
+    [
+      6,
+      1879
+    ],
+    [
+      7,
+      1879
+    ]
+  ],
+  "log": "/root/memory-guard-hp4-loop-prof-001.log",
+  "until": 1792901111.2818425
+}

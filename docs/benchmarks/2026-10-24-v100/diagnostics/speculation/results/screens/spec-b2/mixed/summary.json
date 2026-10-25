@@ -1,0 +1,24 @@
+{
+  "label": "sampler-spec-b2",
+  "clients": 4,
+  "mixed": true,
+  "wall_s": 27.398919278988615,
+  "monitor_wall_s": 27.78247402701527,
+  "completed": 4,
+  "requested_output_tokens": 2048,
+  "output_tokens": 2048,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 74.74747376516227,
+  "prompt_tokens": 20685,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 2048,
+  "ttft_s": [
+    7.712958313990384,
+    7.713206568034366,
+    7.616025928989984,
+    13.122785076033324
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.45294855708908405
+}

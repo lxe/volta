@@ -1,0 +1,120 @@
+{
+  "status": "FAIL",
+  "audit_log_gate_passed": false,
+  "input_log": "/home/lxe/volta-sixhour-20261024/receipts/hp-sampling-parser-v2-synthetic/bad_token.log",
+  "input_sha256": "c9e80494570827c5df64cd490e28fedd7553fefd3fae2b720d78bf3cc830f928",
+  "source_schema_binding": {
+    "engine_commit": "acf798786b1962f5ea45ecbebc6cf114f2126b81",
+    "expected_server_sha256": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+    "binary_identity_verified_here": false
+  },
+  "counts": {
+    "target_records": 7,
+    "HP_SAMPLE_DISPATCH": 5,
+    "HP_SAMPLE_DISPATCH_valid": 5,
+    "HP_SAMPLE_AUDIT": 2
+  },
+  "checked_u32_total": 0,
+  "checked_bytes_total": 0,
+  "matrix_rows_histogram": {},
+  "draft_nd_histogram": {},
+  "command_histogram": {
+    "StepSampleHp": 2,
+    "Step": 2,
+    "StepGreedy": 1
+  },
+  "distinct_logit_fingerprints": 0,
+  "coverage": {
+    "row_base_63": {
+      "observed": false,
+      "evidence": []
+    },
+    "speculative_nd_positive": {
+      "observed": false,
+      "evidence": []
+    },
+    "accepted_positive": {
+      "observed": false,
+      "evidence": []
+    },
+    "draft_rejection": {
+      "observed": false,
+      "evidence": []
+    },
+    "all_drafts_accepted": {
+      "observed": false,
+      "evidence": []
+    },
+    "multiple_tables": {
+      "observed": false,
+      "evidence": []
+    },
+    "mixed_greedy_sample_tables": {
+      "observed": false,
+      "evidence": []
+    },
+    "matrix_t_lt64": {
+      "observed": false,
+      "evidence": []
+    },
+    "cpu_top_p_fallback": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 5,
+          "command": "Step"
+        }
+      ]
+    },
+    "cpu_positive_hesitation_fallback": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 6,
+          "command": "Step"
+        }
+      ]
+    },
+    "pure_greedy_step": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 7,
+          "command": "StepGreedy"
+        }
+      ]
+    }
+  },
+  "missing_required_coverage": [
+    "row_base_63",
+    "speculative_nd_positive",
+    "accepted_positive",
+    "draft_rejection",
+    "all_drafts_accepted",
+    "multiple_tables",
+    "mixed_greedy_sample_tables",
+    "matrix_t_lt64"
+  ],
+  "errors_total": 3,
+  "errors_first100": [
+    {
+      "line": 2,
+      "error": "token: expected integer 0..129279"
+    },
+    {
+      "line": 4,
+      "error": "audit IDs must start at zero and be consecutive in one fresh log"
+    },
+    {
+      "line": 0,
+      "error": "at least one valid parity audit is required"
+    }
+  ],
+  "limits": [
+    "This gate covers observed audit/dispatch records only; teacher quality, memory, performance and long-context gates remain separate.",
+    "Fingerprints are validated for encoding; original full tensors/tables are not retained in logs, so their hashes cannot be independently recomputed here.",
+    "t<64 establishes a smaller logical matrix, not a prefill/decode phase classification.",
+    "Coverage is never inferred from submitted requests; CPU fallback and greedy coverage require dispatch records.",
+    "IDs are checked within one fresh source-bound server log; do not concatenate independent runs."
+  ]
+}

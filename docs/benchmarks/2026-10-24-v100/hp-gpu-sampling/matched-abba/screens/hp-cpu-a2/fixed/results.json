@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 37.73824761400465,
+    "start_monotonic": 980672.846600117,
+    "end_monotonic": 980710.584847731,
+    "ttft_s": 22.230314363958314,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "402a9cfd51661623f762720de9af748b1ba8f3e94c200935bf979d34aaa1e842",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 0)\n\n## Overview\n\nThis module contains 108 nearly identical functions (`record_0` through `record_107`, with the last one truncated mid-expression). Each function:\n\n- Accepts a `values` iterable\n- Computes `sum(v * k for v in values)` where `k` is a per-function constant (`function_index + 1`)\n- Returns a dict with `{\"record\": <index>, \"total\": <sum>, \"count\": <len>}`\n\nThe pattern is a textbook example of copy-paste duplication. Below are numbered findings, ordered roughly by severity.\n\n---\n\n## Findings\n\n### 1. Massive copy-paste duplication (critical)\n\nEvery function is structurally identical; only two literals change (`record` index and multiplier). 108 copies of the same body is a maintenance hazard: any bug fix (e.g., handling `None`, non-numeric input, generator exhaustion) must be applied 108 times, and a single missed edit silently diverges behavior. This is the dominant issue in the module.\n\n### 2. Truncated / syntactically invalid final function (critical)\n\n`record_107` ends with:\n\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\n\nThe `return` dict is cut off. As written, this module **will not import** \u2014 it raises `SyntaxError`. Whatever generated this file (likely a script) was interrupted or hit an output cap. This must be fixed before anything else; the module is currently dead code on disk.\n\n### 3. Off-by-one inconsistency between name and multiplier (medium)\n\n`record_N` uses multiplier `N + 1`. So `record_0` multiplies by 1, `record_107` multiplies by 108. The name encodes the record index, not the multiplier. This is internally consistent but easy to misread: a reader seeing `record_10` may expect multiplier 10, not 11. If the multiplier is meant to be the record id, every function is wrong; if the record id is meant to be `N`, the multiplier is a separate concept that should be documented. Either way, the implicit `N+1` relationship is undocumented and surprising.\n\n### 4. `sum(v * 1 for v in values)` is a no-op multiplication (",
+    "decode_tokens_per_s": 32.95087693251924
+  },
+  {
+    "wall_s": 29.84765987796709,
+    "start_monotonic": 980672.846115108,
+    "end_monotonic": 980702.693774986,
+    "ttft_s": 6.4819671619916335,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "ad1ca0fe353466b8c3827d793f1294c20a5e9c2fb1d7bf12914dd58ba636c5c3",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 1)\n\n## Overview\n\nThe module under review consists of 108 (and a truncated 109th) near-identical functions named `record_0` through `record_107`. Each function:\n\n1. Takes a single argument `values`.\n2. Computes `total = sum(v * K for v in values)` where `K = n + 1` for `record_n`.\n3. Returns a dict `{\"record\": n, \"total\": total, \"count\": len(values)}`.\n\nThe pattern is a textbook example of copy-paste duplication with a single numeric parameter that varies monotonically. The file is truncated mid-line at `record_107`, so the module as submitted does not even parse cleanly \u2014 `record_107` ends with an unterminated `{\"record\": 107, \"total\":` and no closing braces. That alone is a blocking defect.\n\nBelow are numbered findings, ordered roughly by severity, then a revised implementation.\n\n---\n\n## Findings\n\n### 1. **Module does not parse (syntax error / truncation) \u2014 BLOCKER**\n`record_107` is cut off mid-dict-literal:\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\nThere is no closing `total}`, no `, \"count\": len(values)}`, and no newline-terminated function body. Importing this module raises `SyntaxError: unexpected EOF while parsing`. Any downstream consumer will fail at import time. This must be fixed before any other review item matters.\n\n**Fix:** Complete the function or, better, delete it as part of the refactor (see finding 2).\n\n### 2. **Massive code duplication (108+ copies of one function) \u2014 HIGH**\nEvery function is structurally identical; only two constants differ: the `record` index `n` and the multiplier `n + 1`. This is a classic \"copy-paste with a counter\" anti-pattern. Consequences:\n\n- **Maintenance hazard:** a bug fixed in `record_17` must be manually replicated to 107 other sites.\n- **Review cost:** reviewers cannot meaningfully verify 108 functions; they skim.\n- **Diff noise:** any behavioral change produces a 108-hunk diff.\n- **Error surface:** typos in any one copy (e.g., wrong multiplier",
+    "decode_tokens_per_s": 21.86967046992885
+  },
+  {
+    "wall_s": 34.4866246819729,
+    "start_monotonic": 980672.846478109,
+    "end_monotonic": 980707.333102791,
+    "ttft_s": 13.903393407934345,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "1f6a13b2cba5131b53a8fde2a98a1ef443277a402b4e09cf76a5e259e2c9acf8",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 2)\n\n## Summary\n\nThis module contains 108 (and presumably more, truncated) near-identical functions named `record_0` through `record_107`, each of which computes a weighted sum of an input `values` sequence and returns a dict with a fixed `\"record\"` index, a `\"total\"`, and a `\"count\"`. The module is a textbook example of copy-paste duplication. Below is a detailed, numbered review followed by a revised implementation.\n\n---\n\n## Detailed Findings\n\n### 1. Massive code duplication (the dominant defect)\nEvery function is identical except for two constants: the record index `N` and the multiplier `N+1`. `record_k(values)` computes `sum(v * (k+1) for v in values)` and returns `{\"record\": k, \"total\": ..., \"count\": len(values)}`. This is 108 copies of the same five-line body. This is the single most important issue in the module and drives most of the others below.\n\n**Impact:** Any bug fix, behavior change, or optimization must be replicated 108+ times. The probability of drift (one function differing from the rest) grows with every edit. Reviewing or auditing correctness is impractical.\n\n### 2. `v * 1` is a no-op in `record_0`\nIn `record_0`, `sum(v * 1 for v in values)` multiplies every element by 1. This is dead arithmetic. It is harmless but signals that the code was generated mechanically rather than written intentionally, and it obscures the fact that `record_0` is really just `sum(values)`.\n\n### 3. `sum(v * N for v in values)` is a weighted sum \u2014 should be documented\nThe intent (weighted sum with weight `k+1`) is nowhere stated in a docstring or comment. A reader must reverse-engineer the pattern by comparing several functions. There is no module-level docstring explaining what a \"record\" is or why the multiplier equals the index plus one.\n\n### 4. No input validation\n- `values` is assumed to be an iterable of numbers. If it contains non-numeric elements, `sum` raises `TypeError` deep inside a generator with no context about which record function failed.\n- If `values` is `None`, the error is a bare `TypeError: 'NoneType' object",
+    "decode_tokens_per_s": 24.826034027248177
+  },
+  {
+    "wall_s": 41.39176720601972,
+    "start_monotonic": 980672.846308051,
+    "end_monotonic": 980714.238075257,
+    "ttft_s": 30.92935100500472,
+    "usage": {
+      "prompt_tokens": 4147,
+      "completion_tokens": 512,
+      "total_tokens": 4659,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 4147
+    },
+    "finish_reason": "length",
+    "output_sha256": "62f603a8e79e75e53ea1198c5c723faf3ece7f7c4e3f5c7f97ec7010a614ad57",
+    "output": "# Code Review: `hp-gpu-01-fixed` (client 3)\n\n## Overview\n\nThis module contains 108 nearly identical functions, `record_0` through `record_107` (the last one truncated mid-statement). Each function:\n\n1. Computes `sum(v * N for v in values)` where `N` is the function index plus one.\n2. Returns a dict `{\"record\": index, \"total\": total, \"count\": len(values)}`.\n\nThe module is a textbook example of mechanical code generation gone unchecked. Below are numbered findings, ordered roughly by severity.\n\n---\n\n## Findings\n\n### 1. **CRITICAL \u2014 The module does not parse as written.**\n`record_107` is truncated mid-dict-literal:\n\n```python\ndef record_107(values):\n    total = sum(v * 108 for v in values)\n    return {\"record\": 107, \"total\":\n```\n\nThis is a `SyntaxError`. The file cannot be imported at all. Every downstream consumer of `hp-gpu-01-fixed` is broken. Whatever generator produced this file was cut off (likely an output-budget truncation on the generating side), and the result was committed without a syntax check. **A CI step running `python -m py_compile` or `ast.parse` on every `.py` file would have caught this in under a second.**\n\n### 2. **CRITICAL \u2014 Massive duplication (108 copies of one function).**\nEvery function is identical except for two constants: the record index and the multiplier (`index + 1`). This is ~108\u00d7 more code than necessary. Consequences:\n\n- **Maintenance hazard:** a bug fix or behavior change must be applied in 108 places. Any single missed edit creates an inconsistency that is nearly impossible to spot in review.\n- **Review hazard:** the diff for this file is unreviewable by a human. Reviewers will skim and miss defects (as happened here \u2014 finding #1 slipped through).\n- **Import/parse cost:** 108 function objects are created and bytecode compiled at import time for a module whose entire behavior is one parameterized computation.\n- **Cognitive load:** readers must verify each function individually to confirm the multiplier matches the index. That verification is exactly the kind of thing humans are bad at and machines are good at.\n\n### 3. **HIGH \u2014 The multiplier convention is implicit and unenforced.**\nThe contract appears to be: `record_N` multiplies",
+    "decode_tokens_per_s": 48.84149035768867
+  }
+]

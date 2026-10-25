@@ -1,0 +1,19 @@
+model mapped in 2.5 s
+engram: 203 GB mapped in 8 s
+experts from the pack: split 8 ways, 27.5 GB per GPU
+HP GPU sampling: true, audit budget 0
+GPU0: loaded in 132 s, 15360 experts, 3.8 of 34.1 GB free
+GPU1: loaded in 132 s, 15360 experts, 3.9 of 34.1 GB free
+GPU3: loaded in 132 s, 15360 experts, 3.9 of 34.1 GB free
+GPU6: loaded in 132 s, 15360 experts, 3.9 of 34.1 GB free
+GPU4: loaded in 132 s, 15360 experts, 3.9 of 34.1 GB free
+GPU2: loaded in 132 s, 15360 experts, 3.9 of 34.1 GB free
+GPU7: loaded in 132 s, 15360 experts, 3.9 of 34.1 GB free
+GPU5: loaded in 132 s, 15360 experts, 3.9 of 34.1 GB free
+pos 128: running ppl 23.198 kl 0.2324 top1 0.8047 (6 s)
+pos 256: running ppl 13.861 kl 0.1819 top1 0.8135 (12 s)
+pos 384: running ppl 11.932 kl 0.1582 top1 0.8229 (18 s)
+pos 512: running ppl 10.775 kl 0.1431 top1 0.8335 (24 s)
+pos 640: running ppl 10.631 kl 0.1357 top1 0.8352 (32 s)
+pos 768: running ppl 10.514 kl 0.1314 top1 0.8351 (38 s)
+pos 896: running ppl 9.972 kl 0.1310 top1 0.8379 (45 s)

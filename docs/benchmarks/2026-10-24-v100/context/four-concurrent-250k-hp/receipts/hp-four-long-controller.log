@@ -1,0 +1,35 @@
+{"ready": true, "pid": 27988, "run": "/home/lxe/volta-sixhour-20261024/server-runs/hp-gpu-capacity4"}
+{"first_observation_verified": true, "observation_path": "/root/memory-hp-gpu-capacity4.jsonl", "server_pid": 27988, "guard_pid": 28171, "command": ["python3", "/root/memory-guard.py", "--name", "hp-gpu-capacity4", "--receipt-name", "hp-gpu-capacity4", "--min-free-mib", "192", "--until", "1792908401.4576592"], "ready_free_mib": [[0, 1847], [1, 1879], [2, 1879], [3, 1879], [4, 1879], [5, 1879], [6, 1879], [7, 1879]], "log": "/root/memory-guard-hp-gpu-capacity4.log", "until": 1792908401.4576592}
+{
+  "label": "hp-gpu-capacity4",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 1872.1057745870203,
+  "monitor_wall_s": 1872.1493536460912,
+  "completed": 4,
+  "requested_output_tokens": 256,
+  "output_tokens": 68,
+  "all_hit_output_budget": false,
+  "output_tokens_per_wall_s": 0.03632273396250837,
+  "prompt_tokens": 1000184,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 68,
+  "ttft_s": [
+    1871.9376104769763,
+    936.411809128942,
+    1403.8956772530219,
+    468.85853188904
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.0,
+  "workload": "four concurrent distinct-key greedy long-context retrieval checks on a source-bound HP server; not a throughput comparison",
+  "expected_keys": [
+    "VOLTA_LONG_FOUR_00_8a271d60b7fc",
+    "VOLTA_LONG_FOUR_01_8a271d60b7fc",
+    "VOLTA_LONG_FOUR_02_8a271d60b7fc",
+    "VOLTA_LONG_FOUR_03_8a271d60b7fc"
+  ],
+  "needle_verified": true
+}
+Four HP long-context client completed; independently validate tokens, keys, active sessions and guard coverage.

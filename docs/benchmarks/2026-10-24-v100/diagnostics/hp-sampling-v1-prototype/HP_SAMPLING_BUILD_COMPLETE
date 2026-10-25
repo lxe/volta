@@ -1,0 +1,8 @@
+{
+  "proof_path": "/home/lxe/volta-sixhour-20261024/hp-sampling-v1-build-proof.json",
+  "proof_sha256": "28d3f3c99e59036e33f4a2e1ebcf9600ea2adcbaf363aed6327c792a10b9e864",
+  "server_sha256": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+  "CLI_sha256": "601306326a113c868adafb53525ae2eef72c66a5750b76fe2e1843930e277aa5",
+  "compilers_remaining": false,
+  "gpu_launches": 0
+}

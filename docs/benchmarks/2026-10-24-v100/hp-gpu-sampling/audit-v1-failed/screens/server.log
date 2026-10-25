@@ -1,0 +1,27 @@
+engram: 203 GB mapped in 8 s
+experts from the pack: split 8 ways, 27.5 GB per GPU
+draft: 3 layers, block 5
+HP GPU sampling: true, audit budget 1024
+GPU7: loaded in 142 s, 15360 experts, 2.0 of 34.1 GB free
+GPU6: loaded in 142 s, 15360 experts, 2.0 of 34.1 GB free
+GPU4: loaded in 142 s, 15360 experts, 2.0 of 34.1 GB free
+GPU2: loaded in 142 s, 15360 experts, 2.0 of 34.1 GB free
+GPU1: loaded in 142 s, 15360 experts, 2.0 of 34.1 GB free
+GPU3: loaded in 142 s, 15360 experts, 2.0 of 34.1 GB free
+GPU0: loaded in 142 s, 15360 experts, 1.9 of 34.1 GB free
+GPU5: loaded in 142 s, 15360 experts, 2.0 of 34.1 GB free
+[2m2026-10-25T04:18:19.161337Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m volta engine up [3mgpus[0m[2m=[0m1 [3mslots[0m[2m=[0m4 [3mheads[0m[2m=[0mtrue [3mctx[0m[2m=[0m262144 [3mdraft[0m[2m=[0mtrue [3mspec_k[0m[2m=[0m5
+[2m2026-10-25T04:18:19.161433Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m sampling [3mgpu_sample[0m[2m=[0mtrue
+[2m2026-10-25T04:18:19.161747Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m api key: none, the API is open to anyone who can reach the port
+[2m2026-10-25T04:18:19.163673Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m hesitation penalty: 52 tokens, default 0 [3mtokens[0m[2m=[0m52
+[2m2026-10-25T04:18:19.163770Z[0m [32m INFO[0m [2mvolta_server[0m[2m:[0m admin dashboard on http://127.0.0.1:8091
+[2m2026-10-25T04:18:19.163797Z[0m [32m INFO[0m [2mvolta_server[0m[2m:[0m listening on http://127.0.0.1:8090 (volta, 8 GPUs, 4 sessions, head-parallel)
+[2m2026-10-25T04:18:23.151423Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m request [3mid[0m[2m=[0mchatcmpl-6add830f0000 [3mmodel[0m[2m=[0mdeepseek-v4.1-flash [3mstream[0m[2m=[0mtrue [3mthinking[0m[2m=[0mfalse [3meffort[0m[2m=[0mNone [3mmessages[0m[2m=[0m1 [3mtools[0m[2m=[0m0 [3mtemperature[0m[2m=[0m0.699999988079071 [3mtop_p[0m[2m=[0m1.0 [3mhesitation[0m[2m=[0m0.0
+[2m2026-10-25T04:18:23.151492Z[0m [32m INFO[0m [2mdsx_core::server::engine[0m[2m:[0m queued [3mid[0m[2m=[0mchatcmpl-6add830f0000 [3mprompt_tokens[0m[2m=[0m556 [3mmax_new[0m[2m=[0m128 [3mqueue_position[0m[2m=[0m0
+[2m2026-10-25T04:18:23.151907Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m admitted [3mid[0m[2m=[0mchatcmpl-6add830f0000 [3mgpu[0m[2m=[0m0 [3mslot[0m[2m=[0m0 [3mprompt_tokens[0m[2m=[0m556 [3mcached_tokens[0m[2m=[0m0 [3mqueue_ms[0m[2m=[0m0
+HP_SAMPLE_DISPATCH {"command":"StepSampleHp","gpu":true,"sampled":true,"gpu_sample_enabled":true,"step_rows":64,"table_rows_if_gpu":1,"rows":[{"rb":0,"rows":64,"prefill":true,"greedy":false,"top_p":1.0,"hesitation":false,"hesitation_lambda":null,"draft_bound_ok":true}]}
+
+thread '<unnamed>' (24168) panicked at /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/panicking.rs:225:5:
+attempted to zero-initialize type `cudarc::driver::sys::CUDA_MEMCPY3D_st`, which is invalid
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+thread caused non-unwinding panic. aborting.

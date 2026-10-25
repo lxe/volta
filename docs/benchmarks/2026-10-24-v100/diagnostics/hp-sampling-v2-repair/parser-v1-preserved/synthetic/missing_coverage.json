@@ -1,0 +1,123 @@
+{
+  "status": "FAIL",
+  "audit_log_gate_passed": false,
+  "input_log": "/home/lxe/volta-sixhour-20261024/receipts/hp-sampling-parser-synthetic/missing_coverage.log",
+  "input_sha256": "5e4eb2abfe61987daac2116a0a87dd55fe87bf56cc06ee809e4296c7a37941a5",
+  "source_schema_binding": {
+    "engine_commit": "acf798786b1962f5ea45ecbebc6cf114f2126b81",
+    "expected_server_sha256": "63f597b080dee291d0f146d88d6cef70c075f546d82dcfec192880c13c7d6820",
+    "binary_identity_verified_here": false
+  },
+  "counts": {
+    "target_records": 2,
+    "HP_SAMPLE_DISPATCH": 1,
+    "HP_SAMPLE_DISPATCH_valid": 1,
+    "HP_SAMPLE_AUDIT": 1,
+    "HP_SAMPLE_AUDIT_valid": 1
+  },
+  "checked_u32_total": 8273920,
+  "checked_bytes_total": 33095680,
+  "matrix_rows_histogram": {
+    "64": 1
+  },
+  "draft_nd_histogram": {
+    "0": 1,
+    "2": 1
+  },
+  "command_histogram": {
+    "StepSampleHp": 1
+  },
+  "distinct_logit_fingerprints": 1,
+  "coverage": {
+    "row_base_63": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 2,
+          "audit_id": 0
+        }
+      ]
+    },
+    "speculative_nd_positive": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 2,
+          "audit_id": 0
+        }
+      ]
+    },
+    "accepted_positive": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 2,
+          "audit_id": 0
+        }
+      ]
+    },
+    "draft_rejection": {
+      "observed": false,
+      "evidence": []
+    },
+    "all_drafts_accepted": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 2,
+          "audit_id": 0
+        }
+      ]
+    },
+    "multiple_tables": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 2,
+          "audit_id": 0
+        }
+      ]
+    },
+    "mixed_greedy_sample_tables": {
+      "observed": true,
+      "evidence": [
+        {
+          "line": 2,
+          "audit_id": 0
+        }
+      ]
+    },
+    "matrix_t_lt64": {
+      "observed": false,
+      "evidence": []
+    },
+    "cpu_top_p_fallback": {
+      "observed": false,
+      "evidence": []
+    },
+    "cpu_positive_hesitation_fallback": {
+      "observed": false,
+      "evidence": []
+    },
+    "pure_greedy_step": {
+      "observed": false,
+      "evidence": []
+    }
+  },
+  "missing_required_coverage": [
+    "draft_rejection",
+    "matrix_t_lt64",
+    "cpu_top_p_fallback",
+    "cpu_positive_hesitation_fallback",
+    "pure_greedy_step"
+  ],
+  "errors_total": 0,
+  "errors_first100": [],
+  "limits": [
+    "This gate covers observed audit/dispatch records only; teacher quality, memory, performance and long-context gates remain separate.",
+    "Fingerprints are validated for encoding; original full tensors/tables are not retained in logs, so their hashes cannot be independently recomputed here.",
+    "t<64 establishes a smaller logical matrix, not a prefill/decode phase classification.",
+    "Coverage is never inferred from submitted requests; CPU fallback and greedy coverage require dispatch records.",
+    "IDs are checked within one fresh source-bound server log; do not concatenate independent runs."
+  ]
+}

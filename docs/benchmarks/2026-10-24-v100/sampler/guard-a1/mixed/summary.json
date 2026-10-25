@@ -1,0 +1,24 @@
+{
+  "label": "frozen-guard-a1",
+  "clients": 4,
+  "mixed": true,
+  "wall_s": 32.362530253012665,
+  "monitor_wall_s": 32.40607866202481,
+  "completed": 4,
+  "requested_output_tokens": 2048,
+  "output_tokens": 2048,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 63.28306173802184,
+  "prompt_tokens": 20677,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 2048,
+  "ttft_s": [
+    9.296309367055073,
+    9.296706366003491,
+    9.17924080893863,
+    16.22343612194527
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.5241423125794155
+}

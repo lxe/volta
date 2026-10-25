@@ -1,0 +1,1834 @@
+{
+  "model_file": "DeepSeek-V4.1-Flash-1017-Volta.gguf",
+  "model_sha256": "9d15a1d6f263b25bb3bf0eb1b887c9c6d7176083b8a9bd55c998e8658e52000c",
+  "source_pr": "https://github.com/lxe/volta/pull/1",
+  "measured_sampler_source_commit": "4ce1545",
+  "evidence_commit": "268cf362c2dd3eb701e1060ed3a765f5837e6402",
+  "scope": "Actual full-GGUF V100 measurements; configurations and workload scopes differ as recorded",
+  "guard_abba": {
+    "arms": {
+      "guard-a1": {
+        "fixed": {
+          "tps": 112.23558587886912,
+          "wall_s": 18.24733202008065,
+          "tokens": 2048,
+          "prompt_tokens": 16580,
+          "cached": 0,
+          "full_budget": true,
+          "ttft_median_s": 10.219442998000886,
+          "output_hashes": [
+            "98d03f05d8cede6469e9c19f7a05b6095be5ef477f2ed580f974b74be52ba227",
+            "7c1466b77a058c1976008e7908b5a61b19adb1f94900f2bc8f9ef576326ba18e",
+            "73d342318d15905a6538c782c9f3a0bfd5b19b04ffa3faf10cb21b274aaac5c7",
+            "92e7fa06455cdcc032705e0bd7034e8d8ecf0e3be46230686eab790c8b42f7b6"
+          ]
+        },
+        "mixed": {
+          "tps": 63.28306173802184,
+          "wall_s": 32.362530253012665,
+          "tokens": 2048,
+          "prompt_tokens": 20677,
+          "cached": 0,
+          "full_budget": true,
+          "ttft_median_s": 9.296507866529282,
+          "output_hashes": [
+            "d773799cbd071f663ba1f5d8a10fe6baafcc282b72dd1272bb99885be696f1f0",
+            "528aa260f92d0ddf4f45c98b88fdc10af6b476e190d4d1e721256fa7de6fb870",
+            "0ae1364432868087c78e3b52e6a9939322b3d4e30307bc9c7109f3d42be3371e",
+            "740a45841196b646cabcd55824a1deb0d0c4c18456cb8a1b8e48624ba9d52185"
+          ]
+        }
+      },
+      "guard-b1": {
+        "fixed": {
+          "tps": 126.03448183420862,
+          "wall_s": 16.24952132301405,
+          "tokens": 2048,
+          "prompt_tokens": 16580,
+          "cached": 0,
+          "full_budget": true,
+          "ttft_median_s": 8.419954300508834,
+          "output_hashes": [
+            "11fae30ab2563dc95de5c26aea2294a0b8613962a321f5c43e515c2e9b944a49",
+            "85e1a8695de7052a2ac9bfcab89e8ef86d0ea44a3368351152e71214cf117524",
+            "7a8079ad2eeb50be97562437561a30c7ab6dc44d5e118c36a42f55d0af8905d0",
+            "5c614bd5f5f859c3a52d727bb3f89a9131e46b43a98fb25f1494f9274fb3edc7"
+          ]
+        },
+        "mixed": {
+          "tps": 74.48418696017615,
+          "wall_s": 27.495769015979022,
+          "tokens": 2048,
+          "prompt_tokens": 20677,
+          "cached": 0,
+          "full_budget": true,
+          "ttft_median_s": 7.691067492472939,
+          "output_hashes": [
+            "1df70ba0eb712717c39be9c1467f9a40fc9d7d9834a7c7fd9443e589f4a00107",
+            "398de66f9adeb4c0538f8214471b3ba1579c00d520a4e97c587ba11c958ad5c8",
+            "1315cdfacce4cd6337da28051ac65c3b6e55513953c7ab659db99ef639eb495a",
+            "d2c26d5dd9982cc00fbc0605e3f59d2b62ae2d595ca254539791c5f565a78686"
+          ]
+        }
+      },
+      "guard-b2": {
+        "fixed": {
+          "tps": 128.12743648512426,
+          "wall_s": 15.98408628301695,
+          "tokens": 2048,
+          "prompt_tokens": 16580,
+          "cached": 0,
+          "full_budget": true,
+          "ttft_median_s": 8.458452926017344,
+          "output_hashes": [
+            "c772aafd37859df645ee57bb1d5770c1c9c4e849082459e543a8645ea25fb564",
+            "97138a9bad4afcebd5b82fce91e3ad4d495dcd7b3ad71fa25db9286f4dc821c2",
+            "44a93944beaf079b78f64eb9fe60171b675a887fc2b7750228379d07035ea9af",
+            "a63af5557d47d15fa6c4bf2865d7a55cd5db040ebbf07d0b3cae6ef930f48fe0"
+          ]
+        },
+        "mixed": {
+          "tps": 73.36384700076995,
+          "wall_s": 27.915657148929313,
+          "tokens": 2048,
+          "prompt_tokens": 20677,
+          "cached": 0,
+          "full_budget": true,
+          "ttft_median_s": 7.718274813960306,
+          "output_hashes": [
+            "607e508f5a8ffc5c1ad6f7660975f5ab2c36fcbd4bf0f7bcdab2cf003c0f83f8",
+            "8d952df4a4cafe0fd161caff123cc289e46b035c7312ae14374acb18eacc582f",
+            "dd70a8c89306e8a6a5a249a67215e8f1570c3dd82ece383b8e7f8e51936a3563",
+            "69fef05ce41abcc996905a3b0d623675ab23edc72f393697be52a3f73dad8af5"
+          ]
+        }
+      },
+      "guard-a2": {
+        "fixed": {
+          "tps": 116.90403060500286,
+          "wall_s": 17.518643193063326,
+          "tokens": 2048,
+          "prompt_tokens": 16580,
+          "cached": 0,
+          "full_budget": true,
+          "ttft_median_s": 9.51918291155016,
+          "output_hashes": [
+            "f692c4cbf758d208f6fed45903cdf1064af11af491441d7904bdc2c10c0cf78b",
+            "0e74905c467724a6bdd5628f562c4facd2d345147b7a07bed5c69c2279013dee",
+            "58050cecc92653fe1f6f6973193790cf97899cf6e248f56dc7c777016ec8ac85",
+            "852b9037752920fba21956bd800936960cc02d5a540d9ae86f4f98cc6fe9a0fd"
+          ]
+        },
+        "mixed": {
+          "tps": 63.35470470987682,
+          "wall_s": 32.32593395200092,
+          "tokens": 2048,
+          "prompt_tokens": 20677,
+          "cached": 0,
+          "full_budget": true,
+          "ttft_median_s": 8.826233067491557,
+          "output_hashes": [
+            "36052886b2ff67e240f4c73adf97b4f98732397e7db2b5238c450cc0c77e6bbc",
+            "3952a99a4012afa73c65af6d5c307265f38a55de653d992910d8d0e36a4ce724",
+            "1518963020bc90b416c389179a35ad2410965a744310007e7a4a17524e089bfa",
+            "19c81753d427908cd58bb52d65e15611c9e757fb104553c285b25ffe2bb2be52"
+          ]
+        }
+      }
+    },
+    "comparisons": [
+      {
+        "frozen": "guard-a1",
+        "candidate": "guard-b1",
+        "trace": "fixed",
+        "matched_token_work_and_cache": true,
+        "tps_gain_percent": 12.294581836309959,
+        "exact_output_parity": false
+      },
+      {
+        "frozen": "guard-a1",
+        "candidate": "guard-b1",
+        "trace": "mixed",
+        "matched_token_work_and_cache": true,
+        "tps_gain_percent": 17.700036810046484,
+        "exact_output_parity": false
+      },
+      {
+        "frozen": "guard-a2",
+        "candidate": "guard-b2",
+        "trace": "fixed",
+        "matched_token_work_and_cache": true,
+        "tps_gain_percent": 9.600529444569128,
+        "exact_output_parity": false
+      },
+      {
+        "frozen": "guard-a2",
+        "candidate": "guard-b2",
+        "trace": "mixed",
+        "matched_token_work_and_cache": true,
+        "tps_gain_percent": 15.79857776423783,
+        "exact_output_parity": false
+      }
+    ]
+  },
+  "sampler_concurrency": {
+    "gap_scope": "client-visible SSE content events may contain multiple model tokens",
+    "cases": [
+      {
+        "case": "clients-1-a",
+        "clients": 1,
+        "ctx": 131072,
+        "heads": false,
+        "completed": 1,
+        "output_tokens": 1024,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 4145,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 55.9984154729112,
+        "median_client_decode_tps": 84.35022829142301,
+        "median_ttft_s": 6.158226583967917,
+        "p95_visible_sse_content_chunk_gap_s": 0.029931853991001844,
+        "max_observed_active": 1,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-1-b",
+        "clients": 1,
+        "ctx": 131072,
+        "heads": false,
+        "completed": 1,
+        "output_tokens": 1024,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 4145,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 54.4212827136372,
+        "median_client_decode_tps": 80.55467371889338,
+        "median_ttft_s": 6.1167186660459265,
+        "p95_visible_sse_content_chunk_gap_s": 0.029584186035208404,
+        "max_observed_active": 1,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-4-a",
+        "clients": 4,
+        "ctx": 131072,
+        "heads": false,
+        "completed": 4,
+        "output_tokens": 4096,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 16580,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 165.1503477539203,
+        "median_client_decode_tps": 65.6198592669071,
+        "median_ttft_s": 8.391900081012864,
+        "p95_visible_sse_content_chunk_gap_s": 0.03667167201638222,
+        "max_observed_active": 4,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-4-b",
+        "clients": 4,
+        "ctx": 131072,
+        "heads": false,
+        "completed": 4,
+        "output_tokens": 4096,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 16580,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 169.3048651285645,
+        "median_client_decode_tps": 66.08360359517658,
+        "median_ttft_s": 8.579010004003067,
+        "p95_visible_sse_content_chunk_gap_s": 0.036543149035423994,
+        "max_observed_active": 4,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-8-a",
+        "clients": 8,
+        "ctx": 131072,
+        "heads": false,
+        "completed": 8,
+        "output_tokens": 8192,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 33160,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 273.17550832135055,
+        "median_client_decode_tps": 58.115728655090535,
+        "median_ttft_s": 11.205039669526741,
+        "p95_visible_sse_content_chunk_gap_s": 0.04194733710028231,
+        "max_observed_active": 8,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-8-b",
+        "clients": 8,
+        "ctx": 131072,
+        "heads": false,
+        "completed": 8,
+        "output_tokens": 8192,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 33160,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 267.2202457125327,
+        "median_client_decode_tps": 58.826943869221076,
+        "median_ttft_s": 11.164916529494803,
+        "p95_visible_sse_content_chunk_gap_s": 0.042323767906054854,
+        "max_observed_active": 8,
+        "max_observed_queued": 0
+      }
+    ]
+  },
+  "hp_256k_short_profile": {
+    "gap_scope": "client-visible SSE content events may contain multiple model tokens",
+    "cases": [
+      {
+        "case": "clients-1-a",
+        "clients": 1,
+        "ctx": 262144,
+        "heads": true,
+        "completed": 1,
+        "output_tokens": 1024,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 4145,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 62.88483872816967,
+        "median_client_decode_tps": 97.52083519472474,
+        "median_ttft_s": 5.793668190017343,
+        "p95_visible_sse_content_chunk_gap_s": 0.029895081999711692,
+        "max_observed_active": 1,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-1-b",
+        "clients": 1,
+        "ctx": 262144,
+        "heads": true,
+        "completed": 1,
+        "output_tokens": 1024,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 4145,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 42.76281572561173,
+        "median_client_decode_tps": 58.392911952146335,
+        "median_ttft_s": 6.426788146956824,
+        "p95_visible_sse_content_chunk_gap_s": 0.050731132039800286,
+        "max_observed_active": 1,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-4-a",
+        "clients": 4,
+        "ctx": 262144,
+        "heads": true,
+        "completed": 4,
+        "output_tokens": 4096,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 16580,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 75.49254702877852,
+        "median_client_decode_tps": 31.64079113227786,
+        "median_ttft_s": 17.36327564250678,
+        "p95_visible_sse_content_chunk_gap_s": 0.11040886596310884,
+        "max_observed_active": 4,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-4-b",
+        "clients": 4,
+        "ctx": 262144,
+        "heads": true,
+        "completed": 4,
+        "output_tokens": 4096,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 16580,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 76.0178198332771,
+        "median_client_decode_tps": 31.06328098036166,
+        "median_ttft_s": 17.7079938200186,
+        "p95_visible_sse_content_chunk_gap_s": 0.1111108559416607,
+        "max_observed_active": 4,
+        "max_observed_queued": 0
+      },
+      {
+        "case": "clients-8-a",
+        "clients": 8,
+        "ctx": 262144,
+        "heads": true,
+        "completed": 8,
+        "output_tokens": 8192,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 33160,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 79.20860281288144,
+        "median_client_decode_tps": 27.267418174770274,
+        "median_ttft_s": 41.78950911748689,
+        "p95_visible_sse_content_chunk_gap_s": 0.1133347210707143,
+        "max_observed_active": 4,
+        "max_observed_queued": 4
+      },
+      {
+        "case": "clients-8-b",
+        "clients": 8,
+        "ctx": 262144,
+        "heads": true,
+        "completed": 8,
+        "output_tokens": 8192,
+        "all_hit_output_budget": true,
+        "prompt_tokens": 33160,
+        "cached_tokens": 0,
+        "whole_request_aggregate_tps": 78.71362927488836,
+        "median_client_decode_tps": 29.448050296736028,
+        "median_ttft_s": 42.42870877945097,
+        "p95_visible_sse_content_chunk_gap_s": 0.11286065995227545,
+        "max_observed_active": 4,
+        "max_observed_queued": 4
+      }
+    ]
+  },
+  "dp_128k_retrieval": {
+    "label": "frozen-concurrency",
+    "clients": 1,
+    "mixed": false,
+    "wall_s": 226.6546633329708,
+    "monitor_wall_s": 226.69225022010505,
+    "completed": 1,
+    "requested_output_tokens": 64,
+    "output_tokens": 13,
+    "all_hit_output_budget": false,
+    "output_tokens_per_wall_s": 0.0573559785130127,
+    "prompt_tokens": 126041,
+    "cached_tokens_delta": 0,
+    "server_tokens_out_delta": 13,
+    "ttft_s": [
+      226.50210119306576
+    ],
+    "ctx": 131072,
+    "heads": false,
+    "acceptance_median": 0.0,
+    "workload": "single greedy long-context retrieval check; not a matched throughput comparison",
+    "needle_verified": true
+  },
+  "hp_256k_retrieval": {
+    "label": "hp4-256-profile",
+    "clients": 1,
+    "mixed": false,
+    "wall_s": 468.69586223596707,
+    "monitor_wall_s": 469.1090703610098,
+    "completed": 1,
+    "requested_output_tokens": 64,
+    "output_tokens": 13,
+    "all_hit_output_budget": false,
+    "output_tokens_per_wall_s": 0.027736536734039037,
+    "prompt_tokens": 250042,
+    "cached_tokens_delta": 0,
+    "server_tokens_out_delta": 13,
+    "ttft_s": [
+      468.5657215259271
+    ],
+    "ctx": 262144,
+    "heads": true,
+    "acceptance_median": 0.0,
+    "workload": "single greedy long-context retrieval check; not a matched throughput comparison",
+    "needle_verified": true
+  },
+  "hp_256k_memory": {
+    "scope": "One actual greedy retrieval with an initial deployment key; not general long-context quality or matched throughput",
+    "prompt_tokens": 250042,
+    "cached_tokens": 0,
+    "needle_verified": true,
+    "ttft_s": 468.5657215259271,
+    "wall_s": 468.69586223596707,
+    "output_tokens": 13,
+    "natural_stop": true,
+    "memory_observations": 859,
+    "minimum_observed_free_mib": 1743,
+    "reserve_mib": 192,
+    "guard_stopped_server": false
+  },
+  "four_concurrent_128k_retrieval": {
+    "configuration": "DP context 131072, V2 STEPT and graph diagnostics enabled",
+    "clients": 4,
+    "actual_prompt_tokens_per_client": 126045,
+    "total_prompt_tokens": 504180,
+    "cached_tokens": 0,
+    "output_tokens_per_client": 17,
+    "exact_distinct_keys": true,
+    "max_active": 4,
+    "max_queued": 0,
+    "wall_s": 297.6949,
+    "ttft_s_range": [
+      296.8916,
+      297.4684
+    ],
+    "memory_guard": "Exited before first observation because executable allowlist omitted V2; no continuous reserve proof for this run. Startup verification repaired afterward.",
+    "scope": "Capacity and retrieval/session separation; not primary throughput or general long-context quality."
+  },
+  "hp_gpu_sampling_abba": {
+    "status": "PASS",
+    "arms": {
+      "hp-cpu-a1": {
+        "config_sha256": "e29d22e0e941b7d7454a28c0c182949dfe04531a07643a5d83f373c6050ec0fc",
+        "binary_sha256": "b9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4",
+        "pid": 21894,
+        "gpu_sampling": false,
+        "started_epoch": 1792900330.2505498,
+        "guard": {
+          "observations": 99,
+          "minimum_free_mib": 1745,
+          "maximum_gap_s": 1.1330509185791016,
+          "first_epoch": 1792900490.701059,
+          "last_epoch": 1792900598.5673141
+        },
+        "phases": {
+          "fixed": {
+            "wall_s": 41.809673840063624,
+            "tps": 48.98387889449471,
+            "output_tokens": 2048,
+            "prompt_tokens": 16588,
+            "cache_tokens": 0,
+            "request_sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+            "guard_phase_start_epoch_estimate": 1792900504.3523583,
+            "guard_phase_end_epoch_estimate": 1792900546.6833558,
+            "median_ttft_s": 18.37025395903038
+          },
+          "mixed": {
+            "wall_s": 48.76221526507288,
+            "tps": 41.999732556591404,
+            "output_tokens": 2048,
+            "prompt_tokens": 20685,
+            "cache_tokens": 0,
+            "request_sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961",
+            "guard_phase_start_epoch_estimate": 1792900546.9518836,
+            "guard_phase_end_epoch_estimate": 1792900596.235392,
+            "median_ttft_s": 15.56352784507908
+          }
+        }
+      },
+      "hp-gpu-b1": {
+        "config_sha256": "e0a2bf585820852a2003050651469c6bcddfc6a5042b5c9c94b160517069c884",
+        "binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+        "pid": 25741,
+        "gpu_sampling": true,
+        "started_epoch": 1792903205.0150988,
+        "guard": {
+          "observations": 69,
+          "minimum_free_mib": 1707,
+          "maximum_gap_s": 1.1470036506652832,
+          "first_epoch": 1792903359.1452916,
+          "last_epoch": 1792903433.3794744
+        },
+        "phases": {
+          "fixed": {
+            "wall_s": 27.162822259939276,
+            "tps": 75.3971726649504,
+            "output_tokens": 2048,
+            "prompt_tokens": 16588,
+            "cache_tokens": 0,
+            "request_sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+            "guard_phase_start_epoch_estimate": 1792903369.1821125,
+            "guard_phase_end_epoch_estimate": 1792903396.7491958,
+            "median_ttft_s": 12.909149093437009
+          },
+          "mixed": {
+            "wall_s": 32.96167649398558,
+            "tps": 62.13276197810183,
+            "output_tokens": 2048,
+            "prompt_tokens": 20685,
+            "cache_tokens": 0,
+            "request_sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961",
+            "guard_phase_start_epoch_estimate": 1792903397.0109737,
+            "guard_phase_end_epoch_estimate": 1792903430.5910637,
+            "median_ttft_s": 11.022184064495377
+          }
+        }
+      },
+      "hp-gpu-b2": {
+        "config_sha256": "e9536f161bf7cbaba943a1bbc48b088bd515aaa8de2b36d06a9a921ded3453ee",
+        "binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+        "pid": 26115,
+        "gpu_sampling": true,
+        "started_epoch": 1792903441.6513486,
+        "guard": {
+          "observations": 68,
+          "minimum_free_mib": 1711,
+          "maximum_gap_s": 1.1384646892547607,
+          "first_epoch": 1792903599.0640218,
+          "last_epoch": 1792903672.1689303
+        },
+        "phases": {
+          "fixed": {
+            "wall_s": 27.270288003026508,
+            "tps": 75.1000502734958,
+            "output_tokens": 2048,
+            "prompt_tokens": 16588,
+            "cache_tokens": 0,
+            "request_sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+            "guard_phase_start_epoch_estimate": 1792903609.0242093,
+            "guard_phase_end_epoch_estimate": 1792903636.562842,
+            "median_ttft_s": 12.977444892982021
+          },
+          "mixed": {
+            "wall_s": 32.87769393599592,
+            "tps": 62.29147348311315,
+            "output_tokens": 2048,
+            "prompt_tokens": 20685,
+            "cache_tokens": 0,
+            "request_sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961",
+            "guard_phase_start_epoch_estimate": 1792903636.8197634,
+            "guard_phase_end_epoch_estimate": 1792903669.954436,
+            "median_ttft_s": 10.938580768997781
+          }
+        }
+      },
+      "hp-cpu-a2": {
+        "config_sha256": "86b29bd475192a786522d24b4e5d20057c53777a5b24c171ef90ffa7277311b5",
+        "binary_sha256": "b9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4",
+        "pid": 26492,
+        "gpu_sampling": false,
+        "started_epoch": 1792903681.709265,
+        "guard": {
+          "observations": 99,
+          "minimum_free_mib": 1741,
+          "maximum_gap_s": 1.1371073722839355,
+          "first_epoch": 1792903839.0850704,
+          "last_epoch": 1792903946.8407736
+        },
+        "phases": {
+          "fixed": {
+            "wall_s": 41.39196014904883,
+            "tps": 49.47820766702836,
+            "output_tokens": 2048,
+            "prompt_tokens": 16588,
+            "cache_tokens": 0,
+            "request_sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+            "guard_phase_start_epoch_estimate": 1792903853.5389264,
+            "guard_phase_end_epoch_estimate": 1792903895.5346525,
+            "median_ttft_s": 18.06685388594633
+          },
+          "mixed": {
+            "wall_s": 48.60013291891664,
+            "tps": 42.13980244491999,
+            "output_tokens": 2048,
+            "prompt_tokens": 20685,
+            "cache_tokens": 0,
+            "request_sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961",
+            "guard_phase_start_epoch_estimate": 1792903895.8111982,
+            "guard_phase_end_epoch_estimate": 1792903944.8263073,
+            "median_ttft_s": 15.54800933500519
+          }
+        }
+      }
+    },
+    "pairs": {
+      "A1_to_B1": {
+        "fixed": {
+          "CPU_tps": 48.98387889449471,
+          "GPU_tps": 75.3971726649504,
+          "gain_percent": 53.92242175705746
+        },
+        "mixed": {
+          "CPU_tps": 41.999732556591404,
+          "GPU_tps": 62.13276197810183,
+          "gain_percent": 47.93608957957702
+        }
+      },
+      "B2_vs_A2": {
+        "fixed": {
+          "CPU_tps": 49.47820766702836,
+          "GPU_tps": 75.1000502734958,
+          "gain_percent": 51.78409609922372
+        },
+        "mixed": {
+          "CPU_tps": 42.13980244491999,
+          "GPU_tps": 62.29147348311315,
+          "gain_percent": 47.8209907712144
+        }
+      }
+    },
+    "errors": [],
+    "limits": [
+      "These are whole-request tokens/s at fixed output budgets, including prefill; generated trajectories can differ under CPU/GPU sampling RNG consumption and reductions.",
+      "Two swapped pairs on one rental are evidence for this workload, not a confidence interval or proof that HP beats DP.",
+      "Guard coverage is sampled at approximately1Hz, not a guarantee over unsampled subintervals. Guard wall alignment uses recorded server start epoch plus telemetry uptime.",
+      "A1 used an earlier fresh CPU server; source/binary differences, source-bound audit and matching unchanged CUDA module are retained for attribution. Quality and final promotion remain separate gates."
+    ],
+    "source_binding": {
+      "GPU_source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+      "GPU_source_sha256": {
+        "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+        "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+        "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+      },
+      "CPU_binary_sha256": "b9506fb2fd48ff71b95c855294b7cc0cab442fd18e0655ee617d35b69d0a61c4",
+      "GPU_binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+      "shared_fatbin_sha256": "4387f0e32b257dd12f30f5bc1d2fad266a0bd2405e53f92d0b54f9d321c3ddf5",
+      "CPU_build_receipt": "receipts/candidate-build-proof.json",
+      "GPU_build_receipt": "hp-sampling-v3-build-proof.json"
+    },
+    "normalized_config": {
+      "settings": {
+        "head_parallel": true,
+        "ctx": 262144,
+        "slots": 4,
+        "graphs": 4,
+        "chunk": 64,
+        "spec_k": 5,
+        "theta": 0.35,
+        "profile": false,
+        "loop_profile": 0,
+        "graph_trace": false
+      },
+      "model": "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+      "environment": {
+        "VOLTA_GRAPHS": "4",
+        "VOLTA_GPU_SAMPLE": "1",
+        "VOLTA_MEGA": "0",
+        "VOLTA_KV": "fp4",
+        "VOLTA_OVERLAP": "1",
+        "VOLTA_SHARED_TP": "1",
+        "VOLTA_SHARED_EARLY": "0"
+      },
+      "command": [
+        "--model",
+        "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+        "--gpus",
+        "8",
+        "--slots",
+        "4",
+        "--ctx",
+        "262144",
+        "--chunk",
+        "64",
+        "--spec-k",
+        "5",
+        "--theta",
+        "0.35",
+        "--temperature",
+        "0.7",
+        "--top-p",
+        "1",
+        "--max-tokens",
+        "16384",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8090",
+        "--admin-port",
+        "8091",
+        "--head-parallel"
+      ]
+    },
+    "request_sha256": {
+      "fixed": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44",
+      "mixed": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961"
+    },
+    "drift_percent": {
+      "fixed": {
+        "CPU_A2_over_A1": 1.0091662475288476,
+        "GPU_B2_over_B1": -0.394076304127422
+      },
+      "mixed": {
+        "CPU_A2_over_A1": 0.3335018577555138,
+        "GPU_B2_over_B1": 0.2554393205105754
+      }
+    },
+    "timing_gate_passed": true
+  },
+  "hp_gpu_sampling_audit": {
+    "status": "PASS",
+    "audit_log_gate_passed": true,
+    "input_log": "/home/lxe/volta-sixhour-20261024/screens/hp-gpu-audit3/server.log",
+    "input_sha256": "aa18432ffe1e2e4afe922695dd328ca89c08ea5f600f891fc766a28cd4368a8c",
+    "source_schema_binding": {
+      "engine_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+      "expected_server_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+      "binary_identity_verified_here": false
+    },
+    "counts": {
+      "target_records": 1333,
+      "HP_SAMPLE_DISPATCH": 735,
+      "HP_SAMPLE_DISPATCH_valid": 735,
+      "HP_SAMPLE_AUDIT": 598,
+      "HP_SAMPLE_AUDIT_valid": 598
+    },
+    "checked_u32_total": 2258133760,
+    "checked_bytes_total": 9032535040,
+    "matrix_rows_histogram": {
+      "2": 53,
+      "3": 72,
+      "4": 46,
+      "5": 20,
+      "6": 40,
+      "7": 6,
+      "8": 3,
+      "9": 6,
+      "10": 5,
+      "11": 6,
+      "12": 12,
+      "13": 17,
+      "14": 18,
+      "15": 21,
+      "16": 15,
+      "17": 17,
+      "18": 5,
+      "19": 2,
+      "20": 2,
+      "33": 1,
+      "39": 1,
+      "44": 1,
+      "48": 1,
+      "64": 228
+    },
+    "draft_nd_histogram": {
+      "0": 237,
+      "1": 288,
+      "2": 362,
+      "3": 285,
+      "4": 149,
+      "5": 206
+    },
+    "command_histogram": {
+      "StepSampleHp": 598,
+      "Step": 105,
+      "StepGreedy": 32
+    },
+    "distinct_logit_fingerprints": 598,
+    "coverage": {
+      "row_base_63": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 23,
+            "audit_id": 0
+          },
+          {
+            "line": 25,
+            "audit_id": 1
+          },
+          {
+            "line": 27,
+            "audit_id": 2
+          },
+          {
+            "line": 29,
+            "audit_id": 3
+          },
+          {
+            "line": 31,
+            "audit_id": 4
+          },
+          {
+            "line": 33,
+            "audit_id": 5
+          },
+          {
+            "line": 35,
+            "audit_id": 6
+          },
+          {
+            "line": 37,
+            "audit_id": 7
+          }
+        ]
+      },
+      "speculative_nd_positive": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 41,
+            "audit_id": 9
+          },
+          {
+            "line": 43,
+            "audit_id": 10
+          },
+          {
+            "line": 45,
+            "audit_id": 11
+          },
+          {
+            "line": 47,
+            "audit_id": 12
+          },
+          {
+            "line": 49,
+            "audit_id": 13
+          },
+          {
+            "line": 51,
+            "audit_id": 14
+          },
+          {
+            "line": 53,
+            "audit_id": 15
+          },
+          {
+            "line": 55,
+            "audit_id": 16
+          }
+        ]
+      },
+      "accepted_positive": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 41,
+            "audit_id": 9
+          },
+          {
+            "line": 43,
+            "audit_id": 10
+          },
+          {
+            "line": 45,
+            "audit_id": 11
+          },
+          {
+            "line": 47,
+            "audit_id": 12
+          },
+          {
+            "line": 49,
+            "audit_id": 13
+          },
+          {
+            "line": 51,
+            "audit_id": 14
+          },
+          {
+            "line": 53,
+            "audit_id": 15
+          },
+          {
+            "line": 55,
+            "audit_id": 16
+          }
+        ]
+      },
+      "draft_rejection": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 45,
+            "audit_id": 11
+          },
+          {
+            "line": 49,
+            "audit_id": 13
+          },
+          {
+            "line": 51,
+            "audit_id": 14
+          },
+          {
+            "line": 53,
+            "audit_id": 15
+          },
+          {
+            "line": 55,
+            "audit_id": 16
+          },
+          {
+            "line": 57,
+            "audit_id": 17
+          },
+          {
+            "line": 59,
+            "audit_id": 18
+          },
+          {
+            "line": 67,
+            "audit_id": 22
+          }
+        ]
+      },
+      "all_drafts_accepted": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 41,
+            "audit_id": 9
+          },
+          {
+            "line": 43,
+            "audit_id": 10
+          },
+          {
+            "line": 47,
+            "audit_id": 12
+          },
+          {
+            "line": 61,
+            "audit_id": 19
+          },
+          {
+            "line": 63,
+            "audit_id": 20
+          },
+          {
+            "line": 65,
+            "audit_id": 21
+          },
+          {
+            "line": 71,
+            "audit_id": 24
+          },
+          {
+            "line": 75,
+            "audit_id": 26
+          }
+        ]
+      },
+      "multiple_tables": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 174,
+            "audit_id": 69
+          },
+          {
+            "line": 176,
+            "audit_id": 70
+          },
+          {
+            "line": 178,
+            "audit_id": 71
+          },
+          {
+            "line": 180,
+            "audit_id": 72
+          },
+          {
+            "line": 182,
+            "audit_id": 73
+          },
+          {
+            "line": 184,
+            "audit_id": 74
+          },
+          {
+            "line": 186,
+            "audit_id": 75
+          },
+          {
+            "line": 188,
+            "audit_id": 76
+          }
+        ]
+      },
+      "mixed_greedy_sample_tables": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 192,
+            "audit_id": 78
+          },
+          {
+            "line": 194,
+            "audit_id": 79
+          },
+          {
+            "line": 196,
+            "audit_id": 80
+          },
+          {
+            "line": 198,
+            "audit_id": 81
+          },
+          {
+            "line": 200,
+            "audit_id": 82
+          },
+          {
+            "line": 202,
+            "audit_id": 83
+          },
+          {
+            "line": 204,
+            "audit_id": 84
+          },
+          {
+            "line": 206,
+            "audit_id": 85
+          }
+        ]
+      },
+      "matrix_t_lt64": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 39,
+            "audit_id": 8
+          },
+          {
+            "line": 41,
+            "audit_id": 9
+          },
+          {
+            "line": 43,
+            "audit_id": 10
+          },
+          {
+            "line": 45,
+            "audit_id": 11
+          },
+          {
+            "line": 47,
+            "audit_id": 12
+          },
+          {
+            "line": 49,
+            "audit_id": 13
+          },
+          {
+            "line": 51,
+            "audit_id": 14
+          },
+          {
+            "line": 53,
+            "audit_id": 15
+          }
+        ]
+      },
+      "cpu_top_p_fallback": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 436,
+            "command": "Step"
+          },
+          {
+            "line": 437,
+            "command": "Step"
+          },
+          {
+            "line": 438,
+            "command": "Step"
+          },
+          {
+            "line": 439,
+            "command": "Step"
+          },
+          {
+            "line": 440,
+            "command": "Step"
+          },
+          {
+            "line": 441,
+            "command": "Step"
+          },
+          {
+            "line": 442,
+            "command": "Step"
+          },
+          {
+            "line": 443,
+            "command": "Step"
+          }
+        ]
+      },
+      "cpu_positive_hesitation_fallback": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 472,
+            "command": "Step"
+          },
+          {
+            "line": 473,
+            "command": "Step"
+          },
+          {
+            "line": 474,
+            "command": "Step"
+          },
+          {
+            "line": 475,
+            "command": "Step"
+          },
+          {
+            "line": 476,
+            "command": "Step"
+          },
+          {
+            "line": 477,
+            "command": "Step"
+          },
+          {
+            "line": 478,
+            "command": "Step"
+          },
+          {
+            "line": 479,
+            "command": "Step"
+          }
+        ]
+      },
+      "pure_greedy_step": {
+        "observed": true,
+        "evidence": [
+          {
+            "line": 549,
+            "command": "StepGreedy"
+          },
+          {
+            "line": 550,
+            "command": "StepGreedy"
+          },
+          {
+            "line": 551,
+            "command": "StepGreedy"
+          },
+          {
+            "line": 552,
+            "command": "StepGreedy"
+          },
+          {
+            "line": 553,
+            "command": "StepGreedy"
+          },
+          {
+            "line": 554,
+            "command": "StepGreedy"
+          },
+          {
+            "line": 555,
+            "command": "StepGreedy"
+          },
+          {
+            "line": 556,
+            "command": "StepGreedy"
+          }
+        ]
+      }
+    },
+    "missing_required_coverage": [],
+    "errors_total": 0,
+    "errors_first100": [],
+    "limits": [
+      "This gate covers observed audit/dispatch records only; teacher quality, memory, performance and long-context gates remain separate.",
+      "Fingerprints are validated for encoding; original full tensors/tables are not retained in logs, so their hashes cannot be independently recomputed here.",
+      "t<64 establishes a smaller logical matrix, not a prefill/decode phase classification.",
+      "Coverage is never inferred from submitted requests; CPU fallback and greedy coverage require dispatch records.",
+      "IDs are checked within one fresh source-bound server log; do not concatenate independent runs."
+    ]
+  },
+  "hp_gpu_sampling_status": "Timing, real-row audit, all predeclared quality checks, four-250K retrieval and descriptive concurrency profile passed. Original Pi gauntlet completed with a torus shading defect; separate Pi repair verified. Other renderer limitations remain documented.",
+  "hp_gpu_sampling_quality": {
+    "initial_flag1": {
+      "tokens": 8184,
+      "ppl": 8.9425,
+      "kl_top256": 0.131653,
+      "top1_agree": 0.83871,
+      "wall_s": 50.2,
+      "tight_gate_passed": true
+    },
+    "predeclared_flag_pair": {
+      "name": "hp-v3-flag-pair",
+      "arms": [
+        {
+          "flag": 0,
+          "pid": 27301,
+          "command": [
+            "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta",
+            "eval",
+            "--model",
+            "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+            "--eval",
+            "/root/eval",
+            "--seqs",
+            "8",
+            "--len",
+            "1024",
+            "--chunk",
+            "1"
+          ],
+          "started_epoch": 1792904171.8647401,
+          "input_sha256": {
+            "heldout.i32": "9c816710d619da56761967609174231ace2f900dbe7486d376997b2abaffa716",
+            "teacher_idx.i32": "ed0fade255c0b6c4a8606e3b21a9c52b024a0d5f37e5c69ff548486c16a8ffb1",
+            "teacher_lp.f32": "e689eabd99c20cdf2edc1d24fc6516121b34fd8e05b3fedcefbe12a36004350d",
+            "teacher_kl.json": "1d8ca2d8bc382312ff376528c03375dfcf3a3e3f0540fb9bd0ef08ce78044822"
+          },
+          "model_metadata": {
+            "st_dev": 44,
+            "st_ino": 3249763219,
+            "st_size": 441574130240,
+            "st_mtime_ns": 1792892003479842388,
+            "st_ctime_ns": 1792892003479842388
+          },
+          "binary_sha256": "bcfe792f228ba7216237c13e5d582dd7e4a34e0872ddd4c293c77d10a237cd67",
+          "volta_environment": {
+            "VOLTA_HEADS": "1",
+            "VOLTA_GRAPHS": "4",
+            "VOLTA_HP_GPU_SAMPLE": "0"
+          },
+          "other_runtime_environment": {
+            "LD_LIBRARY_PATH": "/usr/local/cuda-12.9/targets/x86_64-linux/lib:"
+          },
+          "exit_code": 0,
+          "exited_epoch": 1792904383.6747272,
+          "metrics": {
+            "tokens": 8184,
+            "ppl": 8.9605,
+            "kl_top256": 0.13073,
+            "top1_agree": 0.839198,
+            "wall_s": 49.5
+          },
+          "tight_gate_passed": true,
+          "after_exit_gpu": [
+            [
+              0,
+              32495,
+              0
+            ],
+            [
+              1,
+              32495,
+              0
+            ],
+            [
+              2,
+              32495,
+              0
+            ],
+            [
+              3,
+              32495,
+              0
+            ],
+            [
+              4,
+              32495,
+              0
+            ],
+            [
+              5,
+              32495,
+              0
+            ],
+            [
+              6,
+              32495,
+              0
+            ],
+            [
+              7,
+              32495,
+              0
+            ]
+          ]
+        },
+        {
+          "flag": 1,
+          "pid": 27642,
+          "command": [
+            "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta",
+            "eval",
+            "--model",
+            "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+            "--eval",
+            "/root/eval",
+            "--seqs",
+            "8",
+            "--len",
+            "1024",
+            "--chunk",
+            "1"
+          ],
+          "started_epoch": 1792904383.9287055,
+          "input_sha256": {
+            "heldout.i32": "9c816710d619da56761967609174231ace2f900dbe7486d376997b2abaffa716",
+            "teacher_idx.i32": "ed0fade255c0b6c4a8606e3b21a9c52b024a0d5f37e5c69ff548486c16a8ffb1",
+            "teacher_lp.f32": "e689eabd99c20cdf2edc1d24fc6516121b34fd8e05b3fedcefbe12a36004350d",
+            "teacher_kl.json": "1d8ca2d8bc382312ff376528c03375dfcf3a3e3f0540fb9bd0ef08ce78044822"
+          },
+          "model_metadata": {
+            "st_dev": 44,
+            "st_ino": 3249763219,
+            "st_size": 441574130240,
+            "st_mtime_ns": 1792892003479842388,
+            "st_ctime_ns": 1792892003479842388
+          },
+          "binary_sha256": "bcfe792f228ba7216237c13e5d582dd7e4a34e0872ddd4c293c77d10a237cd67",
+          "volta_environment": {
+            "VOLTA_HEADS": "1",
+            "VOLTA_GRAPHS": "4",
+            "VOLTA_HP_GPU_SAMPLE": "1"
+          },
+          "other_runtime_environment": {
+            "LD_LIBRARY_PATH": "/usr/local/cuda-12.9/targets/x86_64-linux/lib:"
+          },
+          "exit_code": 0,
+          "exited_epoch": 1792904595.6949615,
+          "metrics": {
+            "tokens": 8184,
+            "ppl": 8.9402,
+            "kl_top256": 0.12937,
+            "top1_agree": 0.842131,
+            "wall_s": 51.3
+          },
+          "tight_gate_passed": true,
+          "after_exit_gpu": [
+            [
+              0,
+              32495,
+              0
+            ],
+            [
+              1,
+              32495,
+              0
+            ],
+            [
+              2,
+              32495,
+              0
+            ],
+            [
+              3,
+              32495,
+              0
+            ],
+            [
+              4,
+              32495,
+              0
+            ],
+            [
+              5,
+              32495,
+              0
+            ],
+            [
+              6,
+              32495,
+              0
+            ],
+            [
+              7,
+              32495,
+              0
+            ]
+          ]
+        }
+      ]
+    },
+    "scope": "All three V3 results retained; teacher evaluates generic step, while real-row collection and supplied-uniform replay are separate gates. Atomic-ordering variation is a hypothesis, not established attribution."
+  },
+  "integrated_hp_source_commit": "78d2dc90afb4c9782c2893caf8106bf2e754e827",
+  "integrated_source_binding": {
+    "head": "5d6734c678b3880301d4d70715e2415befe3045b",
+    "source_sha256": {
+      "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+      "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+      "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+    },
+    "exact_tested_engine_sources": true
+  },
+  "measured_sampler_source_scope": "DP prefill-guard A/B/B/A",
+  "evidence_commit_scope": "Complete runtime evidence through final HP capacity, cold profiles, original gauntlet and separate torus repair; no weight changes",
+  "hp_gpu_sampling_workload_scope": {
+    "fixed": "Four 4K-input requests, 512 output tokens each",
+    "mixed": "Three 4K-input decoders, then an 8K prefiller admitted after decoder output begins; 512 output tokens each",
+    "matched_requests": "Identical within each same-configuration A/B/B/A; DP and HP prompt totals differ by nonce tokenization",
+    "interpretation": "Matched external work with different sampled trajectories; no cross-mode gain inferred"
+  },
+  "four_concurrent_hp_250k_retrieval": {
+    "status": "PASS",
+    "original_planned_all_gates_passed": true,
+    "retrieval_passed": true,
+    "memory_guard_passed": true,
+    "four_admitted_active_sessions_observed": true,
+    "original_no_queue_gate_passed": true,
+    "max_observed_active": 4,
+    "max_observed_queued": 0,
+    "monitor_errors": [],
+    "source_binding": {
+      "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+      "source_sha256": {
+        "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+        "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+        "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+      },
+      "server_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+      "pid": 27988,
+      "model_sha256": "9d15a1d6f263b25bb3bf0eb1b887c9c6d7176083b8a9bd55c998e8658e52000c",
+      "model_bytes": 441574130240,
+      "model_hash_scope": "Earlier verified full-file hydration receipt plus unchanged configured path; no new per-probe full rehash."
+    },
+    "results_in_client_input_order": [
+      {
+        "client_index": 0,
+        "expected_key": "VOLTA_LONG_FOUR_00_8a271d60b7fc",
+        "actual_output": "VOLTA_LONG_FOUR_00_8a271d60b7fc",
+        "exact_after_outer_whitespace_trim": true,
+        "raw_exact_match": true,
+        "prompt_tokens": 250046,
+        "output_tokens": 17,
+        "finish_reason": "stop",
+        "ttft_s": 1871.9376104769763,
+        "wall_s": 1872.099642924033,
+        "output_sha256": "c761b432464e26ab8be939bcbda6792227b03f7648e5f550d5df0d22f2b51f16"
+      },
+      {
+        "client_index": 1,
+        "expected_key": "VOLTA_LONG_FOUR_01_8a271d60b7fc",
+        "actual_output": "VOLTA_LONG_FOUR_01_8a271d60b7fc",
+        "exact_after_outer_whitespace_trim": true,
+        "raw_exact_match": true,
+        "prompt_tokens": 250046,
+        "output_tokens": 17,
+        "finish_reason": "stop",
+        "ttft_s": 936.411809128942,
+        "wall_s": 937.00740726199,
+        "output_sha256": "fdde66e244ed0c5ad853f320ede0e5f589e0614acc1fbd164057cb4e8bce970e"
+      },
+      {
+        "client_index": 2,
+        "expected_key": "VOLTA_LONG_FOUR_02_8a271d60b7fc",
+        "actual_output": "VOLTA_LONG_FOUR_02_8a271d60b7fc",
+        "exact_after_outer_whitespace_trim": true,
+        "raw_exact_match": true,
+        "prompt_tokens": 250046,
+        "output_tokens": 17,
+        "finish_reason": "stop",
+        "ttft_s": 1403.8956772530219,
+        "wall_s": 1404.4911383490544,
+        "output_sha256": "73fbe3f88279c6083223d4f23463d22f3daa9dfe899b0cbd88547883894e213b"
+      },
+      {
+        "client_index": 3,
+        "expected_key": "VOLTA_LONG_FOUR_03_8a271d60b7fc",
+        "actual_output": "VOLTA_LONG_FOUR_03_8a271d60b7fc",
+        "exact_after_outer_whitespace_trim": true,
+        "raw_exact_match": true,
+        "prompt_tokens": 250046,
+        "output_tokens": 17,
+        "finish_reason": "stop",
+        "ttft_s": 468.85853188904,
+        "wall_s": 469.3672884750413,
+        "output_sha256": "d0ef155415c0c7db2969efb454bbea25870346958a5d1efb7b77b43748a23db9"
+      }
+    ],
+    "server_admissions": [
+      {
+        "line": 21,
+        "utc": "2026-10-25T05:06:44.293956Z",
+        "epoch": 1792904804.293956,
+        "id": "chatcmpl-6add8e640000",
+        "gpu": "0",
+        "slot": "0",
+        "prompt_tokens": "250046",
+        "cached_tokens": "0",
+        "queue_ms": "0"
+      },
+      {
+        "line": 24,
+        "utc": "2026-10-25T05:06:44.904034Z",
+        "epoch": 1792904804.904034,
+        "id": "chatcmpl-6add8e640001",
+        "gpu": "0",
+        "slot": "1",
+        "prompt_tokens": "250046",
+        "cached_tokens": "0",
+        "queue_ms": "40"
+      },
+      {
+        "line": 29,
+        "utc": "2026-10-25T05:06:45.106274Z",
+        "epoch": 1792904805.106274,
+        "id": "chatcmpl-6add8e650002",
+        "gpu": "0",
+        "slot": "2",
+        "prompt_tokens": "250046",
+        "cached_tokens": "0",
+        "queue_ms": "53"
+      },
+      {
+        "line": 30,
+        "utc": "2026-10-25T05:06:45.106356Z",
+        "epoch": 1792904805.106356,
+        "id": "chatcmpl-6add8e650003",
+        "gpu": "0",
+        "slot": "3",
+        "prompt_tokens": "250046",
+        "cached_tokens": "0",
+        "queue_ms": "34"
+      }
+    ],
+    "server_completions": [
+      {
+        "line": 31,
+        "utc": "2026-10-25T05:14:31.682316Z",
+        "epoch": 1792905271.682316,
+        "id": "chatcmpl-6add8e640000",
+        "prompt_tokens": "250046",
+        "generated": "17",
+        "ttft_ms": "466879",
+        "decode_tps": "31.5",
+        "finish": "Stop"
+      },
+      {
+        "line": 32,
+        "utc": "2026-10-25T05:22:19.324799Z",
+        "epoch": 1792905739.324799,
+        "id": "chatcmpl-6add8e640001",
+        "prompt_tokens": "250046",
+        "generated": "17",
+        "ttft_ms": "933824",
+        "decode_tps": "26.9",
+        "finish": "Stop"
+      },
+      {
+        "line": 33,
+        "utc": "2026-10-25T05:30:06.805611Z",
+        "epoch": 1792906206.805611,
+        "id": "chatcmpl-6add8e650002",
+        "prompt_tokens": "250046",
+        "generated": "17",
+        "ttft_ms": "1401104",
+        "decode_tps": "26.9",
+        "finish": "Stop"
+      },
+      {
+        "line": 34,
+        "utc": "2026-10-25T05:37:54.420637Z",
+        "epoch": 1792906674.420637,
+        "id": "chatcmpl-6add8e650003",
+        "prompt_tokens": "250046",
+        "generated": "17",
+        "ttft_ms": "1869153",
+        "decode_tps": "99.5",
+        "finish": "Stop"
+      }
+    ],
+    "request_id_mapping_limit": "API results do not store server request IDs. Client source returns futures in input order, exact distinct key results validate that order; raw server ID events are validated separately without fabricating an ID-to-client index join.",
+    "prompt_tokens_total": 1000184,
+    "output_tokens_total": 68,
+    "cached_tokens": 0,
+    "wall_s": 1872.1057745870203,
+    "first_admitted_epoch": 1792904804.293956,
+    "last_done_epoch": 1792906674.420637,
+    "memory": {
+      "input": "/home/lxe/volta-sixhour-20261024/screens/four-hp-250k/memory-final.jsonl",
+      "observations": 1721,
+      "total_file_rows": 1749,
+      "selected_rows": 1721,
+      "selected_first_file_row_1based": 3,
+      "selected_last_file_row_1based": 1723,
+      "selection_rule": "Last original observation at/before first admission through first original observation at/after last completion, inclusive; full raw file retained and hashed.",
+      "first_epoch": 1792904804.110621,
+      "last_epoch": 1792906675.035423,
+      "maximum_gap_s": 1.1373088359832764,
+      "minimum_free_mib": 1753,
+      "reserve_mib": 192
+    },
+    "limits": [
+      "This checks four distinct-key retrieval requests at approximately250K prompt tokens each, not general long-context quality.",
+      "Four sessions were admitted and active in separate HP slots, but the scheduler shares one64-row HP prefill group; it does not establish four parallel64-row prefills.",
+      "These requests are greedy and use unchanged StepGreedy, so they do not measure new sampled-GPU-path throughput.",
+      "Guard readings are sampled; passing gaps and reserve checks do not prove unsampled memory behavior.",
+      "Original no-queue gate is reported separately and is not relaxed to erase transient admission queueing.",
+      "Naturally stopped outputs are expected to be shorter than64tokens; this is not a fixed-output throughput screen."
+    ],
+    "input_sha256": {
+      "server-runs/hp-gpu-capacity4/configuration.json": "0968eeaa055100949be2c3ffc3466ecaa8432b0d41fcaa384d5f4ed307cce7a5",
+      "screens/four-hp-250k/configuration.json": "6712335f86b5e1acf02e1cb2120a906c612dc7bad7a3c69bdde6ca1cc9d8fa54",
+      "hp-sampling-v3-build-proof.json": "faf10e0091dafeaa9202fa57914ecafa9cde38cd75870387dd5aa03cad7f3152",
+      "hp-sampling-v3-source.json": "e38c20626ac46d07a999dee1cff387ac4926e54f3b5c2a62d609f66f33a848d7",
+      "receipts/hp-shared-source-binding.json": "2617f89f5a3053665c6e3220497f9545123db960c78fc2fa640b8367da5c854f",
+      "receipts/model-sha256.json": "adb1122335cbfdba1e4b498e19c7b2209c4f9e295e1ddb57fa862409635a53e4",
+      "screens/four-hp-250k/requests.json": "177fb0570c4508aef658412bb3c9cceac0fdf35e7a80e2cba0e70d263e08776e",
+      "screens/four-hp-250k/results.json": "568ccc50e6bec94daf29771ded203b0627c138c9cde57d7ba3132382be9c6bac",
+      "screens/four-hp-250k/summary.json": "43a06c66822edc3370ea6b9bc15e3a8301c7699508e707825dac687ab659af9b",
+      "screens/four-hp-250k/initial-stats.json": "1f0354726187c24b48de40f4b640ebd7516839f21411b6270f4a8073a01b954c",
+      "screens/four-hp-250k/final-stats.json": "376168a8849ba208cd129379a5baf7a716549395ebbc7fb74c64834787e75b3e",
+      "screens/four-hp-250k/stats.jsonl": "ab5c58f94921fd7dbd27b47448570d5515a3fe0b61fced916ae7fe985ddfbf21",
+      "screens/four-hp-250k/server.log": "25d07ac4f9a93de15321ffe0d0af3e8da45a5d27fc621a6ec2fd1b60f67ca1f6",
+      "memory-guards/hp-gpu-capacity4/configuration.json": "d619d0bfeac26a82eb7bc74b8a9e8f66f26dfc0aa728d3207166c0dbe604dcb5",
+      "screens/four-hp-250k/memory-final.jsonl": "f2d110bfbb1f89539213308987df55285fc36f910fec30a5b796be2627c1db18"
+    },
+    "analyzer_sha256": "b872a34a2d58f0801bfdcbcf4748dcf8d9636e74fad691c3c28688be8d864ae2"
+  },
+  "hp_gpu_sampling_concurrency": {
+    "status": "PASS",
+    "scope": "Descriptive six-case HP concurrency profile; no controlled cross-mode gain.",
+    "source_binding": {
+      "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+      "source_sha256": {
+        "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+        "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+        "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+      },
+      "binary_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+      "model_sha256": "9d15a1d6f263b25bb3bf0eb1b887c9c6d7176083b8a9bd55c998e8658e52000c",
+      "model_bytes": 441574130240,
+      "model_hash_scope": "Earlier full-file hydration receipt and configured path; no new per-probe full rehash.",
+      "pid": 27988
+    },
+    "ranges_across_two_repeats": {
+      "1": {
+        "whole_aggregate_tokens_per_s": [
+          69.9952165368101,
+          72.20469483281049
+        ],
+        "median_per_client_decode_tokens_per_s": [
+          108.64835819529557,
+          109.11818835836391
+        ]
+      },
+      "4": {
+        "whole_aggregate_tokens_per_s": [
+          112.30285009289308,
+          113.43401219409252
+        ],
+        "median_per_client_decode_tokens_per_s": [
+          49.10119113910045,
+          50.30565499088504
+        ]
+      },
+      "8": {
+        "whole_aggregate_tokens_per_s": [
+          119.26579361215276,
+          120.1373491221948
+        ],
+        "median_per_client_decode_tokens_per_s": [
+          42.667457304194286,
+          42.871309135980006
+        ]
+      }
+    },
+    "profile_prompt_tokens": 107770,
+    "profile_output_tokens": 26624,
+    "prior_work": "Same four-slot HP GPU-sampler process as the successful four-client 250K retrieval. Cache/graph history retained; individual short cases use distinct cold request nonces. Descriptive profile; no controlled cross-configuration gain claimed. Eight submissions queue behind four active slots.\n",
+    "memory": {
+      "input": "/home/lxe/volta-sixhour-20261024/screens/hp-gpu-concurrency/memory-final.jsonl",
+      "total_file_rows": 269,
+      "selected_rows": 224,
+      "selected_first_file_row_1based": 1,
+      "selected_last_file_row_1based": 224,
+      "selection_rule": "Last observation at/before first profile admission through first observation at/after last profile completion, inclusive. Entire raw input preserved and hashed.",
+      "first_epoch": 1792906696.287593,
+      "last_epoch": 1792906938.8745563,
+      "minimum_free_mib": 1699,
+      "maximum_gap_s": 1.1348538398742676,
+      "reserve_mib": 192
+    },
+    "limits": [
+      "Same server retains prior four-long-request KV/cache/graph history; distinct nonces and zero cache counters establish cold requests, not a fresh process.",
+      "Eight submissions queue behind four active HP slots; this does not establish eight active sessions.",
+      "Client results are in input order, but API records lack server IDs. Raw server IDs are validated within each case without a client-to-ID join.",
+      "Per-client decode TPS uses (1024 - 1) / (client wall - TTFT); whole aggregate TPS includes prompt processing and queued waiting.",
+      "SSE gap measurements describe client-observed content chunks, which may contain multiple model tokens; they are not model inter-token latency.",
+      "Memory guard observations are sampled and do not establish unsampled behavior.",
+      "Sampled outputs can follow different RNG and speculative trajectories; this profile does not establish controlled cross-mode speedup or general quality."
+    ],
+    "cases": [
+      {
+        "case": "clients-1-a",
+        "submitted_clients": 1,
+        "max_observed_active": 1,
+        "max_observed_queued": 0,
+        "wall_s": 14.629571143072098,
+        "whole_aggregate_tokens_per_s": 69.9952165368101,
+        "median_per_client_decode_tokens_per_s": 108.64835819529557,
+        "prompt_tokens": 4145,
+        "output_tokens": 1024,
+        "cached_tokens": 0
+      },
+      {
+        "case": "clients-4-a",
+        "submitted_clients": 4,
+        "max_observed_active": 4,
+        "max_observed_queued": 0,
+        "wall_s": 36.109099209075794,
+        "whole_aggregate_tokens_per_s": 113.43401219409252,
+        "median_per_client_decode_tokens_per_s": 50.30565499088504,
+        "prompt_tokens": 16580,
+        "output_tokens": 4096,
+        "cached_tokens": 0
+      },
+      {
+        "case": "clients-8-a",
+        "submitted_clients": 8,
+        "max_observed_active": 4,
+        "max_observed_queued": 4,
+        "wall_s": 68.18861960794311,
+        "whole_aggregate_tokens_per_s": 120.1373491221948,
+        "median_per_client_decode_tokens_per_s": 42.667457304194286,
+        "prompt_tokens": 33160,
+        "output_tokens": 8192,
+        "cached_tokens": 0
+      },
+      {
+        "case": "clients-8-b",
+        "submitted_clients": 8,
+        "max_observed_active": 4,
+        "max_observed_queued": 4,
+        "wall_s": 68.68691979395226,
+        "whole_aggregate_tokens_per_s": 119.26579361215276,
+        "median_per_client_decode_tokens_per_s": 42.871309135980006,
+        "prompt_tokens": 33160,
+        "output_tokens": 8192,
+        "cached_tokens": 0
+      },
+      {
+        "case": "clients-4-b",
+        "submitted_clients": 4,
+        "max_observed_active": 4,
+        "max_observed_queued": 0,
+        "wall_s": 36.47280542401131,
+        "whole_aggregate_tokens_per_s": 112.30285009289308,
+        "median_per_client_decode_tokens_per_s": 49.10119113910045,
+        "prompt_tokens": 16580,
+        "output_tokens": 4096,
+        "cached_tokens": 0
+      },
+      {
+        "case": "clients-1-b",
+        "submitted_clients": 1,
+        "max_observed_active": 1,
+        "max_observed_queued": 0,
+        "wall_s": 14.18190330103971,
+        "whole_aggregate_tokens_per_s": 72.20469483281049,
+        "median_per_client_decode_tokens_per_s": 109.11818835836391,
+        "prompt_tokens": 4145,
+        "output_tokens": 1024,
+        "cached_tokens": 0
+      }
+    ],
+    "analysis_sha256": "d27f011605f52e980f8a4f4819c5660fa5f88d2c4d34e6575147444aa57cccd1"
+  },
+  "hp_gpu_gauntlet": {
+    "original": {
+      "stop_reason": "agents_idle",
+      "wall_s": 193.0850875377655,
+      "tokens_out": 20653,
+      "tokens_prompt": 44745,
+      "tokens_cached": 448485,
+      "requests": 49,
+      "out_tok_s_mean_wall": 106.9632060319546,
+      "peak_out_tok_s": 340.5316496307196,
+      "active_median_tps": 167.71031574524025,
+      "active_median_step_ms": 45.32414081372549,
+      "multi_median_tps": 182.4771971504362,
+      "multi_mean_tps": 175.2632634319114,
+      "multi_median_step_ms": 45.32414081372549
+    },
+    "repair": {
+      "scope": "separate parent-requested Pi torus repair, not original gauntlet",
+      "requests": 5,
+      "tokens_out": 2317,
+      "source_sha256": "d61391d5a9473eeb4ebf2243ce71582fe060009a48012658fd1ce26598667880"
+    },
+    "limits": [
+      "Variable generated work; no controlled cross-gauntlet speedup",
+      "Original torus shading defect repaired in a separate parent-requested Pi run",
+      "Cube may clip at rotation extrema; pyramid depth handling approximate",
+      "Live process/motion and closed recording checks are distinct from geometry review"
+    ],
+    "archive": "docs/benchmarks/2026-10-24-v100/hp-gpu-sampling/gauntlet-original/",
+    "repair_archive": "docs/benchmarks/2026-10-24-v100/hp-gpu-sampling/gauntlet-torus-repair/"
+  }
+}

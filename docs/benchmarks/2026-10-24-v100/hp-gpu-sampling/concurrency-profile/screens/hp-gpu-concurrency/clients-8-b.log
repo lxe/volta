@@ -1,0 +1,28 @@
+{
+  "label": "hp-gpu-concurrency",
+  "clients": 8,
+  "mixed": false,
+  "wall_s": 68.68691979395226,
+  "monitor_wall_s": 68.72795390198007,
+  "completed": 8,
+  "requested_output_tokens": 8192,
+  "output_tokens": 8192,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 119.26579361215276,
+  "prompt_tokens": 33160,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 8192,
+  "ttft_s": [
+    21.831278842058964,
+    10.152277197921649,
+    15.80113568296656,
+    48.65491108899005,
+    36.614981479011476,
+    54.77363497589249,
+    42.66156096197665,
+    4.913415525923483
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.5236715691519277
+}

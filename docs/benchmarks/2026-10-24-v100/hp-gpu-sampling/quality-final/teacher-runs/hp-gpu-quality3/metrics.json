@@ -1,0 +1,8 @@
+{
+  "tokens": 8184,
+  "ppl": 8.9425,
+  "kl_top256": 0.131653,
+  "top1_agree": 0.83871,
+  "wall_s": 50.2,
+  "tight_gate_passed": true
+}

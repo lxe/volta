@@ -1,0 +1,9 @@
+index, name, memory.used [MiB], clocks.current.sm [MHz], clocks.current.memory [MHz], power.draw [W]
+0, Tesla V100-SXM2-32GB, 30616 MiB, 1290 MHz, 877 MHz, 58.27 W
+1, Tesla V100-SXM2-32GB, 30616 MiB, 1290 MHz, 877 MHz, 61.23 W
+2, Tesla V100-SXM2-32GB, 30616 MiB, 1290 MHz, 877 MHz, 56.38 W
+3, Tesla V100-SXM2-32GB, 30616 MiB, 1290 MHz, 877 MHz, 59.26 W
+4, Tesla V100-SXM2-32GB, 30616 MiB, 1290 MHz, 877 MHz, 60.21 W
+5, Tesla V100-SXM2-32GB, 30616 MiB, 1290 MHz, 877 MHz, 62.75 W
+6, Tesla V100-SXM2-32GB, 30616 MiB, 1290 MHz, 877 MHz, 59.34 W
+7, Tesla V100-SXM2-32GB, 30616 MiB, 1290 MHz, 877 MHz, 59.26 W

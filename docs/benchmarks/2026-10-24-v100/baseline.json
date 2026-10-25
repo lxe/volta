@@ -1,0 +1,21 @@
+{
+  "stop_reason": "agents_idle",
+  "wall_s": 246.99066042900085,
+  "tokens_out": 19805,
+  "tokens_prompt": 63802,
+  "tokens_cached": 457588,
+  "requests": 47,
+  "out_tok_s_mean_wall": 80.1852182005606,
+  "peak_out_tok_s": 434.2332423807875,
+  "active_median_tps": 128.50569586309453,
+  "active_median_step_ms": 74.08605220769232,
+  "multi_median_tps": 135.85229511106814,
+  "multi_mean_tps": 167.3259539760876,
+  "multi_median_step_ms": 73.88239776744186,
+  "first_post_submit_stats_epoch": 1792893075.540808,
+  "request_phase_including_idle_close_s": 205.0241539478302,
+  "request_phase_including_idle_close_tps": 96.59837447757262,
+  "launch_and_repair_overhead_s": 41.966506481170654,
+  "last_active_stats_elapsed_s": 141.3983814716339,
+  "four_shapes_syntax_and_live_motion_verified": true
+}

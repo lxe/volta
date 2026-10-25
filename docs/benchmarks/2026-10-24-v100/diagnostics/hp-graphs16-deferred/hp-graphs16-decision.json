@@ -1,0 +1,35 @@
+{
+  "decision": "DEFER",
+  "memory_baselines": {
+    "hp-gpu-b1": {
+      "per_gpu_minimum_free_mib": {
+        "0": 1707,
+        "1": 1739,
+        "2": 1739,
+        "3": 1739,
+        "4": 1739,
+        "5": 1739,
+        "6": 1739,
+        "7": 1739
+      },
+      "uniform_reserve_mib": 1227,
+      "input_sha256": "215bdd233219ed25777e6d3f11ba5befdbc5eee1eeeda1b9f58b9ff156d39775"
+    },
+    "hp-gpu-b2": {
+      "per_gpu_minimum_free_mib": {
+        "0": 1711,
+        "1": 1743,
+        "2": 1743,
+        "3": 1743,
+        "4": 1743,
+        "5": 1743,
+        "6": 1743,
+        "7": 1743
+      },
+      "uniform_reserve_mib": 1231,
+      "input_sha256": "6a99c880619cca9ece4c51241975fdec0242dc3170bb68f793f93c103e87ab54"
+    }
+  },
+  "reason": "Memory admission is available, but existing source-bound actual HP receipts do not attribute sufficient wall time to eager hot graph keys or establish a measured 5 percent opportunity. Prediction remains unconfirmed.",
+  "new_gpu_actions": 0
+}

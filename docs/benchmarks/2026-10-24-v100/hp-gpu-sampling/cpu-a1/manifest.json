@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "evidence_scope": "Measured baseline only; no candidate throughput gain",
+  "files": {
+    "README.md": {
+      "bytes": 2397,
+      "sha256": "d95792c2c9cf14585ac096e72144ab26aa5de4349ceacc9def8415f540debee5"
+    },
+    "memory-guard/configuration.json": {
+      "bytes": 710,
+      "sha256": "aaa2d363ea2f09aa9df3a6c1197a8cff4186e6bfbfe31ae6eec0c4fcb39ef74e"
+    },
+    "memory-guard/launch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "memory-guard/observations-through-arm.jsonl": {
+      "bytes": 25221,
+      "sha256": "e8c50d1374c3933a78e5f5106a7d05caffa0d2b62625024cf06f65b7a3ad7840"
+    },
+    "screens/ARM_DONE": {
+      "bytes": 19,
+      "sha256": "acd6246ca3e55cfd126139f4d26578958476b240f0793b9e4a7b36eddbb1e8e2"
+    },
+    "screens/final-gpus.csv": {
+      "bytes": 421,
+      "sha256": "4de4587af76d366ae14e22dc697c04d2cc739169dc0ccf3731c219945430ada4"
+    },
+    "screens/fixed/final-stats.json": {
+      "bytes": 21552,
+      "sha256": "073f0081ef325caabb745a1e2f91d3705604477134ecf840fd6eb173b88ccfc6"
+    },
+    "screens/fixed/initial-stats.json": {
+      "bytes": 17670,
+      "sha256": "0747dd00cea382ecdb49bd012b2e8ed4f41b79261ff519cf003a3bb9d5211f51"
+    },
+    "screens/fixed/requests.json": {
+      "bytes": 61312,
+      "sha256": "b1abc333c3b07a09c8f79ad9bec52f831fbb792ac7a53213cff6206a9c527b44"
+    },
+    "screens/fixed/results.json": {
+      "bytes": 11034,
+      "sha256": "5aefe40c0f79a55c46c70ee1c16d4b29dd5f9efd8e7f541ea0d070b115c4b137"
+    },
+    "screens/fixed/stats.jsonl": {
+      "bytes": 175953,
+      "sha256": "d33eaf30d4c2c65c806c59555f873962df65dbbb666d34bf426e8b95a0800205"
+    },
+    "screens/fixed/summary.json": {
+      "bytes": 576,
+      "sha256": "8bbfda3e0f1672a302f37e2885401225dd5bb633b032ce4899ca8af14824acff"
+    },
+    "screens/fixed.log": {
+      "bytes": 577,
+      "sha256": "6f230181faaa136c2954782a6eecfd7cea94f791ebb6de399f9955d6eb992958"
+    },
+    "screens/mixed/final-stats.json": {
+      "bytes": 27051,
+      "sha256": "9f2b8cfe107ad31d5ecbfc3de5a83c798d9d2166bd96f880c29337dffd57c741"
+    },
+    "screens/mixed/initial-stats.json": {
+      "bytes": 21820,
+      "sha256": "69d1b357d6f5a7ae9e426a9fecdeb7040e45522443e248cdf970d7caf2244a69"
+    },
+    "screens/mixed/requests.json": {
+      "bytes": 76515,
+      "sha256": "629ed38e37ac8a83975dbee79df0dcb258b78e92fe368c206d12f2a07f7c4961"
+    },
+    "screens/mixed/results.json": {
+      "bytes": 10982,
+      "sha256": "a3e3b03e35353e2482d10ca6d33502e3e8b630307ca2d888860d751b7fe06710"
+    },
+    "screens/mixed/stats.jsonl": {
+      "bytes": 206721,
+      "sha256": "49a1d70758732141219beaf2e7541abf27784c5d1f67a94b46d0531a8634f4e1"
+    },
+    "screens/mixed/summary.json": {
+      "bytes": 577,
+      "sha256": "ff358ce3169ce1897e04ecbf2975aa070852d7a1c4e9d3dfe11eced73e5e909c"
+    },
+    "screens/mixed.log": {
+      "bytes": 578,
+      "sha256": "d542d79b57c00d59b22caf52731598171f2bbdeb079a5d68499b222c462d4a34"
+    },
+    "screens/server.log": {
+      "bytes": 22254,
+      "sha256": "3575bcbe84c18c772e2af4165003011b759aefc7994eae96db4ce68f2fdd1427"
+    },
+    "screens/smoke.json": {
+      "bytes": 756,
+      "sha256": "2a31c2f426fd9be906a4f3e1af080fe6c356e84936bc2eaf681cf6fb3081e534"
+    },
+    "screens/warm1/final-stats.json": {
+      "bytes": 16128,
+      "sha256": "85a9fc3a9510cb3b93d8846fcec79ea4c69b75660f193d53199d7980c127a28d"
+    },
+    "screens/warm1/initial-stats.json": {
+      "bytes": 15590,
+      "sha256": "8349e0b258a79b33dd611ff84301a5f3a71f801bf12f0e05930b778bf353389d"
+    },
+    "screens/warm1/requests.json": {
+      "bytes": 9156,
+      "sha256": "1603fff898de8f5da9a24f2e63edac370cf44a09ed9be5f034edbc462a06d922"
+    },
+    "screens/warm1/results.json": {
+      "bytes": 3383,
+      "sha256": "9e527f142138ea2f39cdcc1036efae8ddc5ead83fce3d45046ed6a5125344106"
+    },
+    "screens/warm1/stats.jsonl": {
+      "bytes": 16284,
+      "sha256": "cdfc6376189ac408bf96ed9e864fdf1d94a4157a1e8a299c2659c80ba192bf92"
+    },
+    "screens/warm1/summary.json": {
+      "bytes": 571,
+      "sha256": "2e174cde5c06fb9029c753a3bfe79ac0529949855c79626462370bb75b375edb"
+    },
+    "screens/warm1.log": {
+      "bytes": 572,
+      "sha256": "8885c35abc22ac19b30b7142d180cd17567d359eda2e79a0ee9098324bdf5576"
+    },
+    "screens/warm2/final-stats.json": {
+      "bytes": 17566,
+      "sha256": "33d5f493182556c05182c76fbd7a8321a2201156b6f9051ad8569996f854770f"
+    },
+    "screens/warm2/initial-stats.json": {
+      "bytes": 16033,
+      "sha256": "066a831eb3b8e232e58e3c7d3d719dbd0b64be94ccf1057b730297254b06a8e0"
+    },
+    "screens/warm2/requests.json": {
+      "bytes": 9156,
+      "sha256": "c0473a563e58a7ac023c12feac3e1c6fe9a725cb50505a5e55afb1bad49c09e8"
+    },
+    "screens/warm2/results.json": {
+      "bytes": 3445,
+      "sha256": "e8a8f78d3ac68717f8f565c5d516a28203a51373ec3bb2ff9563adcc66d69d67"
+    },
+    "screens/warm2/stats.jsonl": {
+      "bytes": 19849,
+      "sha256": "d8c0c8b378e3c881d876d73f39d85b9243cc20b1d61a127c27623f16a6b65d43"
+    },
+    "screens/warm2/summary.json": {
+      "bytes": 573,
+      "sha256": "979ad73d3bd75fa201033d2822236862f56d84a554eedb4ed1fb6632e46abfef"
+    },
+    "screens/warm2.log": {
+      "bytes": 574,
+      "sha256": "12efa884d5fa9dcaf2858c873f8e57b0683a15097b284e1053a28cdcdc6997c1"
+    },
+    "server-run/configuration.json": {
+      "bytes": 1286,
+      "sha256": "e29d22e0e941b7d7454a28c0c182949dfe04531a07643a5d83f373c6050ec0fc"
+    },
+    "server-run/previous-stats.json": {
+      "bytes": 30043,
+      "sha256": "001abeb248dd340b57d7e92c9813dce400866ab655735b7f6d78aab2be9fcc2c"
+    },
+    "server-run/ready-gpus.csv": {
+      "bytes": 605,
+      "sha256": "8b1743021717d9dd088e78fc3d50f997d135a952cfc26efae11c6f82585e88b5"
+    },
+    "server-run/ready-stats.json": {
+      "bytes": 14888,
+      "sha256": "29409c71d132b6d4c2f0a3930c269eedbafb41cf8cf82d29d5918da2207a52fa"
+    },
+    "server-run/switch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

@@ -1,0 +1,82 @@
+[
+  {
+    "wall_s": 8.36312115599867,
+    "start_monotonic": 979224.701478141,
+    "end_monotonic": 979233.064599297,
+    "ttft_s": 1.1689988049911335,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 256,
+      "total_tokens": 812,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "17bc81a38554a2e086e77e7573b11ab9ed9b9d6f06d11f170b549e03baaf16d5",
+    "output": "# Code Review: `hp-gpu-audit2`, Case 10\n\n## 1. Summary\n\nThe module under review consists of a sequence of near-identical functions `record_0` through `record_13` (and presumably beyond, since the snippet is truncated mid-expression in `record_13`). Each function:\n\n1. Accepts a single positional argument `values`.\n2. Computes `total = sum(v * K for v in values)` where `K` is a per-function constant equal to `record_index + 1`.\n3. Returns a dictionary `{\"record\": index, \"total\": total, \"count\": len(values)}`.\n\nThe pattern is a textbook case of **copy-paste duplication** with a single varying parameter. The review below covers correctness, style, maintainability, performance, and robustness, followed by a revised implementation.\n\n---\n\n## 2. Correctness Issues\n\n### 2.1 Truncated / syntactically invalid source\n\nThe provided snippet ends with:\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values\n```\n\nThis is **not valid Python** \u2014 the generator expression and the `sum(...)` call are both unterminated. If",
+    "decode_tokens_per_s": 35.445602334562366
+  },
+  {
+    "wall_s": 9.66040367493406,
+    "start_monotonic": 979224.701623472,
+    "end_monotonic": 979234.362027147,
+    "ttft_s": 2.561397331999615,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 256,
+      "total_tokens": 812,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "53c492f3805c96581bfa1cca0e627a59054c808b977ada74434c441252516407",
+    "output": "# Code Review: `record_0` \u2026 `record_13` (work item hp-gpu-audit2, case 11)\n\n## 1. Summary\n\nThe module under review defines a series of near-identical functions `record_0` through `record_13` (and apparently more \u2014 the listing is truncated mid-expression in `record_13`). Each function takes an iterable `values`, computes a weighted sum using a per-function constant multiplier, and returns a dict with three keys: `record` (the function's index), `total` (the weighted sum), and `count` (the number of input values).\n\nThe code is syntactically valid up to the truncation point, but the review must treat the truncation as a defect in the artifact itself (or at minimum flag it as an incomplete snapshot).\n\n## 2. Findings\n\n### 2.1 Critical / Blocking\n\n**F-1: Truncated source.** The listing ends inside `record_13`:\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values\n```\n\nThis is a `SyntaxError` (unclosed generator expression and unclosed function). The module as presented cannot be imported",
+    "decode_tokens_per_s": 35.92052009557625
+  },
+  {
+    "wall_s": 9.329616168979555,
+    "start_monotonic": 979224.701878868,
+    "end_monotonic": 979234.031495037,
+    "ttft_s": 3.853966275928542,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 256,
+      "total_tokens": 812,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "c169c05492966937a845c39261a70ecc7eebe2d756cbc7431dbc858e2c25d57e",
+    "output": "# Code Review: `hp-gpu-audit2`, Case 12\n\n## 1. Summary\n\nThe module under review consists of a sequence of near-identical functions `record_0` through `record_13` (and presumably beyond, since the snippet is truncated mid-expression in `record_13`). Each function:\n\n1. Accepts a single iterable `values`.\n2. Computes `sum(v * k for v in values)` where `k` is a per-function constant (`1` for `record_0`, `2` for `record_1`, \u2026, `14` for `record_13`).\n3. Returns a dict `{\"record\": n, \"total\": total, \"count\": len(values)}`.\n\nThe pattern is a textbook case of **copy-paste duplication** with a single varying parameter. The review below covers correctness, style, maintainability, performance, edge cases, and a revised implementation.\n\n---\n\n## 2. Correctness Issues\n\n### 2.1 Truncated / syntactically invalid final function\n\n`record_13` ends with:\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values\n```\n\nThis is **not valid",
+    "decode_tokens_per_s": 46.569814539021756
+  },
+  {
+    "wall_s": 10.510623838985339,
+    "start_monotonic": 979224.701758206,
+    "end_monotonic": 979235.212382045,
+    "ttft_s": 5.4822050399379805,
+    "usage": {
+      "prompt_tokens": 556,
+      "completion_tokens": 256,
+      "total_tokens": 812,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 556
+    },
+    "finish_reason": "length",
+    "output_sha256": "37cab0a30e133f4eda34c3b076a2d23f7733139f84f452ce32c93c0f4b26b975",
+    "output": "# Code Review: `hp-gpu-audit2`, Case 13\n\n## Summary\n\nThe module is a sequence of thirteen near-identical functions, `record_0` through `record_12`, each of which reduces a list of numeric values to a dictionary containing a record index, a weighted sum, and the count of values. The final function `record_13` is truncated mid-expression and will not parse.\n\nThe structure is a textbook case of copy-paste repetition. Every function differs from its neighbors only in two constants: the record number and the multiplier. That is exactly the shape the DRY principle exists to prevent. Below I walk through the specific issues, then give a revised implementation and a short discussion of trade-offs.\n\n## Detailed findings\n\n### 1. Syntax error in `record_13`\n\n```python\ndef record_13(values):\n    total = sum(v * 14 for v in values\n```\n\nThe generator expression is not closed and the function body has no `return`. This file cannot be imported. Any test, lint, or packaging step that touches it will fail at parse time. This is the highest-severity issue because it blocks everything else.\n\n### 2. Copy-paste duplication\n\nThirteen full function",
+    "decode_tokens_per_s": 50.71176649970168
+  }
+]

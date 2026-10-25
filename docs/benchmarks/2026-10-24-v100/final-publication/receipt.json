@@ -1,0 +1,13 @@
+{
+  "repository": "lxe/DeepSeek-V4.1-Flash-1017-Volta",
+  "old_revision": "f5f5125822fe32c50e544c47298599ab6ad08865",
+  "new_revision": "83832d8f7204e9ca600ce687d5c69ed8cd44ffb8",
+  "files_verified": {
+    "README.md": "abe0eb5a8a4c1d748ed5e1362d88b5a0867ecb17788d6c4f8a9be575ae0c1289",
+    "runtime/2026-10-24-v100-optimized.json": "9715aabca187d638b20b8a8a828d55c745b7bf5cf7c3b26e99137510d29e4c25"
+  },
+  "weight_unchanged": true,
+  "weight_bytes": 441574130240,
+  "weight_sha256": "9d15a1d6f263b25bb3bf0eb1b887c9c6d7176083b8a9bd55c998e8658e52000c",
+  "operations": "Only two small metadata files added or updated; no weight download/upload/delete"
+}

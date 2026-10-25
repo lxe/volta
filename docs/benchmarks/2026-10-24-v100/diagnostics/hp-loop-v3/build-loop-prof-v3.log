@@ -1,0 +1,102 @@
+   Compiling dsx v0.1.0 (/root/volta-loop-prof-v3/engine)
+   Compiling dsx-core v0.1.0 (/root/volta-loop-prof-v3/core)
+warning: fields `nvis`, `win_idx`, and `topk_rows` are never read
+   --> engine/src/gpumodel.rs:128:5
+    |
+102 | pub struct GpuModel<'m> {
+    |            -------- fields in this struct
+...
+128 |     nvis: Buf,
+    |     ^^^^
+129 |     win_idx: Buf,
+    |     ^^^^^^^
+...
+138 |     topk_rows: Vec<i32>,
+    |     ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `rows` and `cols` are never used
+   --> engine/src/volta.rs:805:8
+    |
+804 | impl Lin {
+    | -------- methods in this implementation
+805 |     fn rows(&self) -> usize {
+    |        ^^^^
+...
+808 |     fn cols(&self) -> usize {
+    |        ^^^^
+
+warning: fields `pos`, `ints`, `xq`, `tile32`, and `srcoff` are never read
+    --> engine/src/volta.rs:1062:5
+     |
+1038 | struct Work {
+     |        ---- fields in this struct
+...
+1062 |     pos: Buf,
+     |     ^^^
+1063 |     win_idx: Buf,
+1064 |     ints: Buf,
+     |     ^^^^
+...
+1070 |     xq: Buf,   // FP8-rounded f32 copy of x for FP8-input projections
+     |     ^^
+...
+1073 |     tile32: Buf, // VWork entries t0 = 32 i, nt = 32 (static 32-row tiles over the exchange)
+     |     ^^^^^^
+...
+1077 |     srcoff: Buf,  // first exchange row of each source GPU (src * TMAX)
+     |     ^^^^^^
+
+warning: field `owner` is never read
+    --> engine/src/volta.rs:1198:5
+     |
+1154 | struct Shard<'m> {
+     |        ----- field in this struct
+...
+1198 |     owner: Arc<Vec<Vec<u8>>>,
+     |     ^^^^^
+
+warning: fields `selg`, `wtg`, and `flags` are never read
+    --> engine/src/volta.rs:1224:5
+     |
+1222 | struct PeerBufs {
+     |        -------- fields in this struct
+1223 |     xg: u64,
+1224 |     selg: u64,
+     |     ^^^^
+1225 |     wtg: u64,
+     |     ^^^
+1226 |     parts: u64,
+1227 |     flags: u64,
+     |     ^^^^^
+     |
+     = note: `PeerBufs` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: methods `publish`, `await_peers`, and `vrows32` are never used
+    --> engine/src/volta.rs:2339:8
+     |
+1236 | impl<'m> Shard<'m> {
+     | ------------------ methods in this implementation
+...
+2339 |     fn publish(&self, ph: usize) -> Result<()> {
+     |        ^^^^^^^
+...
+2347 |     fn await_peers(&self, ph: usize) -> Result<()> {
+     |        ^^^^^^^^^^^
+...
+2522 |     fn vrows32(&self, v: &VMat, x: u64, ldx: usize, y: u64, ldy: usize, rows: usize) -> Result<()> {
+     |        ^^^^^^^
+
+warning: fields `comp_src` and `idxk_src` are never read
+    --> engine/src/volta.rs:2735:5
+     |
+2734 | struct StepState {
+     |        --------- fields in this struct
+2735 |     comp_src: usize,
+     |     ^^^^^^^^
+2736 |     idxk_src: usize,
+     |     ^^^^^^^^
+
+warning: `dsx` (lib) generated 7 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 56.60s

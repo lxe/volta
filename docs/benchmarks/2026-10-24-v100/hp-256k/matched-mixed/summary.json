@@ -1,0 +1,24 @@
+{
+  "label": "sampler-hp4-256-g4",
+  "clients": 4,
+  "mixed": true,
+  "wall_s": 48.6258530120831,
+  "monitor_wall_s": 48.69683095801156,
+  "completed": 4,
+  "requested_output_tokens": 2048,
+  "output_tokens": 2048,
+  "all_hit_output_budget": true,
+  "output_tokens_per_wall_s": 42.117513074600254,
+  "prompt_tokens": 20677,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 2048,
+  "ttft_s": [
+    14.203526044031605,
+    22.464373577968217,
+    6.671210768050514,
+    16.63818284193985
+  ],
+  "ctx": 262144,
+  "heads": true,
+  "acceptance_median": 0.5342465753424658
+}

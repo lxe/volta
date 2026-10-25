@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""CPU-only strict8/16trial replacement model against preserved actual prefixes."""
+from pathlib import Path
+from collections import Counter
+import importlib.util,json,statistics
+root=Path(__file__).parent;spec=importlib.util.spec_from_file_location('ga',root/'analyze-graph-trace.py');ga=importlib.util.module_from_spec(spec);spec.loader.exec_module(ga)
+output={'evidence':'ACTUAL_TRACE_CPU_MODEL_ONLY','budget_written_before_simulation':'graph-policy-strict8-hypothesis.md',
+        'strict_resident_limit':8,'trial_replacement_limit':16,'engine_or_gpu_changed':False,'runs':{}}
+for run in ['diag-v2-001','diag-v2-stept-001']:
+ intervals=json.loads((root/f'receipts/{run}-primary-interval-analysis.json').read_text())
+ item={'gpus':[],'capture_cost_proxies':{}}
+ measured={}
+ for gpu in range(8):
+  steps,_,_,_,h=ga.validate(root/f'graph-traces/{run}/gpu{gpu}.jsonl',gpu,128)
+  measured[gpu]=[r for r in steps if r['decision']=='capture' and r['t']>0]
+  sim=ga.simulate(steps,16,8);ds=sim.pop('step_decisions');old=ga.simulate(steps,16,4);old_ds=old.pop('step_decisions');phases={}
+  for name,phase in intervals['phases'].items():
+   bounds=phase['gpus'][gpu];lo,hi=bounds['seq_min'],bounds['seq_max'];ix=[i for i,r in enumerate(steps) if lo<=r['seq']<=hi]
+   actual=sum(steps[i]['decision']=='hit' for i in ix);new=sum(ds[i]=='hit' for i in ix);four=sum(old_ds[i]=='hit' for i in ix)
+   phases[name]={'steps':len(ix),'actual_hits':actual,'strict8_hits':new,'four16_hits':four,
+      'gain_vs_actual_pp':100*(new-actual)/len(ix),'gain_vs_failed_four16_pp':100*(new-four)/len(ix),
+      'initial_fills':sum(ds[i]=='capture' for i in ix),'replacements':sum(ds[i]=='replacement_capture' for i in ix),
+      'capture_events':[{'seq':steps[i]['seq'],'key':[steps[i]['t'],steps[i]['bucket']],'initial':ds[i]=='capture'} for i in ix if ds[i] in ('capture','replacement_capture')]}
+  item['gpus'].append({'gpu':gpu,'simulation':sim,'phases':phases})
+ for name,phase in intervals['phases'].items():
+  costs={};ceilings={};events=0
+  for g in item['gpus']:
+   gpu=g['gpu']
+   for e in g['phases'][name]['capture_events']:
+    same=[r['capture_ns']/1e6 for r in measured[gpu] if r['t']==e['key'][0]]
+    fallback=[r['capture_ns']/1e6 for r in measured[gpu]]
+    # Idle GPUs produce no phase captures in this actual workload; fail explicitly if a proxy lacks measurements.
+    assert same or fallback,(run,gpu,e)
+    ms=statistics.median(same or fallback);costs[e['seq']]=max(costs.get(e['seq'],0),ms);ceilings[e['seq']]=100;events+=1
+  item['capture_cost_proxies'][name]={'capture_events_including_initial_fills':events,'distinct_global_steps':len(costs),
+    'same_gpu_same_t_median_seconds':sum(costs.values())/1000,'fraction_of_api_wall':sum(costs.values())/1000/phase['api_wall_s'],
+    'at100ms_ceiling_seconds':sum(ceilings.values())/1000,'ceiling_fraction_of_api_wall':sum(ceilings.values())/1000/phase['api_wall_s'],
+    'limit':'proxy only; no actual sync/destruction/capture resource trial or primary speedup'}
+ output['runs'][run]=item
+p=root/'receipts/strict8-graph-policy-cpu-simulation.json';p.write_text(json.dumps(output,indent=2)+'\n')
+for run,item in output['runs'].items():
+ print(run)
+ for g in item['gpus'][:4]:print('GPU',g['gpu'],'replacements',g['simulation']['replacement_count'],'blocked',g['simulation']['replacement_limit_blocked_observations'],g['phases'])
+ print('COST',item['capture_cost_proxies'])

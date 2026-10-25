@@ -1,0 +1,27 @@
+{
+  "base_commit": "cc54d97568adb3d9438a8692c3415cb72ac18957",
+  "source_files_sha256": {
+    "engine/src/lib.rs": "2618c4ae8884ce781a730f27c42f376164309ae9fe18b0499be4fa76a79daac0",
+    "engine/src/graph_trace.rs": "5763be093164a8a802542006ba2c5d00ce2101eeddef5adb7430503a723d3a9a",
+    "engine/src/volta.rs": "c480345074cdb447eb375f29ca22daec3c5c206a8e70c2c3915c7c34bb2babea",
+    "engine/src/server/volta.rs": "d4d27d3c1f053d063b947d30142641d6ccd82a739c3815aa00c56fc394526b04"
+  },
+  "archive_sha256": "b93e0f857fa2268e9049778b43ce7ac4905aa5a52629990b336dbe5b91540a54",
+  "accounting_patch_sha256": "2dfb62fbe341ef236b119db886c20ae40db5459b8575b8ad77e9b4d27523f80a",
+  "v2_preserved_local_files_sha256": {
+    "engine/src/lib.rs": "2618c4ae8884ce781a730f27c42f376164309ae9fe18b0499be4fa76a79daac0",
+    "engine/src/graph_trace.rs": "5763be093164a8a802542006ba2c5d00ce2101eeddef5adb7430503a723d3a9a",
+    "engine/src/volta.rs": "c480345074cdb447eb375f29ca22daec3c5c206a8e70c2c3915c7c34bb2babea",
+    "engine/src/server/volta.rs": "bee608e16cbba9682f85def19bc0fbf4305b423508e3cc606ba9c1bd5441b842"
+  },
+  "kernel_source_equal_to_v2": true,
+  "changes_to_v2": [
+    "CPU sampled step elapsed into pf1",
+    "CPU distribution and RNG update elapsed into pf3",
+    "cpu_sample_ms field and rest subtraction"
+  ],
+  "gpu_launches": 0,
+  "compile_jobs": 2,
+  "timeout_seconds": 180,
+  "absolute_stop_utc": "2026-10-25T03:32:55Z"
+}

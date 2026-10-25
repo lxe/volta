@@ -1,0 +1,31 @@
+{
+  "read_only_stat_check": true,
+  "full_model_rehashed": false,
+  "model_path": "/root/model/DeepSeek-V4.1-Flash-1017-Volta.gguf",
+  "model_receipt": {
+    "sha256": "9d15a1d6f263b25bb3bf0eb1b887c9c6d7176083b8a9bd55c998e8658e52000c",
+    "bytes": 441574130240,
+    "seconds": 1024.693743944168
+  },
+  "model_bytes": 441574130240,
+  "inputs": {
+    "heldout.i32": {
+      "exists": true,
+      "bytes": 32768
+    },
+    "teacher_idx.i32": {
+      "exists": true,
+      "bytes": 8380416
+    },
+    "teacher_lp.f32": {
+      "exists": true,
+      "bytes": 8380416
+    },
+    "teacher_kl.json": {
+      "exists": true,
+      "bytes": 273
+    }
+  },
+  "cli_path": "/root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta",
+  "current_server_name": "hp-cpu-a2"
+}

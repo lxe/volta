@@ -1,0 +1,578 @@
+{
+  "evidence": "ACTUAL_LOG_INPUT; no standalone GPU experiment launched by parser",
+  "log": "/home/lxe/volta-sixhour-20261024/graph-traces/diag-v2-stept-001/server.log",
+  "same_process_trace": "/home/lxe/volta-sixhour-20261024/graph-traces/diag-v2-stept-001",
+  "classification": "same-process positive-t ordinal join",
+  "selected_seq_interval": {
+    "start": 394,
+    "end": 768
+  },
+  "parsed_lines": 2496,
+  "selected_lines": 1076,
+  "unclassified_tail_lines": 48,
+  "gpus": [
+    {
+      "gpu": 0,
+      "overall": {
+        "steps": 258,
+        "begin_ms": {
+          "sum": 470.26,
+          "mean": 1.8227131782945736,
+          "median": 0.495,
+          "p95": 5.65,
+          "min": 0.27,
+          "max": 20.42
+        },
+        "layers_ms": {
+          "sum": 20314.38,
+          "mean": 78.73790697674418,
+          "median": 90.82499999999999,
+          "p95": 104.15,
+          "min": 26.82,
+          "max": 105.57
+        },
+        "finish_ms": {
+          "sum": 397.46,
+          "mean": 1.5405426356589147,
+          "median": 0.9,
+          "p95": 3.55,
+          "min": 0.7,
+          "max": 3.56
+        },
+        "observed_phase_sum_ms": 21182.1,
+        "finish_share_of_observed_phase_sum": 0.01876395635937891
+      },
+      "by_t_class": {
+        "t1_6_hint": {
+          "steps": 193,
+          "begin_ms": {
+            "sum": 90.24,
+            "mean": 0.4675647668393782,
+            "median": 0.47,
+            "p95": 0.69,
+            "min": 0.27,
+            "max": 0.72
+          },
+          "layers_ms": {
+            "sum": 13677.33,
+            "mean": 70.86699481865286,
+            "median": 89.88,
+            "p95": 92.26,
+            "min": 26.82,
+            "max": 92.88
+          },
+          "finish_ms": {
+            "sum": 167.69,
+            "mean": 0.868860103626943,
+            "median": 0.86,
+            "p95": 1.18,
+            "min": 0.7,
+            "max": 1.19
+          },
+          "observed_phase_sum_ms": 13935.26,
+          "finish_share_of_observed_phase_sum": 0.012033503501190505
+        },
+        "t32": null,
+        "t64": {
+          "steps": 64,
+          "begin_ms": {
+            "sum": 375.52,
+            "mean": 5.8675,
+            "median": 5.42,
+            "p95": 6.83,
+            "min": 5.3,
+            "max": 20.42
+          },
+          "layers_ms": {
+            "sum": 6531.48,
+            "mean": 102.054375,
+            "median": 103.46000000000001,
+            "p95": 104.3,
+            "min": 73.96,
+            "max": 104.54
+          },
+          "finish_ms": {
+            "sum": 226.49,
+            "mean": 3.53890625,
+            "median": 3.54,
+            "p95": 3.56,
+            "min": 3.52,
+            "max": 3.56
+          },
+          "observed_phase_sum_ms": 7133.49,
+          "finish_share_of_observed_phase_sum": 0.03175023726114427
+        },
+        "t7_9_hint": null,
+        "other_positive_t": {
+          "steps": 1,
+          "begin_ms": {
+            "sum": 4.5,
+            "mean": 4.5,
+            "median": 4.5,
+            "p95": 4.5,
+            "min": 4.5,
+            "max": 4.5
+          },
+          "layers_ms": {
+            "sum": 105.57,
+            "mean": 105.57,
+            "median": 105.57,
+            "p95": 105.57,
+            "min": 105.57,
+            "max": 105.57
+          },
+          "finish_ms": {
+            "sum": 3.28,
+            "mean": 3.28,
+            "median": 3.28,
+            "p95": 3.28,
+            "min": 3.28,
+            "max": 3.28
+          },
+          "observed_phase_sum_ms": 113.35,
+          "finish_share_of_observed_phase_sum": 0.02893692104102338
+        },
+        "unknown_t": null
+      }
+    },
+    {
+      "gpu": 1,
+      "overall": {
+        "steps": 260,
+        "begin_ms": {
+          "sum": 453.74,
+          "mean": 1.7451538461538463,
+          "median": 0.5,
+          "p95": 5.5,
+          "min": 0.26,
+          "max": 15.39
+        },
+        "layers_ms": {
+          "sum": 20322.49,
+          "mean": 78.16342307692308,
+          "median": 90.72999999999999,
+          "p95": 104.15,
+          "min": 26.93,
+          "max": 104.75
+        },
+        "finish_ms": {
+          "sum": 397.75,
+          "mean": 1.5298076923076922,
+          "median": 0.895,
+          "p95": 3.54,
+          "min": 0.69,
+          "max": 3.55
+        },
+        "observed_phase_sum_ms": 21173.98,
+        "finish_share_of_observed_phase_sum": 0.018784848195757247
+      },
+      "by_t_class": {
+        "t1_6_hint": {
+          "steps": 195,
+          "begin_ms": {
+            "sum": 92.41,
+            "mean": 0.4738974358974359,
+            "median": 0.47,
+            "p95": 0.7,
+            "min": 0.26,
+            "max": 0.72
+          },
+          "layers_ms": {
+            "sum": 13674.36,
+            "mean": 70.12492307692308,
+            "median": 89.8,
+            "p95": 92.17,
+            "min": 26.93,
+            "max": 92.62
+          },
+          "finish_ms": {
+            "sum": 168.45,
+            "mean": 0.8638461538461538,
+            "median": 0.83,
+            "p95": 1.17,
+            "min": 0.69,
+            "max": 1.25
+          },
+          "observed_phase_sum_ms": 13935.22,
+          "finish_share_of_observed_phase_sum": 0.012088076112181939
+        },
+        "t32": null,
+        "t64": {
+          "steps": 64,
+          "begin_ms": {
+            "sum": 357.16,
+            "mean": 5.580625,
+            "median": 5.37,
+            "p95": 6.05,
+            "min": 5.14,
+            "max": 15.39
+          },
+          "layers_ms": {
+            "sum": 6565.46,
+            "mean": 102.5853125,
+            "median": 103.57,
+            "p95": 104.44,
+            "min": 93.64,
+            "max": 104.75
+          },
+          "finish_ms": {
+            "sum": 226.01999999999998,
+            "mean": 3.5315624999999997,
+            "median": 3.53,
+            "p95": 3.54,
+            "min": 3.52,
+            "max": 3.55
+          },
+          "observed_phase_sum_ms": 7148.64,
+          "finish_share_of_observed_phase_sum": 0.031617202712683805
+        },
+        "t7_9_hint": null,
+        "other_positive_t": {
+          "steps": 1,
+          "begin_ms": {
+            "sum": 4.17,
+            "mean": 4.17,
+            "median": 4.17,
+            "p95": 4.17,
+            "min": 4.17,
+            "max": 4.17
+          },
+          "layers_ms": {
+            "sum": 82.67,
+            "mean": 82.67,
+            "median": 82.67,
+            "p95": 82.67,
+            "min": 82.67,
+            "max": 82.67
+          },
+          "finish_ms": {
+            "sum": 3.28,
+            "mean": 3.28,
+            "median": 3.28,
+            "p95": 3.28,
+            "min": 3.28,
+            "max": 3.28
+          },
+          "observed_phase_sum_ms": 90.12,
+          "finish_share_of_observed_phase_sum": 0.036395916555703504
+        },
+        "unknown_t": null
+      }
+    },
+    {
+      "gpu": 2,
+      "overall": {
+        "steps": 269,
+        "begin_ms": {
+          "sum": 381.67,
+          "mean": 1.4188475836431227,
+          "median": 0.42,
+          "p95": 4.37,
+          "min": 0.23,
+          "max": 16.29
+        },
+        "layers_ms": {
+          "sum": 20636.52,
+          "mean": 76.715687732342,
+          "median": 90.66,
+          "p95": 105.27,
+          "min": 25.25,
+          "max": 105.75
+        },
+        "finish_ms": {
+          "sum": 422.32,
+          "mean": 1.5699628252788105,
+          "median": 0.91,
+          "p95": 3.76,
+          "min": 0.72,
+          "max": 3.76
+        },
+        "observed_phase_sum_ms": 21440.51,
+        "finish_share_of_observed_phase_sum": 0.019697292648355846
+      },
+      "by_t_class": {
+        "t1_6_hint": {
+          "steps": 204,
+          "begin_ms": {
+            "sum": 80.84,
+            "mean": 0.3962745098039216,
+            "median": 0.4,
+            "p95": 0.57,
+            "min": 0.23,
+            "max": 0.61
+          },
+          "layers_ms": {
+            "sum": 13928.4,
+            "mean": 68.2764705882353,
+            "median": 89.75,
+            "p95": 92.3,
+            "min": 25.25,
+            "max": 92.75
+          },
+          "finish_ms": {
+            "sum": 178.89000000000001,
+            "mean": 0.8769117647058824,
+            "median": 0.86,
+            "p95": 1.11,
+            "min": 0.72,
+            "max": 1.21
+          },
+          "observed_phase_sum_ms": 14188.13,
+          "finish_share_of_observed_phase_sum": 0.012608426903333986
+        },
+        "t32": null,
+        "t64": {
+          "steps": 64,
+          "begin_ms": {
+            "sum": 297.07,
+            "mean": 4.64171875,
+            "median": 4.33,
+            "p95": 5.86,
+            "min": 4.29,
+            "max": 16.29
+          },
+          "layers_ms": {
+            "sum": 6625.09,
+            "mean": 103.51703125,
+            "median": 104.525,
+            "p95": 105.59,
+            "min": 93.21,
+            "max": 105.75
+          },
+          "finish_ms": {
+            "sum": 239.97,
+            "mean": 3.74953125,
+            "median": 3.75,
+            "p95": 3.76,
+            "min": 3.73,
+            "max": 3.76
+          },
+          "observed_phase_sum_ms": 7162.13,
+          "finish_share_of_observed_phase_sum": 0.033505395741211065
+        },
+        "t7_9_hint": null,
+        "other_positive_t": {
+          "steps": 1,
+          "begin_ms": {
+            "sum": 3.76,
+            "mean": 3.76,
+            "median": 3.76,
+            "p95": 3.76,
+            "min": 3.76,
+            "max": 3.76
+          },
+          "layers_ms": {
+            "sum": 83.03,
+            "mean": 83.03,
+            "median": 83.03,
+            "p95": 83.03,
+            "min": 83.03,
+            "max": 83.03
+          },
+          "finish_ms": {
+            "sum": 3.46,
+            "mean": 3.46,
+            "median": 3.46,
+            "p95": 3.46,
+            "min": 3.46,
+            "max": 3.46
+          },
+          "observed_phase_sum_ms": 90.25,
+          "finish_share_of_observed_phase_sum": 0.038337950138504155
+        },
+        "unknown_t": null
+      }
+    },
+    {
+      "gpu": 3,
+      "overall": {
+        "steps": 289,
+        "begin_ms": {
+          "sum": 663.39,
+          "mean": 2.2954671280276817,
+          "median": 0.58,
+          "p95": 4.51,
+          "min": 0.24,
+          "max": 13.9
+        },
+        "layers_ms": {
+          "sum": 15221.3,
+          "mean": 52.66885813148789,
+          "median": 31.6,
+          "p95": 88.14,
+          "min": 21.41,
+          "max": 88.74
+        },
+        "finish_ms": {
+          "sum": 592.71,
+          "mean": 2.050899653979239,
+          "median": 0.99,
+          "p95": 3.54,
+          "min": 0.69,
+          "max": 3.6
+        },
+        "observed_phase_sum_ms": 16477.4,
+        "finish_share_of_observed_phase_sum": 0.03597108767159867
+      },
+      "by_t_class": {
+        "t1_6_hint": {
+          "steps": 160,
+          "begin_ms": {
+            "sum": 69.49,
+            "mean": 0.4343125,
+            "median": 0.44,
+            "p95": 0.59,
+            "min": 0.24,
+            "max": 0.69
+          },
+          "layers_ms": {
+            "sum": 4099.34,
+            "mean": 25.620875,
+            "median": 23.585,
+            "p95": 32.09,
+            "min": 21.41,
+            "max": 34.44
+          },
+          "finish_ms": {
+            "sum": 137.22,
+            "mean": 0.857625,
+            "median": 0.855,
+            "p95": 1.08,
+            "min": 0.69,
+            "max": 1.18
+          },
+          "observed_phase_sum_ms": 4306.05,
+          "finish_share_of_observed_phase_sum": 0.03186679207162016
+        },
+        "t32": null,
+        "t64": {
+          "steps": 128,
+          "begin_ms": {
+            "sum": 589.9,
+            "mean": 4.60859375,
+            "median": 4.41,
+            "p95": 5.87,
+            "min": 4.35,
+            "max": 13.9
+          },
+          "layers_ms": {
+            "sum": 11042.14,
+            "mean": 86.26671875,
+            "median": 86.915,
+            "p95": 88.48,
+            "min": 75.75,
+            "max": 88.74
+          },
+          "finish_ms": {
+            "sum": 452.2,
+            "mean": 3.5328125,
+            "median": 3.53,
+            "p95": 3.54,
+            "min": 3.52,
+            "max": 3.6
+          },
+          "observed_phase_sum_ms": 12084.24,
+          "finish_share_of_observed_phase_sum": 0.03742064043746235
+        },
+        "t7_9_hint": null,
+        "other_positive_t": {
+          "steps": 1,
+          "begin_ms": {
+            "sum": 4.0,
+            "mean": 4.0,
+            "median": 4.0,
+            "p95": 4.0,
+            "min": 4.0,
+            "max": 4.0
+          },
+          "layers_ms": {
+            "sum": 79.82,
+            "mean": 79.82,
+            "median": 79.82,
+            "p95": 79.82,
+            "min": 79.82,
+            "max": 79.82
+          },
+          "finish_ms": {
+            "sum": 3.29,
+            "mean": 3.29,
+            "median": 3.29,
+            "p95": 3.29,
+            "min": 3.29,
+            "max": 3.29
+          },
+          "observed_phase_sum_ms": 87.11,
+          "finish_share_of_observed_phase_sum": 0.037768338881873496
+        },
+        "unknown_t": null
+      }
+    },
+    {
+      "gpu": 4,
+      "overall": null,
+      "by_t_class": {
+        "t1_6_hint": null,
+        "t32": null,
+        "t64": null,
+        "t7_9_hint": null,
+        "other_positive_t": null,
+        "unknown_t": null
+      }
+    },
+    {
+      "gpu": 5,
+      "overall": null,
+      "by_t_class": {
+        "t1_6_hint": null,
+        "t32": null,
+        "t64": null,
+        "t7_9_hint": null,
+        "other_positive_t": null,
+        "unknown_t": null
+      }
+    },
+    {
+      "gpu": 6,
+      "overall": null,
+      "by_t_class": {
+        "t1_6_hint": null,
+        "t32": null,
+        "t64": null,
+        "t7_9_hint": null,
+        "other_positive_t": null,
+        "unknown_t": null
+      }
+    },
+    {
+      "gpu": 7,
+      "overall": null,
+      "by_t_class": {
+        "t1_6_hint": null,
+        "t32": null,
+        "t64": null,
+        "t7_9_hint": null,
+        "other_positive_t": null,
+        "unknown_t": null
+      }
+    }
+  ],
+  "limits": [
+    "STEPT synchronizes after begin/layers and perturbs scheduling; this is diagnostic timing, not primary throughput",
+    "finish includes HC pre/RMS, head, sampler/argmax and download; it is an upper bound on removable head cost",
+    "v2 elapsed timestamp is after host layer enqueue, not a synchronized GPU boundary",
+    "t1..6 imply generation only under verified prompt-tail/slots protocol; t32/64 are prefill hints, not universal phase labels",
+    "all per-GPU phase sums overlap across GPUs; never add them as serial request wall time",
+    "same-process configuration/full-log provenance is required; separate run traces cannot label this log",
+    "first4096trace steps and complete64-step batches only; unflushed or later STEPT tail has unknown t"
+  ],
+  "head_screen_upper_bound": {
+    "potential_t32_through64_steps": 195,
+    "sum_per_step_max_t32_through64_finish_ms": 702.48,
+    "scope": "upper bound only for selected t32..64 candidate GPUs; other tail sizes and unknown records excluded",
+    "dp_slots1_configuration": true,
+    "caller_supplied_matching_interval_wall_s": 27.216533008031547,
+    "fraction_of_matching_wall": 0.025810781990222617,
+    "below_five_percent_for_covered_steps": true,
+    "denominator_warning": "Caller must match this exact selected profile interval; omitted tail/prefill sizes or truncated coverage prevent a whole-trace kill conclusion."
+  }
+}
