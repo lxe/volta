@@ -1,0 +1,162 @@
+[
+  {
+    "wall_s": 297.69204368803184,
+    "start_monotonic": 975201.135348431,
+    "end_monotonic": 975498.827392119,
+    "ttft_s": 297.46573840710334,
+    "usage": {
+      "prompt_tokens": 126045,
+      "completion_tokens": 17,
+      "total_tokens": 126062,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 126045
+    },
+    "finish_reason": "stop",
+    "content_event_times_monotonic": [
+      975498.601086689,
+      975498.639584371,
+      975498.639605873,
+      975498.678961876,
+      975498.678982783,
+      975498.712669802,
+      975498.712689355,
+      975498.712705745,
+      975498.748544621,
+      975498.748562857,
+      975498.748577725,
+      975498.748591706,
+      975498.787531677,
+      975498.787554636,
+      975498.787571415,
+      975498.787586784,
+      975498.787601439
+    ],
+    "visible_chunk_gap_scope": "client-observed SSE content chunks, which may contain multiple model tokens",
+    "output_sha256": "c761b432464e26ab8be939bcbda6792227b03f7648e5f550d5df0d22f2b51f16",
+    "output": "VOLTA_LONG_FOUR_00_8a271d60b7fc",
+    "decode_tokens_per_s": 70.7009572836929
+  },
+  {
+    "wall_s": 297.6927188730333,
+    "start_monotonic": 975201.132537663,
+    "end_monotonic": 975498.825256536,
+    "ttft_s": 297.4684104459593,
+    "usage": {
+      "prompt_tokens": 126045,
+      "completion_tokens": 17,
+      "total_tokens": 126062,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 126045
+    },
+    "finish_reason": "stop",
+    "content_event_times_monotonic": [
+      975498.600947964,
+      975498.639519362,
+      975498.639542205,
+      975498.679023034,
+      975498.679042753,
+      975498.712592513,
+      975498.71261595,
+      975498.71263174,
+      975498.748388706,
+      975498.748410319,
+      975498.748425591,
+      975498.787336944,
+      975498.787359775,
+      975498.787375128,
+      975498.78738892,
+      975498.825148314,
+      975498.825168071
+    ],
+    "visible_chunk_gap_scope": "client-observed SSE content chunks, which may contain multiple model tokens",
+    "output_sha256": "fdde66e244ed0c5ad853f320ede0e5f589e0614acc1fbd164057cb4e8bce970e",
+    "output": "VOLTA_LONG_FOUR_01_8a271d60b7fc",
+    "decode_tokens_per_s": 71.33035619175408
+  },
+  {
+    "wall_s": 297.6507547890069,
+    "start_monotonic": 975201.13686309,
+    "end_monotonic": 975498.787617879,
+    "ttft_s": 297.37701542000286,
+    "usage": {
+      "prompt_tokens": 126045,
+      "completion_tokens": 17,
+      "total_tokens": 126062,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 126045
+    },
+    "finish_reason": "stop",
+    "content_event_times_monotonic": [
+      975498.513877293,
+      975498.601032134,
+      975498.601045141,
+      975498.639635298,
+      975498.639651623,
+      975498.678904506,
+      975498.678917595,
+      975498.678925481,
+      975498.712740714,
+      975498.712758858,
+      975498.712773064,
+      975498.748464873,
+      975498.748481678,
+      975498.748498068,
+      975498.748512604,
+      975498.787424839,
+      975498.7874414
+    ],
+    "visible_chunk_gap_scope": "client-observed SSE content chunks, which may contain multiple model tokens",
+    "output_sha256": "73fbe3f88279c6083223d4f23463d22f3daa9dfe899b0cbd88547883894e213b",
+    "output": "VOLTA_LONG_FOUR_02_8a271d60b7fc",
+    "decode_tokens_per_s": 58.449758462635465
+  },
+  {
+    "wall_s": 297.5451707280008,
+    "start_monotonic": 975201.133886835,
+    "end_monotonic": 975498.679057563,
+    "ttft_s": 296.8916172020836,
+    "usage": {
+      "prompt_tokens": 126045,
+      "completion_tokens": 17,
+      "total_tokens": 126062,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 126045
+    },
+    "finish_reason": "stop",
+    "content_event_times_monotonic": [
+      975498.025503314,
+      975498.189896373,
+      975498.189923539,
+      975498.353623011,
+      975498.353651909,
+      975498.513788538,
+      975498.513815577,
+      975498.513833468,
+      975498.600795528,
+      975498.600820994,
+      975498.600837582,
+      975498.60085263,
+      975498.639406086,
+      975498.639429105,
+      975498.639444899,
+      975498.639459834,
+      975498.639474441
+    ],
+    "visible_chunk_gap_scope": "client-observed SSE content chunks, which may contain multiple model tokens",
+    "output_sha256": "d0ef155415c0c7db2969efb454bbea25870346958a5d1efb7b77b43748a23db9",
+    "output": "VOLTA_LONG_FOUR_03_8a271d60b7fc",
+    "decode_tokens_per_s": 24.48154491637811
+  }
+]

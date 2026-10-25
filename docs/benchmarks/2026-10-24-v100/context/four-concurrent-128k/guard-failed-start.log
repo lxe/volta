@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/root/memory-guard.py", line 18, in <module>
+    assert cfg['binary'] in {'/root/volta/target/release/volta-server',
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

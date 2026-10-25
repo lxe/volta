@@ -1,0 +1,32 @@
+{
+  "label": "dp-four-long-instrumented",
+  "clients": 4,
+  "mixed": false,
+  "wall_s": 297.69485445600003,
+  "monitor_wall_s": 297.9688452859409,
+  "completed": 4,
+  "requested_output_tokens": 256,
+  "output_tokens": 68,
+  "all_hit_output_budget": false,
+  "output_tokens_per_wall_s": 0.22842181845655835,
+  "prompt_tokens": 504180,
+  "cached_tokens_delta": 0,
+  "server_tokens_out_delta": 68,
+  "ttft_s": [
+    297.46573840710334,
+    297.4684104459593,
+    297.37701542000286,
+    296.8916172020836
+  ],
+  "ctx": 131072,
+  "heads": false,
+  "acceptance_median": 0.0,
+  "workload": "four concurrent distinct-key greedy long-context retrieval checks on existing instrumented server; not a throughput comparison",
+  "expected_keys": [
+    "VOLTA_LONG_FOUR_00_8a271d60b7fc",
+    "VOLTA_LONG_FOUR_01_8a271d60b7fc",
+    "VOLTA_LONG_FOUR_02_8a271d60b7fc",
+    "VOLTA_LONG_FOUR_03_8a271d60b7fc"
+  ],
+  "needle_verified": true
+}

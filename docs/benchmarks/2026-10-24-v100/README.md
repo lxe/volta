@@ -13,12 +13,13 @@ The teacher evaluation covers 8184 positions from eight 1024-token sequences. Ra
 | DP | 8.9423 | 0.126695 | 84.3231% |
 | HP | 8.9417 | 0.129511 | 84.0787% |
 
-Both actual context probes returned the exact deployment key placed at the beginning, with zero cache reuse. Each probe used one active request and naturally stopped after 13 output tokens. They establish these controlled retrieval workloads, not general long-context quality or simultaneous long requests.
+The actual context probes returned the exact deployment key placed at the beginning, with zero cache reuse. The original DP/HP probes used one active request and naturally stopped after 13 output tokens. The later four-session check used distinct keys and 17-token natural replies; it ran with diagnostic synchronization and lacked continuous memory observations because its guard failed startup, as recorded in its receipt. They establish these controlled retrieval workloads, not general long-context quality or simultaneous long requests.
 
 | Mode and capacity | Actual prompt tokens | Time to first token | Receipts |
 |---|---:|---:|---|
 | DP, 131072 | 126041 | 226.50s | [context/](context/) |
 | HP, 262144 | 250042 | 468.57s | [hp-256k/](hp-256k/) |
+| Four concurrent DP requests, 131072 | 4 × 126045 | 296.89–297.47s | [context/four-concurrent-128k/](context/four-concurrent-128k/) |
 
 ## Matched sampler comparison
 
