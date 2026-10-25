@@ -1,0 +1,11 @@
+# HP sampling v3 audit logging repair
+
+V2 completed614valid numerical audits covering8,796,728,320bytes with every required category observed. Its strict audit gate still failed: one HP_SAMPLE_DISPATCH JSON record was interrupted by a tracing API request line. The malformed record and original failed analysis remain unchanged. Numerical success does not erase the log-validity failure; no stitching or parser exception is used. Parent owns the full raw v2 failure archive.
+
+Commit2e0e16166709d11f4e98802eb74343cdba77a605 changes only audit record I/O in volta.rs and server/volta.rs. It preformats the complete label, serde JSON and final newline into a String, then issues one Write::write_all call on locked stderr. Both dispatch and numerical audit use the helper; write errors propagate through existing Result paths only when audit logging is enabled. There is no extra eprintln newline operation. Copy geometry, numeric inputs, sampler tables, eligibility, audit fields and kernels are unchanged. The CPU formatter regression checks one complete valid JSON record with exactly one terminating newline, including an embedded escaped newline in a JSON value; it passed.
+
+The isolated v3 server andCLI compiled04:31:08–04:31:42UTC with2jobs (33.65s cargo), following the independent04:31:07absence check. All three working source hashes and the exact4387f0e3 frozen CUDA image match the proof. Every kernel source is unchanged; v2 sources and both binaries are verified preserved. No compiler remained at verification. No GPU/model job was launched by the repair author.
+
+New paths are /root/volta-hp-sampling-v3/target-hp-sampling-v3/release/volta-server and volta. ServerSHA is69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363; CLISHA isbcfe792f228ba7216237c13e5d582dd7e4a34e0872ddd4c293c77d10a237cd67. The parent must bind the fresh configuration and strict parser provenance to these hashes and sourcecommit2e0e16166709d11f4e98802eb74343cdba77a605. A successful CPU formatting test is not proof of a complete real server log. Fresh strict audit, teacher quality and matched timing remain required; audit stays off during performance measurements.
+
+manifest.json binds exact bytes and SHA256 for every other file. These receipts establish a logging repair/build, not a performance gain or promotion.
