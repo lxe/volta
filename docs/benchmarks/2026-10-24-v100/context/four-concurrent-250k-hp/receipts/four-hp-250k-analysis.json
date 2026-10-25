@@ -1,0 +1,217 @@
+{
+  "status": "PASS",
+  "original_planned_all_gates_passed": true,
+  "retrieval_passed": true,
+  "memory_guard_passed": true,
+  "four_admitted_active_sessions_observed": true,
+  "original_no_queue_gate_passed": true,
+  "max_observed_active": 4,
+  "max_observed_queued": 0,
+  "monitor_errors": [],
+  "source_binding": {
+    "source_commit": "2e0e16166709d11f4e98802eb74343cdba77a605",
+    "source_sha256": {
+      "engine/src/gpu.rs": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992",
+      "engine/src/volta.rs": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a",
+      "engine/src/server/volta.rs": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+    },
+    "server_sha256": "69d61caa862e5b7558e2001d9266ef00583842a776fff923a0eed1092a80f363",
+    "pid": 27988,
+    "model_sha256": "9d15a1d6f263b25bb3bf0eb1b887c9c6d7176083b8a9bd55c998e8658e52000c",
+    "model_bytes": 441574130240,
+    "model_hash_scope": "Earlier verified full-file hydration receipt plus unchanged configured path; no new per-probe full rehash."
+  },
+  "results_in_client_input_order": [
+    {
+      "client_index": 0,
+      "expected_key": "VOLTA_LONG_FOUR_00_8a271d60b7fc",
+      "actual_output": "VOLTA_LONG_FOUR_00_8a271d60b7fc",
+      "exact_after_outer_whitespace_trim": true,
+      "raw_exact_match": true,
+      "prompt_tokens": 250046,
+      "output_tokens": 17,
+      "finish_reason": "stop",
+      "ttft_s": 1871.9376104769763,
+      "wall_s": 1872.099642924033,
+      "output_sha256": "c761b432464e26ab8be939bcbda6792227b03f7648e5f550d5df0d22f2b51f16"
+    },
+    {
+      "client_index": 1,
+      "expected_key": "VOLTA_LONG_FOUR_01_8a271d60b7fc",
+      "actual_output": "VOLTA_LONG_FOUR_01_8a271d60b7fc",
+      "exact_after_outer_whitespace_trim": true,
+      "raw_exact_match": true,
+      "prompt_tokens": 250046,
+      "output_tokens": 17,
+      "finish_reason": "stop",
+      "ttft_s": 936.411809128942,
+      "wall_s": 937.00740726199,
+      "output_sha256": "fdde66e244ed0c5ad853f320ede0e5f589e0614acc1fbd164057cb4e8bce970e"
+    },
+    {
+      "client_index": 2,
+      "expected_key": "VOLTA_LONG_FOUR_02_8a271d60b7fc",
+      "actual_output": "VOLTA_LONG_FOUR_02_8a271d60b7fc",
+      "exact_after_outer_whitespace_trim": true,
+      "raw_exact_match": true,
+      "prompt_tokens": 250046,
+      "output_tokens": 17,
+      "finish_reason": "stop",
+      "ttft_s": 1403.8956772530219,
+      "wall_s": 1404.4911383490544,
+      "output_sha256": "73fbe3f88279c6083223d4f23463d22f3daa9dfe899b0cbd88547883894e213b"
+    },
+    {
+      "client_index": 3,
+      "expected_key": "VOLTA_LONG_FOUR_03_8a271d60b7fc",
+      "actual_output": "VOLTA_LONG_FOUR_03_8a271d60b7fc",
+      "exact_after_outer_whitespace_trim": true,
+      "raw_exact_match": true,
+      "prompt_tokens": 250046,
+      "output_tokens": 17,
+      "finish_reason": "stop",
+      "ttft_s": 468.85853188904,
+      "wall_s": 469.3672884750413,
+      "output_sha256": "d0ef155415c0c7db2969efb454bbea25870346958a5d1efb7b77b43748a23db9"
+    }
+  ],
+  "server_admissions": [
+    {
+      "line": 21,
+      "utc": "2026-10-25T05:06:44.293956Z",
+      "epoch": 1792904804.293956,
+      "id": "chatcmpl-6add8e640000",
+      "gpu": "0",
+      "slot": "0",
+      "prompt_tokens": "250046",
+      "cached_tokens": "0",
+      "queue_ms": "0"
+    },
+    {
+      "line": 24,
+      "utc": "2026-10-25T05:06:44.904034Z",
+      "epoch": 1792904804.904034,
+      "id": "chatcmpl-6add8e640001",
+      "gpu": "0",
+      "slot": "1",
+      "prompt_tokens": "250046",
+      "cached_tokens": "0",
+      "queue_ms": "40"
+    },
+    {
+      "line": 29,
+      "utc": "2026-10-25T05:06:45.106274Z",
+      "epoch": 1792904805.106274,
+      "id": "chatcmpl-6add8e650002",
+      "gpu": "0",
+      "slot": "2",
+      "prompt_tokens": "250046",
+      "cached_tokens": "0",
+      "queue_ms": "53"
+    },
+    {
+      "line": 30,
+      "utc": "2026-10-25T05:06:45.106356Z",
+      "epoch": 1792904805.106356,
+      "id": "chatcmpl-6add8e650003",
+      "gpu": "0",
+      "slot": "3",
+      "prompt_tokens": "250046",
+      "cached_tokens": "0",
+      "queue_ms": "34"
+    }
+  ],
+  "server_completions": [
+    {
+      "line": 31,
+      "utc": "2026-10-25T05:14:31.682316Z",
+      "epoch": 1792905271.682316,
+      "id": "chatcmpl-6add8e640000",
+      "prompt_tokens": "250046",
+      "generated": "17",
+      "ttft_ms": "466879",
+      "decode_tps": "31.5",
+      "finish": "Stop"
+    },
+    {
+      "line": 32,
+      "utc": "2026-10-25T05:22:19.324799Z",
+      "epoch": 1792905739.324799,
+      "id": "chatcmpl-6add8e640001",
+      "prompt_tokens": "250046",
+      "generated": "17",
+      "ttft_ms": "933824",
+      "decode_tps": "26.9",
+      "finish": "Stop"
+    },
+    {
+      "line": 33,
+      "utc": "2026-10-25T05:30:06.805611Z",
+      "epoch": 1792906206.805611,
+      "id": "chatcmpl-6add8e650002",
+      "prompt_tokens": "250046",
+      "generated": "17",
+      "ttft_ms": "1401104",
+      "decode_tps": "26.9",
+      "finish": "Stop"
+    },
+    {
+      "line": 34,
+      "utc": "2026-10-25T05:37:54.420637Z",
+      "epoch": 1792906674.420637,
+      "id": "chatcmpl-6add8e650003",
+      "prompt_tokens": "250046",
+      "generated": "17",
+      "ttft_ms": "1869153",
+      "decode_tps": "99.5",
+      "finish": "Stop"
+    }
+  ],
+  "request_id_mapping_limit": "API results do not store server request IDs. Client source returns futures in input order, exact distinct key results validate that order; raw server ID events are validated separately without fabricating an ID-to-client index join.",
+  "prompt_tokens_total": 1000184,
+  "output_tokens_total": 68,
+  "cached_tokens": 0,
+  "wall_s": 1872.1057745870203,
+  "first_admitted_epoch": 1792904804.293956,
+  "last_done_epoch": 1792906674.420637,
+  "memory": {
+    "input": "/home/lxe/volta-sixhour-20261024/screens/four-hp-250k/memory-final.jsonl",
+    "observations": 1721,
+    "total_file_rows": 1749,
+    "selected_rows": 1721,
+    "selected_first_file_row_1based": 3,
+    "selected_last_file_row_1based": 1723,
+    "selection_rule": "Last original observation at/before first admission through first original observation at/after last completion, inclusive; full raw file retained and hashed.",
+    "first_epoch": 1792904804.110621,
+    "last_epoch": 1792906675.035423,
+    "maximum_gap_s": 1.1373088359832764,
+    "minimum_free_mib": 1753,
+    "reserve_mib": 192
+  },
+  "limits": [
+    "This checks four distinct-key retrieval requests at approximately250K prompt tokens each, not general long-context quality.",
+    "Four sessions were admitted and active in separate HP slots, but the scheduler shares one64-row HP prefill group; it does not establish four parallel64-row prefills.",
+    "These requests are greedy and use unchanged StepGreedy, so they do not measure new sampled-GPU-path throughput.",
+    "Guard readings are sampled; passing gaps and reserve checks do not prove unsampled memory behavior.",
+    "Original no-queue gate is reported separately and is not relaxed to erase transient admission queueing.",
+    "Naturally stopped outputs are expected to be shorter than64tokens; this is not a fixed-output throughput screen."
+  ],
+  "input_sha256": {
+    "server-runs/hp-gpu-capacity4/configuration.json": "0968eeaa055100949be2c3ffc3466ecaa8432b0d41fcaa384d5f4ed307cce7a5",
+    "screens/four-hp-250k/configuration.json": "6712335f86b5e1acf02e1cb2120a906c612dc7bad7a3c69bdde6ca1cc9d8fa54",
+    "hp-sampling-v3-build-proof.json": "faf10e0091dafeaa9202fa57914ecafa9cde38cd75870387dd5aa03cad7f3152",
+    "hp-sampling-v3-source.json": "e38c20626ac46d07a999dee1cff387ac4926e54f3b5c2a62d609f66f33a848d7",
+    "receipts/hp-shared-source-binding.json": "2617f89f5a3053665c6e3220497f9545123db960c78fc2fa640b8367da5c854f",
+    "receipts/model-sha256.json": "adb1122335cbfdba1e4b498e19c7b2209c4f9e295e1ddb57fa862409635a53e4",
+    "screens/four-hp-250k/requests.json": "177fb0570c4508aef658412bb3c9cceac0fdf35e7a80e2cba0e70d263e08776e",
+    "screens/four-hp-250k/results.json": "568ccc50e6bec94daf29771ded203b0627c138c9cde57d7ba3132382be9c6bac",
+    "screens/four-hp-250k/summary.json": "43a06c66822edc3370ea6b9bc15e3a8301c7699508e707825dac687ab659af9b",
+    "screens/four-hp-250k/initial-stats.json": "1f0354726187c24b48de40f4b640ebd7516839f21411b6270f4a8073a01b954c",
+    "screens/four-hp-250k/final-stats.json": "376168a8849ba208cd129379a5baf7a716549395ebbc7fb74c64834787e75b3e",
+    "screens/four-hp-250k/stats.jsonl": "ab5c58f94921fd7dbd27b47448570d5515a3fe0b61fced916ae7fe985ddfbf21",
+    "screens/four-hp-250k/server.log": "25d07ac4f9a93de15321ffe0d0af3e8da45a5d27fc621a6ec2fd1b60f67ca1f6",
+    "memory-guards/hp-gpu-capacity4/configuration.json": "d619d0bfeac26a82eb7bc74b8a9e8f66f26dfc0aa728d3207166c0dbe604dcb5",
+    "screens/four-hp-250k/memory-final.jsonl": "f2d110bfbb1f89539213308987df55285fc36f910fec30a5b796be2627c1db18"
+  },
+  "analyzer_sha256": "b872a34a2d58f0801bfdcbcf4748dcf8d9636e74fad691c3c28688be8d864ae2"
+}

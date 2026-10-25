@@ -1,0 +1,34 @@
+engram: 203 GB mapped in 8 s
+experts from the pack: split 8 ways, 27.5 GB per GPU
+draft: 3 layers, block 5
+HP GPU sampling: true, audit budget 0
+GPU2: loaded in 139 s, 15360 experts, 2.0 of 34.1 GB free
+GPU0: loaded in 139 s, 15360 experts, 1.9 of 34.1 GB free
+GPU3: loaded in 140 s, 15360 experts, 2.0 of 34.1 GB free
+GPU7: loaded in 140 s, 15360 experts, 2.0 of 34.1 GB free
+GPU1: loaded in 140 s, 15360 experts, 2.0 of 34.1 GB free
+GPU6: loaded in 140 s, 15360 experts, 2.0 of 34.1 GB free
+GPU4: loaded in 140 s, 15360 experts, 2.0 of 34.1 GB free
+GPU5: loaded in 140 s, 15360 experts, 2.0 of 34.1 GB free
+[2m2026-10-25T05:06:38.879428Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m volta engine up [3mgpus[0m[2m=[0m1 [3mslots[0m[2m=[0m4 [3mheads[0m[2m=[0mtrue [3mctx[0m[2m=[0m262144 [3mdraft[0m[2m=[0mtrue [3mspec_k[0m[2m=[0m5
+[2m2026-10-25T05:06:38.879494Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m sampling [3mgpu_sample[0m[2m=[0mtrue
+[2m2026-10-25T05:06:38.879647Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m api key: none, the API is open to anyone who can reach the port
+[2m2026-10-25T05:06:38.881657Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m hesitation penalty: 52 tokens, default 0 [3mtokens[0m[2m=[0m52
+[2m2026-10-25T05:06:38.881756Z[0m [32m INFO[0m [2mvolta_server[0m[2m:[0m admin dashboard on http://127.0.0.1:8091
+[2m2026-10-25T05:06:38.881786Z[0m [32m INFO[0m [2mvolta_server[0m[2m:[0m listening on http://127.0.0.1:8090 (volta, 8 GPUs, 4 sessions, head-parallel)
+[2m2026-10-25T05:06:44.293387Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m request [3mid[0m[2m=[0mchatcmpl-6add8e640000 [3mmodel[0m[2m=[0mdeepseek-v4.1-flash [3mstream[0m[2m=[0mtrue [3mthinking[0m[2m=[0mfalse [3meffort[0m[2m=[0mNone [3mmessages[0m[2m=[0m1 [3mtools[0m[2m=[0m0 [3mtemperature[0m[2m=[0m0.0 [3mtop_p[0m[2m=[0m1.0 [3mhesitation[0m[2m=[0m0.0
+[2m2026-10-25T05:06:44.293507Z[0m [32m INFO[0m [2mdsx_core::server::engine[0m[2m:[0m queued [3mid[0m[2m=[0mchatcmpl-6add8e640000 [3mprompt_tokens[0m[2m=[0m250046 [3mmax_new[0m[2m=[0m64 [3mqueue_position[0m[2m=[0m0
+[2m2026-10-25T05:06:44.293956Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m admitted [3mid[0m[2m=[0mchatcmpl-6add8e640000 [3mgpu[0m[2m=[0m0 [3mslot[0m[2m=[0m0 [3mprompt_tokens[0m[2m=[0m250046 [3mcached_tokens[0m[2m=[0m0 [3mqueue_ms[0m[2m=[0m0
+[2m2026-10-25T05:06:44.863299Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m request [3mid[0m[2m=[0mchatcmpl-6add8e640001 [3mmodel[0m[2m=[0mdeepseek-v4.1-flash [3mstream[0m[2m=[0mtrue [3mthinking[0m[2m=[0mfalse [3meffort[0m[2m=[0mNone [3mmessages[0m[2m=[0m1 [3mtools[0m[2m=[0m0 [3mtemperature[0m[2m=[0m0.0 [3mtop_p[0m[2m=[0m1.0 [3mhesitation[0m[2m=[0m0.0
+[2m2026-10-25T05:06:44.863438Z[0m [32m INFO[0m [2mdsx_core::server::engine[0m[2m:[0m queued [3mid[0m[2m=[0mchatcmpl-6add8e640001 [3mprompt_tokens[0m[2m=[0m250046 [3mmax_new[0m[2m=[0m64 [3mqueue_position[0m[2m=[0m1
+[2m2026-10-25T05:06:44.904034Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m admitted [3mid[0m[2m=[0mchatcmpl-6add8e640001 [3mgpu[0m[2m=[0m0 [3mslot[0m[2m=[0m1 [3mprompt_tokens[0m[2m=[0m250046 [3mcached_tokens[0m[2m=[0m0 [3mqueue_ms[0m[2m=[0m40
+[2m2026-10-25T05:06:45.052417Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m request [3mid[0m[2m=[0mchatcmpl-6add8e650002 [3mmodel[0m[2m=[0mdeepseek-v4.1-flash [3mstream[0m[2m=[0mtrue [3mthinking[0m[2m=[0mfalse [3meffort[0m[2m=[0mNone [3mmessages[0m[2m=[0m1 [3mtools[0m[2m=[0m0 [3mtemperature[0m[2m=[0m0.0 [3mtop_p[0m[2m=[0m1.0 [3mhesitation[0m[2m=[0m0.0
+[2m2026-10-25T05:06:45.052554Z[0m [32m INFO[0m [2mdsx_core::server::engine[0m[2m:[0m queued [3mid[0m[2m=[0mchatcmpl-6add8e650002 [3mprompt_tokens[0m[2m=[0m250046 [3mmax_new[0m[2m=[0m64 [3mqueue_position[0m[2m=[0m2
+[2m2026-10-25T05:06:45.071498Z[0m [32m INFO[0m [2mdsx_core::server[0m[2m:[0m request [3mid[0m[2m=[0mchatcmpl-6add8e650003 [3mmodel[0m[2m=[0mdeepseek-v4.1-flash [3mstream[0m[2m=[0mtrue [3mthinking[0m[2m=[0mfalse [3meffort[0m[2m=[0mNone [3mmessages[0m[2m=[0m1 [3mtools[0m[2m=[0m0 [3mtemperature[0m[2m=[0m0.0 [3mtop_p[0m[2m=[0m1.0 [3mhesitation[0m[2m=[0m0.0
+[2m2026-10-25T05:06:45.071625Z[0m [32m INFO[0m [2mdsx_core::server::engine[0m[2m:[0m queued [3mid[0m[2m=[0mchatcmpl-6add8e650003 [3mprompt_tokens[0m[2m=[0m250046 [3mmax_new[0m[2m=[0m64 [3mqueue_position[0m[2m=[0m3
+[2m2026-10-25T05:06:45.106274Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m admitted [3mid[0m[2m=[0mchatcmpl-6add8e650002 [3mgpu[0m[2m=[0m0 [3mslot[0m[2m=[0m2 [3mprompt_tokens[0m[2m=[0m250046 [3mcached_tokens[0m[2m=[0m0 [3mqueue_ms[0m[2m=[0m53
+[2m2026-10-25T05:06:45.106356Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m admitted [3mid[0m[2m=[0mchatcmpl-6add8e650003 [3mgpu[0m[2m=[0m0 [3mslot[0m[2m=[0m3 [3mprompt_tokens[0m[2m=[0m250046 [3mcached_tokens[0m[2m=[0m0 [3mqueue_ms[0m[2m=[0m34
+[2m2026-10-25T05:14:31.682316Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m done [3mid[0m[2m=[0mchatcmpl-6add8e640000 [3mprompt_tokens[0m[2m=[0m250046 [3mgenerated[0m[2m=[0m17 [3mttft_ms[0m[2m=[0m466879 [3mdecode_tps[0m[2m=[0m"31.5" [3mfinish[0m[2m=[0mStop
+[2m2026-10-25T05:22:19.324799Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m done [3mid[0m[2m=[0mchatcmpl-6add8e640001 [3mprompt_tokens[0m[2m=[0m250046 [3mgenerated[0m[2m=[0m17 [3mttft_ms[0m[2m=[0m933824 [3mdecode_tps[0m[2m=[0m"26.9" [3mfinish[0m[2m=[0mStop
+[2m2026-10-25T05:30:06.805611Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m done [3mid[0m[2m=[0mchatcmpl-6add8e650002 [3mprompt_tokens[0m[2m=[0m250046 [3mgenerated[0m[2m=[0m17 [3mttft_ms[0m[2m=[0m1401104 [3mdecode_tps[0m[2m=[0m"26.9" [3mfinish[0m[2m=[0mStop
+[2m2026-10-25T05:37:54.420637Z[0m [32m INFO[0m [2mdsx::server::volta[0m[2m:[0m done [3mid[0m[2m=[0mchatcmpl-6add8e650003 [3mprompt_tokens[0m[2m=[0m250046 [3mgenerated[0m[2m=[0m17 [3mttft_ms[0m[2m=[0m1869153 [3mdecode_tps[0m[2m=[0m"99.5" [3mfinish[0m[2m=[0mStop

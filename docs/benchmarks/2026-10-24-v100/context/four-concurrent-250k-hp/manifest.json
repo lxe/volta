@@ -1,0 +1,145 @@
+{
+  "scope": "Actual four-concurrent-250K HP retrieval capacity evidence; no general quality or sampling speedup claim.",
+  "files": {
+    "README.md": {
+      "bytes": 4982,
+      "sha256": "f01e4fac33409eedfbf46155558f9e50dc7085b0d20cb0011d013e99f984debb"
+    },
+    "analyze-four-hp-capacity.py": {
+      "bytes": 14265,
+      "sha256": "b872a34a2d58f0801bfdcbcf4748dcf8d9636e74fad691c3c28688be8d864ae2"
+    },
+    "four-hp-256k-budget.md": {
+      "bytes": 3285,
+      "sha256": "a2c27a18e8ba3ab8aaca8f39400fa8d92bc77bf392af75c86abcbcc55a22b53a"
+    },
+    "hp-sampling-v3-build-proof.json": {
+      "bytes": 2744,
+      "sha256": "faf10e0091dafeaa9202fa57914ecafa9cde38cd75870387dd5aa03cad7f3152"
+    },
+    "hp-sampling-v3-source-commit.txt": {
+      "bytes": 41,
+      "sha256": "4e7a7c419e2ae115a2955fe5dc6a44897bbe177538a1c3c2e5a114565cac3ed1"
+    },
+    "hp-sampling-v3-source.json": {
+      "bytes": 674,
+      "sha256": "e38c20626ac46d07a999dee1cff387ac4926e54f3b5c2a62d609f66f33a848d7"
+    },
+    "launch-hp-four-long.py": {
+      "bytes": 1809,
+      "sha256": "0977eb3ae3318a06ecc28397db8846a569f24e62b3b9af49e8352b2ed5b83aaa"
+    },
+    "memory-guard.py": {
+      "bytes": 2517,
+      "sha256": "e92241ff30a6dfb0bf2795705e728ee1b91837a5cb324ce185729be5a6c99226"
+    },
+    "memory-guards/hp-gpu-capacity4/configuration.json": {
+      "bytes": 740,
+      "sha256": "d619d0bfeac26a82eb7bc74b8a9e8f66f26dfc0aa728d3207166c0dbe604dcb5"
+    },
+    "memory-guards/hp-gpu-capacity4/launch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "receipts/four-hp-250k-analysis.json": {
+      "bytes": 8960,
+      "sha256": "2b0e8dcd2f1aa4f54aa6449562bbb5729b806bc2cb4e642b26592ab97754ba6d"
+    },
+    "receipts/hp-four-long-controller.log": {
+      "bytes": 1621,
+      "sha256": "2dddbccecd9131648b1ede5e3b370a23a0a020fc28e8aef584c7b6b7f3ffbdd4"
+    },
+    "receipts/hp-shared-source-binding.json": {
+      "bytes": 411,
+      "sha256": "2617f89f5a3053665c6e3220497f9545123db960c78fc2fa640b8367da5c854f"
+    },
+    "receipts/model-sha256.json": {
+      "bytes": 131,
+      "sha256": "adb1122335cbfdba1e4b498e19c7b2209c4f9e295e1ddb57fa862409635a53e4"
+    },
+    "screen-four-hp-long.py": {
+      "bytes": 10516,
+      "sha256": "fe3c4ee400df23cb51ae81a14e20aece1ebeec86ecd591b436b970447a6b0969"
+    },
+    "screens/four-hp-250k/configuration.json": {
+      "bytes": 1410,
+      "sha256": "6712335f86b5e1acf02e1cb2120a906c612dc7bad7a3c69bdde6ca1cc9d8fa54"
+    },
+    "screens/four-hp-250k/final-stats.json": {
+      "bytes": 29956,
+      "sha256": "376168a8849ba208cd129379a5baf7a716549395ebbc7fb74c64834787e75b3e"
+    },
+    "screens/four-hp-250k/initial-stats.json": {
+      "bytes": 15100,
+      "sha256": "1f0354726187c24b48de40f4b640ebd7516839f21411b6270f4a8073a01b954c"
+    },
+    "screens/four-hp-250k/memory-final.jsonl": {
+      "bytes": 445541,
+      "sha256": "f2d110bfbb1f89539213308987df55285fc36f910fec30a5b796be2627c1db18"
+    },
+    "screens/four-hp-250k/memory-observations.jsonl": {
+      "bytes": 439177,
+      "sha256": "1f073bd9b7fe6940288df44c091190b4bc2a0890d3b11949a8a74a0ec737b828"
+    },
+    "screens/four-hp-250k/requests.json": {
+      "bytes": 3542608,
+      "sha256": "177fb0570c4508aef658412bb3c9cceac0fdf35e7a80e2cba0e70d263e08776e"
+    },
+    "screens/four-hp-250k/results.json": {
+      "bytes": 4756,
+      "sha256": "568ccc50e6bec94daf29771ded203b0627c138c9cde57d7ba3132382be9c6bac"
+    },
+    "screens/four-hp-250k/server.log": {
+      "bytes": 6424,
+      "sha256": "25d07ac4f9a93de15321ffe0d0af3e8da45a5d27fc621a6ec2fd1b60f67ca1f6"
+    },
+    "screens/four-hp-250k/stats.jsonl": {
+      "bytes": 4131305,
+      "sha256": "ab5c58f94921fd7dbd27b47448570d5515a3fe0b61fced916ae7fe985ddfbf21"
+    },
+    "screens/four-hp-250k/summary.json": {
+      "bytes": 907,
+      "sha256": "43a06c66822edc3370ea6b9bc15e3a8301c7699508e707825dac687ab659af9b"
+    },
+    "server-control.py": {
+      "bytes": 9372,
+      "sha256": "95dc4a81a4b01b47c72b3e33e45e1516fac95e8cce305cf04eda7db9e37510cc"
+    },
+    "server-runs/hp-gpu-capacity4/configuration.json": {
+      "bytes": 1409,
+      "sha256": "0968eeaa055100949be2c3ffc3466ecaa8432b0d41fcaa384d5f4ed307cce7a5"
+    },
+    "server-runs/hp-gpu-capacity4/initial-api-observation.json": {
+      "bytes": 155,
+      "sha256": "abf5921292e4b46915ea162621ad56d20fba0c5d081cc17fa6dc921590f47221"
+    },
+    "server-runs/hp-gpu-capacity4/ready-gpus.csv": {
+      "bytes": 605,
+      "sha256": "710cbc7faae2ba862080a2ffb73e645dde97b8f996eec8ba0664ed37fabb4c04"
+    },
+    "server-runs/hp-gpu-capacity4/ready-stats.json": {
+      "bytes": 13948,
+      "sha256": "6b15aac3fe865e84ec1cdc330cdfd5398b94d1c8fca8cbd62f6b73a8c52e5455"
+    },
+    "server-runs/hp-gpu-capacity4/switch-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "start-memory-guard.py": {
+      "bytes": 3188,
+      "sha256": "2f49fc8e8c0967af50a4a875eb122eb515f371058d75c489fee1b583ca2809db"
+    },
+    "tested-source/engine/src/gpu.rs": {
+      "bytes": 38599,
+      "sha256": "b2c9a349d7c73a19118336a511881c1dfef4c62cdae259426a733f0bc8a26992"
+    },
+    "tested-source/engine/src/server/volta.rs": {
+      "bytes": 28056,
+      "sha256": "549d533c6d221ac3913887eb731ffdeba01bf0aa0125cee1e57500fd66241fbd"
+    },
+    "tested-source/engine/src/volta.rs": {
+      "bytes": 195130,
+      "sha256": "dff7762aab7b05560954d9c41185bc055a56605948c046e825f97645ef6cdf3a"
+    }
+  }
+}

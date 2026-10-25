@@ -1,0 +1,54 @@
+{
+  "first_observation_verified": true,
+  "observation_path": "/root/memory-hp-gpu-capacity4.jsonl",
+  "server_pid": 27988,
+  "guard_pid": 28171,
+  "command": [
+    "python3",
+    "/root/memory-guard.py",
+    "--name",
+    "hp-gpu-capacity4",
+    "--receipt-name",
+    "hp-gpu-capacity4",
+    "--min-free-mib",
+    "192",
+    "--until",
+    "1792908401.4576592"
+  ],
+  "ready_free_mib": [
+    [
+      0,
+      1847
+    ],
+    [
+      1,
+      1879
+    ],
+    [
+      2,
+      1879
+    ],
+    [
+      3,
+      1879
+    ],
+    [
+      4,
+      1879
+    ],
+    [
+      5,
+      1879
+    ],
+    [
+      6,
+      1879
+    ],
+    [
+      7,
+      1879
+    ]
+  ],
+  "log": "/root/memory-guard-hp-gpu-capacity4.log",
+  "until": 1792908401.4576592
+}
